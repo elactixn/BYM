@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Encore Stage — Live Arena Rhythm</title>
+    <meta
+      name="description"
+      content="Live 3D arena Guitar Hero-style rhythm game with tiered concert setlists, custom song & MIDI support, Lead Guitar, Bass, and Drums roles, customizable 3D gear, and 10 iconic concert venues."
+    />
+    <meta property="og:title" content="Encore Stage — Live Arena Rhythm" />
+    <meta
+      property="og:description"
+      content="Take the stage on Lead Guitar, Bass, or Drums across 10 iconic 3D concert arenas with instant-play tour tracks or your own music."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&family=Oswald:wght@500;600;700&family=Permanent+Marker&family=Rajdhani:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles/concert.css" />
+  </head>
+  <body>
+    <div id="arena-root" class="arena-root stage-backstage" data-instrument="guitar" data-fever="false" data-encore="false">
+      <!-- Concert Arena Atmosphere Backdrop -->
+      <div class="arena-backdrop" aria-hidden="true">
+        <div class="arena-photo"></div>
+        <div class="arena-vignette"></div>
+        <div class="stage-haze-core"></div>
+        <div class="spotlight-rig">
+          <div class="beam beam-left-outer"></div>
+          <div class="beam beam-left-inner"></div>
+          <div class="beam beam-right-inner"></div>
+          <div class="beam beam-right-outer"></div>
+        </div>
+        <div class="truss-top"></div>
+        <div class="truss-tower truss-tower-left"></div>
+        <div class="truss-tower truss-tower-right"></div>
+        <div class="crowd-horizon">
+          <div id="crowd-lightsticks" class="crowd-lightsticks"></div>
+          <div class="crowd-silhouette"></div>
+        </div>
+      </div>
+
+      <!-- 3D Performing Band & PBR Concert Arena Stage Layer (Always Live Behind Menus) -->
+      <div id="stage-band-layer" class="stage-band-layer" aria-hidden="true">
+        <canvas id="stage-band-canvas"></canvas>
+      </div>
+
+      <!-- Minimal Perimeter Live Stage HUD -->
+      <header class="stage-hud" aria-label="Live performance HUD">
+        <div class="hud-left-cluster">
+          <div>
+            <h2 id="hud-track-title" class="hud-track-title">—</h2>
+            <div id="hud-track-meta" class="hud-track-meta">—</div>
+            <div class="hud-progress-track" aria-hidden="true">
+              <div id="hud-progress-fill" class="hud-progress-fill"></div>
+            </div>
+            <div class="hud-time-row tabular">
+              <span id="hud-time-current">0:00</span>
+              <span id="hud-time-total">0:00</span>
+            </div>
+          </div>
+
+          <div id="hud-loop-readout" class="hud-loop-readout is-hidden">Loop Active</div>
+
+          <!-- Glowing Instrument Amp Status -->
+          <div id="hud-amp-card" class="hud-amp-card">
+            <div class="hud-amp-row">
+              <span id="hud-amp-role" class="hud-amp-role">Lead Guitar</span>
+              <span id="hud-amp-status" class="hud-amp-status">LIVE IN MIX</span>
+            </div>
+            <div class="hud-amp-meter" aria-hidden="true">
+              <div id="hud-amp-meter-fill" class="hud-amp-meter-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hud-right-cluster">
+          <div class="hud-metrics">
+            <div class="hud-stat hud-score-block">
+              <span class="hud-stat-label">Score</span>
+              <span id="hud-score" class="hud-stat-value">0</span>
+              <div id="hud-star-rating" class="hud-star-rating" aria-label="Live star rating">
+                <div id="hud-stars-row" class="hud-stars-row" aria-hidden="true">
+                  <span class="hud-star" data-star="1">★</span>
+                  <span class="hud-star" data-star="2">★</span>
+                  <span class="hud-star" data-star="3">★</span>
+                  <span class="hud-star" data-star="4">★</span>
+                  <span class="hud-star" data-star="5">★</span>
+                </div>
+                <div class="hud-star-progress-track" aria-hidden="true">
+                  <div id="hud-star-progress-fill" class="hud-star-progress-fill"></div>
+                </div>
+                <span id="hud-star-label" class="hud-star-label is-hidden">GOLD STARS</span>
+              </div>
+            </div>
+            <div class="hud-stat">
+              <span class="hud-stat-label">Combo</span>
+              <span id="hud-combo" class="hud-stat-value">0</span>
+            </div>
+            <div class="hud-stat">
+              <span class="hud-stat-label">Multiplier</span>
+              <span
+                id="hud-multiplier"
+                class="hud-stat-value is-multiplier"
+                data-tier="1"
+                data-fever="false"
+              >
+                1×
+              </span>
+            </div>
+          </div>
+
+          <div class="hud-gauges">
+            <div class="gauge-block">
+              <div class="gauge-head">
+                <span>Crowd Hype</span>
+                <span id="hud-hype-val" class="tabular">58%</span>
+              </div>
+              <div class="gauge-track">
+                <div id="hud-hype-fill" class="gauge-fill is-hype" data-state="steady"></div>
+              </div>
+            </div>
+
+            <div class="fever-row">
+              <div class="gauge-track" aria-label="Fever charge">
+                <div id="hud-fever-fill" class="gauge-fill is-fever"></div>
+              </div>
+              <button id="btn-fever-trigger" type="button" class="fever-trigger-btn" disabled>
+                Fever 0%
+              </button>
+            </div>
+            <div id="hud-whammy-tag" class="hud-whammy-tag is-hidden">WHAMMY VIBRATO +FEVER</div>
+          </div>
+
+          <div class="hud-actions">
+            <button id="btn-sfx-mute" type="button" class="stage-btn" aria-pressed="false">
+              SFX On
+            </button>
+            <button id="btn-pause-stage" type="button" class="stage-btn">
+              Practice / Pause
+            </button>
+            <button id="btn-backstage-hud" type="button" class="stage-btn stage-btn-ghost">
+              Backstage
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Live Concert Stage: Perspective Highway Canvas + Spatial Stage Pedals -->
+      <main class="live-stage" aria-label="Live concert highway">
+        <section class="highway-stage" aria-label="Rhythm highway canvas">
+          <canvas id="rhythm-canvas"></canvas>
+        </section>
+
+        <nav
+          id="stage-pedals"
+          class="stage-pedals"
+          data-lanes="4"
+          aria-label="Spatial stage fret pedals"
+        ></nav>
+      </main>
+
+      <!-- Classic Guitar Hero-Style Animated Song Title Marquee (Left Lower-Third) -->
+      <aside id="gh-song-marquee" class="gh-song-marquee" aria-live="polite" aria-hidden="true">
+        <div id="gh-marquee-kicker" class="gh-marquee-kicker">NOW PERFORMING</div>
+        <div id="gh-marquee-title" class="gh-marquee-title">—</div>
+        <div id="gh-marquee-artist" class="gh-marquee-artist">—</div>
+        <div id="gh-marquee-meta" class="gh-marquee-meta tabular">—</div>
+        <div class="gh-marquee-eq-wrap" aria-hidden="true">
+          <div class="gh-marquee-eq-bars">
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div class="gh-marquee-eq-line"></div>
+        </div>
+      </aside>
+
+      <!-- Authentic Console Rhythm-Game 3-Tab Backstage Lobby (Live 3D Arena Always Visible Behind) -->
+      <section
+        id="backstage-overlay"
+        class="console-lobby"
+        data-active-tab="setlist"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="backstage-brand-title"
+      >
+        <!-- Top Console Tour Navigation Bar -->
+        <header class="console-topbar">
+          <div class="console-brand">
+            <div class="brand-badge-skew">
+              <span class="brand-badge-bars" aria-hidden="true"></span>
+              <h1 id="backstage-brand-title" class="brand-wordmark">ENCORE STAGE</h1>
+            </div>
+            <span class="brand-tour-tag">WORLD TOUR</span>
+          </div>
+
+          <nav class="console-tabs" role="tablist" aria-label="Backstage sections">
+            <button
+              id="tab-setlist"
+              type="button"
+              role="tab"
+              class="console-tab is-active"
+              data-lobby-tab="setlist"
+              aria-selected="true"
+              aria-controls="panel-setlist"
+            >
+              <span class="console-tab-inner">TOUR SETLIST</span>
+            </button>
+            <button
+              id="tab-gear"
+              type="button"
+              role="tab"
+              class="console-tab"
+              data-lobby-tab="gear"
+              aria-selected="false"
+              aria-controls="panel-gear"
+            >
+              <span class="console-tab-inner">BACKSTAGE GEAR &amp; BAND</span>
+            </button>
+            <button
+              id="tab-venues"
+              type="button"
+              role="tab"
+              class="console-tab"
+              data-lobby-tab="venues"
+              aria-selected="false"
+              aria-controls="panel-venues"
+            >
+              <span class="console-tab-inner">VENUES</span>
+            </button>
+          </nav>
+
+          <div class="console-topbar-right">
+            <button
+              id="btn-tour-queue-toggle"
+              type="button"
+              class="console-chip-btn"
+              aria-expanded="false"
+              aria-controls="tour-queue-popover"
+            >
+              <span>TOUR QUEUE</span>
+              <span id="tour-queue-badge" class="console-chip-count tabular">0</span>
+            </button>
+            <button id="btn-open-calibration-backstage" type="button" class="console-chip-btn">
+              <span>AUDIO &amp; SYNC</span>
+              <span id="backstage-latency-val" class="console-chip-meta tabular">0 ms</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Compact Popover Drawer for Multi-Song Tour Setlist Queue -->
+        <aside id="tour-queue-popover" class="tour-popover is-hidden" aria-label="Concert tour queue">
+          <div class="tour-popover-head">
+            <div>
+              <h3 class="tour-popover-title">CONCERT TOUR SETLIST</h3>
+              <p id="tour-queue-caption" class="tour-popover-sub">
+                Queue 2+ songs — the closing track unlocks your Gold-and-Pyro Final Encore!
+              </p>
+            </div>
+            <div class="tour-popover-actions">
+              <button id="btn-clear-tour" type="button" class="stage-btn stage-btn-ghost is-hidden">
+                Clear
+              </button>
+              <button id="btn-start-tour" type="button" class="stage-btn stage-btn-encore" disabled>
+                Start Tour (Add 2+)
+              </button>
+            </div>
+          </div>
+          <div id="tour-queue-list" class="tour-queue-list"></div>
+        </aside>
+
+        <!-- TAB 1: TOUR SETLIST (Tattered Clipboard Left + Perforated Gig Ticket Right) -->
+        <div id="panel-setlist" class="lobby-panel lobby-panel-setlist" role="tabpanel" aria-labelledby="tab-setlist">
+          <!-- Left: Tattered Concert Clipboard Setlist -->
+          <div class="setlist-clipboard">
+            <div class="clipboard-tape" aria-hidden="true"><span>TONIGHT'S SETLIST</span></div>
+
+            <div class="setlist-subtabs" role="tablist" aria-label="Song library views">
+              <button
+                id="subtab-world-tour"
+                type="button"
+                role="tab"
+                class="subtab-btn is-active"
+                data-setlist-subtab="world-tour"
+                aria-selected="true"
+              >
+                WORLD TOUR
+              </button>
+              <button
+                id="subtab-custom"
+                type="button"
+                role="tab"
+                class="subtab-btn"
+                data-setlist-subtab="custom"
+                aria-selected="false"
+              >
+                MY CUSTOM SETLIST
+                <span id="custom-count-badge" class="subtab-count tabular">0</span>
+              </button>
+            </div>
+
+            <!-- World Tour Tiered Library -->
+            <div id="world-tour-pane" class="setlist-scroll">
+              <div id="builtin-track-list" class="tier-list"></div>
+            </div>
+
+            <!-- My Custom Setlist (Drop MP3 / WAV / MIDI + Saved Songs) -->
+            <div id="custom-setlist-pane" class="setlist-scroll is-hidden">
+              <div id="audio-dropzone" class="console-dropzone">
+                <div class="dropzone-icon" aria-hidden="true">♪</div>
+                <div class="dropzone-body">
+                  <p class="dropzone-title">ADD YOUR OWN MUSIC</p>
+                  <p class="dropzone-copy">
+                    Drop an MP3, WAV, or MIDI file to add it to your tour setlist
+                  </p>
+                </div>
+                <label class="dropzone-pick-btn">
+                  Browse Files
+                  <input
+                    id="audio-file-input"
+                    type="file"
+                    accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.mid,.midi,.chart"
+                    multiple
+                    class="sr-only-file"
+                  />
+                </label>
+              </div>
+              <p id="dropzone-status" class="dropzone-status">
+                Songs stay saved in your setlist for instant replay anytime.
+              </p>
+
+              <p id="saved-library-empty" class="saved-library-empty">
+                Your custom setlist is empty — drop a song above to play any track in your collection.
+              </p>
+              <div id="saved-library-list" class="custom-track-list"></div>
+            </div>
+          </div>
+
+          <!-- Right: Perforated Gig Ticket (Pre-Song Setup & PLAY GIG) -->
+          <div class="gig-ticket" aria-label="Selected gig setup">
+            <div class="ticket-notch ticket-notch-left" aria-hidden="true"></div>
+            <div class="ticket-notch ticket-notch-right" aria-hidden="true"></div>
+
+            <div class="ticket-top">
+              <div id="ticket-cover-badge" class="ticket-cover-badge" aria-hidden="true"></div>
+              <div class="ticket-song-info">
+                <div id="ticket-tier-tag" class="ticket-tier-tag">TIER 1 · GARAGE WARMUP</div>
+                <h2 id="ticket-song-title" class="ticket-song-title">Garage Anthem</h2>
+                <div id="ticket-song-artist" class="ticket-song-artist">The Concrete Amp</div>
+                <div class="ticket-stats-row tabular">
+                  <span id="ticket-bpm">112 BPM</span>
+                  <span class="meta-sep">·</span>
+                  <span id="ticket-duration">1:34</span>
+                  <span class="meta-sep">·</span>
+                  <span id="ticket-skulls" class="ticket-skulls" aria-label="Song difficulty"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="ticket-record-strip">
+              <div class="ticket-record-stars" id="ticket-best-stars" aria-label="Best star rating">
+                <span class="star-empty">★★★★★</span>
+              </div>
+              <div id="ticket-best-score" class="ticket-best-score tabular">NO SCORE YET</div>
+            </div>
+
+            <div class="ticket-perf-line" aria-hidden="true"></div>
+
+            <!-- Instrument Selector -->
+            <div class="ticket-control-group">
+              <div class="ticket-control-head">
+                <span class="ticket-control-label">STAGE ROLE</span>
+                <span id="ticket-instrument-caption" class="ticket-control-hint">Shred solos, melodies &amp; power chords</span>
+              </div>
+              <div class="ticket-instrument-row" role="group" aria-label="Choose playable instrument">
+                <button type="button" class="ticket-inst-btn is-active" data-instrument-choice="guitar" aria-pressed="true">
+                  <span class="ticket-inst-dot is-guitar"></span>
+                  <span>LEAD GUITAR</span>
+                </button>
+                <button type="button" class="ticket-inst-btn" data-instrument-choice="bass" aria-pressed="false">
+                  <span class="ticket-inst-dot is-bass"></span>
+                  <span>BASS</span>
+                </button>
+                <button type="button" class="ticket-inst-btn" data-instrument-choice="drums" aria-pressed="false">
+                  <span class="ticket-inst-dot is-drums"></span>
+                  <span>DRUMS</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Difficulty Selector (Easy 3-Bar / Medium 4-Bar / Hard 5-Bar / Expert 5-Bar+) -->
+            <div class="ticket-control-group">
+              <div class="ticket-control-head">
+                <span class="ticket-control-label">DIFFICULTY</span>
+                <span id="ticket-keys-hint" class="ticket-control-hint tabular">Keys: D F G J</span>
+              </div>
+              <div class="ticket-diff-row" role="group" aria-label="Select difficulty">
+                <button type="button" class="ticket-diff-btn" data-difficulty="easy" aria-pressed="false">
+                  <span class="diff-name">EASY</span>
+                  <span class="diff-lanes">3 Lanes</span>
+                </button>
+                <button type="button" class="ticket-diff-btn is-active" data-difficulty="medium" aria-pressed="true">
+                  <span class="diff-name">MEDIUM</span>
+                  <span class="diff-lanes">4 Lanes</span>
+                </button>
+                <button type="button" class="ticket-diff-btn" data-difficulty="hard" aria-pressed="false">
+                  <span class="diff-name">HARD</span>
+                  <span class="diff-lanes">5 Lanes</span>
+                </button>
+                <button type="button" class="ticket-diff-btn" data-difficulty="expert" aria-pressed="false">
+                  <span class="diff-name">EXPERT</span>
+                  <span class="diff-lanes">5 + Chords</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Practice Speed Selector (50% / 75% / 100%) -->
+            <div class="ticket-speed-row">
+              <span class="ticket-control-label">PRACTICE SPEED</span>
+              <div class="ticket-speed-group" role="group" aria-label="Select practice speed">
+                <button type="button" class="speed-chip" data-lobby-speed="0.5" aria-pressed="false">50%</button>
+                <button type="button" class="speed-chip" data-lobby-speed="0.75" aria-pressed="false">75%</button>
+                <button type="button" class="speed-chip is-active" data-lobby-speed="1" aria-pressed="true">100%</button>
+              </div>
+            </div>
+
+            <!-- Active Venue & Rig Micro-Stamp -->
+            <div class="ticket-rig-stamp">
+              <span id="ticket-venue-stamp">Philippine Arena</span>
+              <span class="meta-sep">·</span>
+              <span id="ticket-gear-stamp">4-Piece Arena · Sunburst Les Paul</span>
+            </div>
+
+            <!-- Gig Launch Buttons -->
+            <div class="ticket-cta-row">
+              <button id="btn-ticket-queue" type="button" class="ticket-queue-btn">
+                + QUEUE TOUR
+              </button>
+              <button id="btn-play-gig" type="button" class="play-gig-btn">
+                <span class="play-gig-inner">PLAY GIG</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: BACKSTAGE GEAR & BAND (Sleek Bottom Dock Over Zoomed-In 3D Stage Band) -->
+        <div id="panel-gear" class="lobby-panel lobby-panel-dock is-hidden" role="tabpanel" aria-labelledby="tab-gear">
+          <div class="console-dock">
+            <div class="dock-header">
+              <div class="gear-cat-tabs" role="tablist" aria-label="Gear categories">
+                <button type="button" class="gear-cat-btn is-active" data-gear-category="band" aria-selected="true">
+                  BAND LINEUP
+                </button>
+                <button type="button" class="gear-cat-btn" data-gear-category="guitar" aria-selected="false">
+                  LEAD GUITAR
+                </button>
+                <button type="button" class="gear-cat-btn" data-gear-category="bass" aria-selected="false">
+                  BASS
+                </button>
+                <button type="button" class="gear-cat-btn" data-gear-category="drums" aria-selected="false">
+                  DRUM KIT
+                </button>
+                <button type="button" class="gear-cat-btn" data-gear-category="highway" aria-selected="false">
+                  HIGHWAY SKIN
+                </button>
+              </div>
+              <p id="gear-active-desc" class="dock-desc">
+                Lead Guitarist, Bassist, Drummer, and Frontperson Vocalist at the center mic stand.
+              </p>
+            </div>
+
+            <div id="gear-active-grid" class="gear-deck-grid" role="group" aria-label="Select stage gear"></div>
+          </div>
+        </div>
+
+        <!-- TAB 3: VENUES (Sleek Bottom Tour-Poster Carousel Over Live 3D Stadium) -->
+        <div id="panel-venues" class="lobby-panel lobby-panel-dock is-hidden" role="tabpanel" aria-labelledby="tab-venues">
+          <div class="console-dock">
+            <div class="dock-header">
+              <div class="venue-active-banner">
+                <span id="venue-active-type" class="venue-type-stamp">INDOOR DOME</span>
+                <h2 id="venue-active-name" class="venue-active-title">Philippine Arena</h2>
+                <span id="venue-active-city" class="venue-active-city">Bocaue, Bulacan</span>
+              </div>
+              <p id="venue-active-desc" class="dock-desc">
+                Sweeping radial steel dome trusses, massive lightstick bowls, and dual mega-LED screens.
+              </p>
+            </div>
+
+            <div class="venue-carousel-wrap">
+              <button id="btn-venue-prev" type="button" class="carousel-arrow" aria-label="Previous venue">‹</button>
+              <div id="venue-selector-grid" class="venue-poster-strip" role="group" aria-label="Choose concert venue"></div>
+              <button id="btn-venue-next" type="button" class="carousel-arrow" aria-label="Next venue">›</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Persistent Console Controller Button-Prompt Bar -->
+        <footer class="console-footer" aria-label="Console keyboard controls">
+          <div class="footer-prompts">
+            <span class="prompt-item"><kbd>D</kbd><kbd>F</kbd> Navigate</span>
+            <span class="prompt-item"><kbd>G</kbd> Customize Gear</span>
+            <span class="prompt-item"><kbd>J</kbd> Venues</span>
+            <span class="prompt-item"><kbd>SPACE</kbd> Start Gig</span>
+          </div>
+          <div class="footer-stage-keys">
+            <span>On Stage: <kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>J</kbd><kbd>K</kbd> Strum</span>
+            <span class="meta-sep">·</span>
+            <span><kbd>W</kbd> / Wheel Whammy</span>
+            <span class="meta-sep">·</span>
+            <span><kbd>SPACE</kbd> Fever 2×</span>
+          </div>
+        </footer>
+      </section>
+
+      <!-- Track Loading & Chart Tuning Progress Overlay -->
+      <section id="scan-overlay" class="overlay-shell scan-overlay is-hidden" aria-live="polite">
+        <div class="scan-panel">
+          <div class="scan-spinner" aria-hidden="true"></div>
+          <h3 id="scan-overlay-title" class="scan-title">Tuning Your Stage Mix</h3>
+          <p id="scan-overlay-sub" class="modal-subtitle">Preparing chart &amp; concert lighting…</p>
+          <div id="scan-progress-wrap" class="scan-progress-wrap is-hidden">
+            <div class="scan-progress-track">
+              <div id="scan-progress-fill" class="scan-progress-fill"></div>
+            </div>
+            <span id="scan-progress-pct" class="scan-progress-pct tabular">0%</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pause, Practice Loop, Crowd Audio & Calibration Drawer -->
+      <section
+        id="pause-drawer"
+        class="overlay-shell is-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pause-modal-title"
+      >
+        <div class="modal-panel">
+          <div class="modal-header">
+            <h2 id="pause-modal-title" class="modal-title">Stage Paused · Practice &amp; Audio</h2>
+            <p id="pause-modal-sub" class="modal-subtitle">
+              Set a section loop, adjust crowd volume, camera direction, or audio sync.
+            </p>
+          </div>
+
+          <!-- Practice / Section Loop Mode -->
+          <div id="practice-loop-section" class="practice-box">
+            <div class="cal-header">
+              <label class="loop-toggle-label">
+                <input id="practice-loop-toggle" type="checkbox" />
+                <span>Practice Loop Mode</span>
+              </label>
+              <span id="loop-bounds-readout" class="cal-readout tabular">Loop: — → —</span>
+            </div>
+
+            <div class="practice-btn-row">
+              <button id="btn-loop-set-start" type="button" class="stage-btn">Set Start [</button>
+              <button id="btn-loop-set-end" type="button" class="stage-btn">Set End ]</button>
+              <button id="btn-loop-clear" type="button" class="stage-btn stage-btn-ghost">Clear</button>
+            </div>
+
+            <div class="cal-header">
+              <span class="cal-label">Playback Speed</span>
+              <div class="segmented-group" role="group" aria-label="Playback speed">
+                <button type="button" class="seg-btn" data-playback-rate="0.5" aria-pressed="false">50%</button>
+                <button type="button" class="seg-btn" data-playback-rate="0.75" aria-pressed="false">75%</button>
+                <button type="button" class="seg-btn is-active" data-playback-rate="1" aria-pressed="true">100%</button>
+                <button type="button" class="seg-btn" data-playback-rate="1.1" aria-pressed="false">110%</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dedicated Stadium Crowd Volume & Test Cheer -->
+          <div class="calibration-box">
+            <div class="cal-header">
+              <label for="crowd-volume-slider" class="cal-label">Stadium Crowd Volume</label>
+              <span id="crowd-volume-readout" class="cal-readout tabular">75%</span>
+            </div>
+            <div class="cal-slider-row">
+              <input
+                id="crowd-volume-slider"
+                type="range"
+                class="cal-slider"
+                min="0"
+                max="100"
+                step="5"
+                value="75"
+              />
+              <button id="btn-test-crowd" type="button" class="stage-btn">Test Crowd Cheer</button>
+            </div>
+            <p class="cal-help">
+              Live stadium crowd cheers react to streaks, Fever Mode, and Encore moments.
+            </p>
+          </div>
+
+          <!-- Concert Camera Director -->
+          <div class="calibration-box">
+            <div class="cal-header">
+              <span class="cal-label">Concert Camera Director</span>
+              <div class="segmented-group" role="group" aria-label="Dynamic camera choreography">
+                <button type="button" class="seg-btn is-active" data-camera-mode="on" aria-pressed="true">On</button>
+                <button type="button" class="seg-btn" data-camera-mode="subtle" aria-pressed="false">Subtle</button>
+                <button type="button" class="seg-btn" data-camera-mode="locked" aria-pressed="false">Locked</button>
+              </div>
+            </div>
+            <p class="cal-help">
+              Beat-synced camera cuts, musician close-ups, Fever crane orbits, and reverse crowd views.
+            </p>
+          </div>
+
+          <!-- Audio/Visual Calibration -->
+          <div class="calibration-box">
+            <div class="cal-header">
+              <label for="latency-slider" class="cal-label">Audio / Visual Sync Offset</label>
+              <span id="latency-readout" class="cal-readout tabular">0 ms</span>
+            </div>
+            <div class="cal-slider-row">
+              <button id="btn-latency-minus" type="button" class="stage-btn">-5ms</button>
+              <input
+                id="latency-slider"
+                type="range"
+                class="cal-slider"
+                min="-150"
+                max="150"
+                step="5"
+                value="0"
+              />
+              <button id="btn-latency-plus" type="button" class="stage-btn">+5ms</button>
+              <button id="btn-latency-reset" type="button" class="stage-btn stage-btn-ghost">Reset</button>
+            </div>
+            <p class="cal-help">
+              Use positive (+) values if wireless headphones feel slightly delayed. Saved automatically.
+            </p>
+          </div>
+
+          <div id="pause-stage-actions" class="pause-actions">
+            <button id="btn-resume" type="button" class="stage-btn stage-btn-primary">Resume Show</button>
+            <button id="btn-restart" type="button" class="stage-btn">Restart Song</button>
+            <button id="btn-finish-now" type="button" class="stage-btn">End &amp; View Results</button>
+            <button id="btn-backstage-pause" type="button" class="stage-btn stage-btn-ghost">
+              Return to Backstage
+            </button>
+          </div>
+
+          <button id="btn-close-cal-only" type="button" class="stage-btn stage-btn-primary is-hidden">
+            Done
+          </button>
+        </div>
+      </section>
+
+      <!-- Backstage Intermission / Crowd Chant Transition Overlay (Tour Setlist Mode) -->
+      <section
+        id="intermission-overlay"
+        class="overlay-shell is-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="intermission-chant"
+      >
+        <div class="modal-panel intermission-panel">
+          <div class="modal-header intermission-header">
+            <div id="intermission-chant" class="intermission-chant">WE WANT MORE!</div>
+            <p id="intermission-prev-summary" class="modal-subtitle">—</p>
+          </div>
+
+          <div class="intermission-upnext">
+            <div id="intermission-next-label" class="intermission-next-label">UP NEXT · SONG 2 OF 3</div>
+            <div id="intermission-next-title" class="intermission-next-title">—</div>
+            <div id="intermission-next-meta" class="section-caption">—</div>
+          </div>
+
+          <div class="results-actions">
+            <button id="btn-intermission-go" type="button" class="stage-btn stage-btn-encore">
+              Take the Stage
+            </button>
+            <button id="btn-intermission-backstage" type="button" class="stage-btn stage-btn-ghost">
+              End Tour
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Single-Song Encore Results Overlay -->
+      <section
+        id="results-overlay"
+        class="overlay-shell is-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="results-modal-title"
+      >
+        <div class="modal-panel">
+          <div class="modal-header">
+            <h2 id="results-modal-title" class="modal-title">Encore Results</h2>
+            <p id="results-track-title" class="modal-subtitle">—</p>
+            <p id="results-track-meta" class="section-caption">—</p>
+          </div>
+
+          <div class="results-hero">
+            <div id="results-grade" class="results-grade" data-grade="S">S</div>
+            <div class="results-primary-stats">
+              <div id="results-score" class="results-score-value">0</div>
+              <div id="results-stars" class="results-stars" aria-label="Earned star rating"></div>
+              <div class="results-sub-metrics tabular">
+                <span id="results-accuracy">100.0%</span>
+                <span class="meta-sep" aria-hidden="true">·</span>
+                <span>Max Combo <strong id="results-max-combo">0</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="results-breakdown">
+            <div class="breakdown-cell">
+              <span class="breakdown-label">Perfect</span>
+              <span id="results-perfect" class="breakdown-value is-perfect">0</span>
+            </div>
+            <div class="breakdown-cell">
+              <span class="breakdown-label">Early</span>
+              <span id="results-early" class="breakdown-value is-early">0</span>
+            </div>
+            <div class="breakdown-cell">
+              <span class="breakdown-label">Late</span>
+              <span id="results-late" class="breakdown-value is-late">0</span>
+            </div>
+            <div class="breakdown-cell">
+              <span class="breakdown-label">Miss</span>
+              <span id="results-miss" class="breakdown-value is-miss">0</span>
+            </div>
+          </div>
+
+          <div class="results-actions-stack">
+            <button id="btn-encore-speedup" type="button" class="stage-btn stage-btn-encore is-hidden">
+              Play Encore Speed-Up (110% Tempo · +15% Score)
+            </button>
+            <div class="results-actions">
+              <button id="btn-play-again" type="button" class="stage-btn stage-btn-primary">
+                Play Again
+              </button>
+              <button id="btn-backstage-results" type="button" class="stage-btn">
+                Backstage
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Multi-Song Tour Setlist Summary Overlay (After Final Encore) -->
+      <section
+        id="tour-summary-overlay"
+        class="overlay-shell is-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tour-summary-heading"
+      >
+        <div class="modal-panel tour-summary-panel">
+          <div class="modal-header">
+            <h2 id="tour-summary-heading" class="modal-title">Tour Setlist Finale</h2>
+            <p id="tour-summary-venue" class="modal-subtitle">—</p>
+          </div>
+
+          <div class="results-hero">
+            <div id="tour-summary-grade" class="results-grade" data-grade="S">S</div>
+            <div class="results-primary-stats">
+              <div id="tour-summary-score" class="results-score-value">0</div>
+              <div class="results-sub-metrics tabular">
+                <span id="tour-summary-accuracy">100.0% Avg</span>
+                <span class="meta-sep" aria-hidden="true">·</span>
+                <span>Best Combo <strong id="tour-summary-combo">0</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div id="tour-summary-songs" class="tour-summary-list"></div>
+
+          <div class="results-actions">
+            <button id="btn-tour-replay" type="button" class="stage-btn stage-btn-encore">
+              Play Tour Again
+            </button>
+            <button id="btn-tour-backstage" type="button" class="stage-btn">
+              Return to Backstage
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>

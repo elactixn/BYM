@@ -1,0 +1,6 @@
+{
+  "name": "Encore Stage — Live Arena Rhythm",
+  "description": "A live arena Guitar Hero-style rhythm game with playable Guitar, Bass, and Drums roles, real-time Web Audio spectral flux beat detection, 1.5s lookahead sync, stem drop-out on miss, and 3D spatial stage audio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
