@@ -32,6 +32,7 @@ export const BAND_LINEUPS = [
       bass: { x: 3.55, y: 0, z: -1.1, rotY: -0.24 },
       drums: { x: 0, y: 0.64, z: -3.56, rotY: 0 },
       vocals: { x: 0, y: 0, z: -0.78, rotY: 0 },
+      piano: { x: -2.45, y: 0, z: -2.65, rotY: 0.42 },
       micStand: { x: 0, y: 0, z: -0.18 },
     },
   },
@@ -52,6 +53,7 @@ export const BAND_LINEUPS = [
       bass: { x: 3.9, y: 0, z: -1.45, rotY: -0.3 },
       drums: { x: 0, y: 0.64, z: -3.65, rotY: 0 },
       vocals: { x: 0, y: 0, z: -0.35, rotY: 0 },
+      piano: { x: -2.65, y: 0, z: -2.75, rotY: 0.46 },
       micStand: { x: 0, y: 0, z: -0.18 },
     },
   },
@@ -72,6 +74,7 @@ export const BAND_LINEUPS = [
       bass: { x: 3.45, y: 0, z: -1.35, rotY: -0.26 },
       drums: { x: -1.15, y: 0.64, z: -3.56, rotY: 0.1 },
       vocals: { x: 0, y: 0, z: -0.78, rotY: 0 },
+      piano: { x: -3.2, y: 0, z: -1.7, rotY: 0.36 },
       micStand: { x: 0, y: 0, z: -0.18 },
     },
   },
@@ -92,6 +95,7 @@ export const BAND_LINEUPS = [
       bass: { x: 2.95, y: 0, z: -1.05, rotY: -0.2 },
       drums: { x: 0, y: 0.64, z: -3.45, rotY: 0 },
       vocals: { x: 0, y: 0, z: -0.78, rotY: 0 },
+      piano: { x: -2.45, y: 0, z: -2.65, rotY: 0.42 },
       micStand: { x: 0, y: 0, z: -0.18 },
     },
   },
@@ -242,6 +246,216 @@ export const DRUM_KIT_MODELS = [
   },
 ];
 
+export const KEYBOARD_MODELS = [
+  {
+    id: 'concert-grand',
+    registryId: 'Keys_Concert_Grand',
+    name: 'Concert Grand Piano',
+    shortName: 'Concert Grand',
+    isKeytar: false,
+    swatch: ['#0f172a', '#facc15'],
+    description: 'Glossy black grand piano with propped resonance lid, ivory keys & brass pedals.',
+    svgIcon: '<svg viewBox="0 0 88 38" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 14c0-5 8-9 20-9 10 0 16 4 22 7 7 3 16 2 16 9v6H16V14z" fill="#18181b" stroke="#facc15" stroke-width="1.6"/><path d="M18 12l24-8 26 8" stroke="#fde047" stroke-width="1.6" stroke-linecap="round"/><rect x="17" y="21" width="54" height="5" rx="1" fill="#f8fafc"/><path d="M21 21h3v3h-3zm6 0h3v3h-3zm9 0h3v3h-3zm6 0h3v3h-3zm6 0h3v3h-3zm9 0h3v3h-3zm6 0h3v3h-3z" fill="#0f172a"/><line x1="22" y1="27" x2="22" y2="35" stroke="#94a3b8" stroke-width="2.2"/><line x1="66" y1="27" x2="66" y2="35" stroke="#94a3b8" stroke-width="2.2"/><line x1="44" y1="27" x2="44" y2="35" stroke="#facc15" stroke-width="2"/></svg>',
+  },
+  {
+    id: 'neon-double-synth',
+    registryId: 'Keys_Neon_DoubleSynth',
+    name: 'Neon Double-Tier Synth',
+    shortName: 'Double-Tier Synth',
+    isKeytar: false,
+    swatch: ['#ec4899', '#22d3ee'],
+    description: 'Dual stacked arena synthesizers on chrome X-stand with glowing neon lightbars.',
+    svgIcon: '<svg viewBox="0 0 88 38" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="7" width="56" height="7" rx="1.5" fill="#1e1b4b" stroke="#22d3ee" stroke-width="1.6"/><rect x="19" y="10" width="50" height="3" fill="#f8fafc"/><rect x="12" y="17" width="64" height="8" rx="1.5" fill="#18181b" stroke="#ec4899" stroke-width="1.8"/><rect x="15" y="20" width="58" height="3.5" fill="#f8fafc"/><path d="M26 25l36 10M62 25L26 35" stroke="#cbd5e1" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  },
+  {
+    id: 'retro-keytar',
+    registryId: 'Keys_Retro_Keytar',
+    name: 'Retro Stage Keytar',
+    shortName: 'Retro Keytar',
+    isKeytar: true,
+    swatch: ['#f43f5e', '#facc15'],
+    description: '80s synth-rock slung keytar so your keyboardist can step forward & shred!',
+    svgIcon: '<svg viewBox="0 0 88 38" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 17l18-2 8-5 44 2-6 14-38 4-10-6-16-2v-5z" fill="#e11d48" stroke="#fde047" stroke-width="1.6"/><rect x="33" y="17" width="38" height="6" rx="1" transform="rotate(-3 33 17)" fill="#f8fafc"/><path d="M36 17h3v3h-3zm6 0h3v3h-3zm6 0h3v3h-3zm9 0h3v3h-3zm6 0h3v3h-3z" fill="#0f172a"/><circle cx="18" cy="19" r="2.2" fill="#22d3ee"/></svg>',
+  },
+];
+
+export const STAR_LOOKALIKES = [
+  {
+    id: 'default-band',
+    registryId: 'Star_Default_HouseBand',
+    name: 'House Arena Band',
+    shortName: 'House Band',
+    targetRole: 'all',
+    description: 'Original Encore Stage rock lineup in signature tour jackets and glowing stage trims.',
+    swatch: ['#06b6d4', '#f59e0b'],
+    svgIcon: '<svg viewBox="0 0 84 42" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="42" cy="14" r="9" fill="#f2c49b" stroke="#06b6d4" stroke-width="2"/><path d="M34 11c2-5 14-5 16 0" fill="#1e293b"/><circle cx="38.5" cy="14" r="1.4" fill="#111827"/><circle cx="45.5" cy="14" r="1.4" fill="#111827"/><path d="M38 18q4 3.5 8 0" stroke="#111827" stroke-width="1.5" stroke-linecap="round"/><rect x="27" y="25" width="30" height="14" rx="4" fill="#0e7490" stroke="#f59e0b" stroke-width="1.5"/></svg>',
+  },
+  {
+    id: 'olivia-punk',
+    registryId: 'Star_Olivia_PopPunk',
+    name: 'Olivia-Inspired Pop-Punk Star',
+    shortName: 'Pop-Punk Star',
+    targetRole: 'frontperson',
+    description: 'Long dark wavy hair, purple-and-black glitter corset, pleated mini-skirt & combat boots.',
+    swatch: ['#9333ea', '#18181b'],
+    skinColor: 0xf0c19d,
+    hairStyle: 'long-wavy',
+    hairColor: 0x1b1210,
+    torsoColor: 0x6b21a8,
+    torsoEmissive: 0x4c1d95,
+    accentColor: 0xe2e8f0,
+    skirtColor: 0x18181b,
+    skirtStyle: 'pleated',
+    legColor: 0x111827,
+    bootColor: 0x09090b,
+    glitter: true,
+    face: {
+      eyeliner: true,
+      eyeshadow: '#7e22ce',
+      blush: 'rgba(244, 114, 182, 0.36)',
+      lipColor: '#be123c',
+      expression: 'rockstar',
+    },
+    svgIcon: '<svg viewBox="0 0 84 42" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M29 14c0-8 26-8 26 0l3 21H26l3-21z" fill="#1c1110"/><circle cx="42" cy="14" r="8.5" fill="#f0c19d"/><path d="M36 13h4M44 13h4" stroke="#111827" stroke-width="1.8" stroke-linecap="round"/><path d="M39 18q3 2.5 6 0" stroke="#be123c" stroke-width="1.8" stroke-linecap="round"/><path d="M31 24h22l3 15H28l3-15z" fill="#7e22ce" stroke="#e2e8f0" stroke-width="1.2"/><path d="M35 28l7 4 7-4" stroke="#f8fafc" stroke-width="1.3"/></svg>',
+  },
+  {
+    id: 'chappell-princess',
+    registryId: 'Star_Chappell_MidwestPrincess',
+    name: 'Chappell-Inspired Midwest Princess',
+    shortName: 'Midwest Princess',
+    targetRole: 'frontperson',
+    description: 'Voluminous fiery red curls, theatrical glam stage makeup & sparkly pink rhinestone pop-royalty outfit.',
+    swatch: ['#ec4899', '#ea580c'],
+    skinColor: 0xfcf2f0,
+    hairStyle: 'big-red-curls',
+    hairColor: 0xc2410c,
+    torsoColor: 0xec4899,
+    torsoEmissive: 0xbe185d,
+    accentColor: 0xfef08a,
+    skirtColor: 0xf472b6,
+    skirtStyle: 'glam-fringe',
+    legColor: 0xfbcfe8,
+    bootColor: 0xec4899,
+    glitter: true,
+    cowgirlHat: true,
+    face: {
+      eyeliner: true,
+      eyeshadow: '#38bdf8',
+      blush: 'rgba(236, 72, 153, 0.52)',
+      lipColor: '#e11d48',
+      starMakeup: true,
+      expression: 'glam',
+    },
+    svgIcon: '<svg viewBox="0 0 84 42" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="31" cy="15" r="7" fill="#c2410c"/><circle cx="53" cy="15" r="7" fill="#c2410c"/><circle cx="33" cy="24" r="6" fill="#ea580c"/><circle cx="51" cy="24" r="6" fill="#ea580c"/><circle cx="42" cy="14" r="8.5" fill="#fcf2f0"/><path d="M36 12h4M44 12h4" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round"/><circle cx="38" cy="13.5" r="1.2" fill="#111827"/><circle cx="46" cy="13.5" r="1.2" fill="#111827"/><path d="M39 18q3 2.6 6 0" stroke="#e11d48" stroke-width="2" stroke-linecap="round"/><path d="M30 24h24l4 15H26l4-15z" fill="#ec4899" stroke="#fde047" stroke-width="1.4"/></svg>',
+  },
+  {
+    id: 'taylor-eras',
+    registryId: 'Star_Taylor_ErasHeadliner',
+    name: 'Taylor-Inspired Eras Headliner',
+    shortName: 'Eras Headliner',
+    targetRole: 'frontperson',
+    description: 'Signature blonde bangs, classic red lip, shimmering sequin bodysuit & tall glitter boots.',
+    swatch: ['#f472b6', '#38bdf8'],
+    skinColor: 0xfbe0cc,
+    hairStyle: 'blonde-bangs',
+    hairColor: 0xeab308,
+    torsoColor: 0xf472b6,
+    torsoEmissive: 0x38bdf8,
+    accentColor: 0xfef08a,
+    skirtColor: 0x38bdf8,
+    skirtStyle: 'glam-fringe',
+    legColor: 0xfbe0cc,
+    bootColor: 0xfde047,
+    glitter: true,
+    face: {
+      eyeliner: true,
+      eyeshadow: '#fde047',
+      blush: 'rgba(251, 113, 133, 0.35)',
+      lipColor: '#dc2626',
+      expression: 'glam',
+    },
+    svgIcon: '<svg viewBox="0 0 84 42" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M31 12c0-7 22-7 22 0l2 19H29l2-19z" fill="#eab308"/><circle cx="42" cy="14.5" r="8" fill="#fbe0cc"/><path d="M34 10h16v3.5H34z" fill="#ca8a04"/><circle cx="38.5" cy="15" r="1.2" fill="#1d4ed8"/><circle cx="45.5" cy="15" r="1.2" fill="#1d4ed8"/><path d="M39 19q3 2.2 6 0" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round"/><path d="M31 24h22l2 15H29l2-15z" fill="#f472b6" stroke="#38bdf8" stroke-width="1.6"/></svg>',
+  },
+  {
+    id: 'freddie-legend',
+    registryId: 'Star_Freddie_StadiumLegend',
+    name: 'Freddie-Inspired Stadium Legend',
+    shortName: 'Stadium Legend',
+    targetRole: 'frontperson',
+    description: 'Iconic yellow military buckle jacket, crisp white stadium trousers & legendary mustache.',
+    swatch: ['#facc15', '#f8fafc'],
+    skinColor: 0xe6b48a,
+    hairStyle: 'slick-back',
+    hairColor: 0x111827,
+    torsoColor: 0xfacc15,
+    torsoEmissive: 0x78350f,
+    accentColor: 0xf8fafc,
+    skirtColor: null,
+    legColor: 0xf8fafc,
+    bootColor: 0xf8fafc,
+    glitter: false,
+    face: {
+      eyeliner: false,
+      mustache: true,
+      lipColor: '#9f4a3c',
+      expression: 'hero',
+    },
+    svgIcon: '<svg viewBox="0 0 84 42" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="42" cy="14" r="8.5" fill="#e6b48a"/><path d="M33 11c2-6 16-6 18 0H33z" fill="#111827"/><circle cx="38.5" cy="13.5" r="1.3" fill="#111827"/><circle cx="45.5" cy="13.5" r="1.3" fill="#111827"/><path d="M37 17.5q5-2.2 10 0" stroke="#111827" stroke-width="2.4" stroke-linecap="round"/><rect x="29" y="24" width="26" height="15" rx="3" fill="#facc15" stroke="#f8fafc" stroke-width="1.5"/><path d="M33 27h18M33 31h18M33 35h18" stroke="#f8fafc" stroke-width="1.4"/></svg>',
+  },
+  {
+    id: 'slash-riff',
+    registryId: 'Star_Slash_RiffMaster',
+    name: 'Slash-Inspired Riff Master',
+    shortName: 'Riff Master',
+    targetRole: 'guitar',
+    description: 'Signature black top hat over dark curly hair, aviator shades & studded leather jacket.',
+    swatch: ['#18181b', '#dc2626'],
+    skinColor: 0xdca77c,
+    hairStyle: 'top-hat-curls',
+    hairColor: 0x111827,
+    torsoColor: 0x18181b,
+    torsoEmissive: 0x111827,
+    accentColor: 0x94a3b8,
+    skirtColor: null,
+    legColor: 0x09090b,
+    bootColor: 0x18181b,
+    glitter: false,
+    face: {
+      sunglasses: true,
+      sunglassesTint: '#09090b',
+      expression: 'rockstar',
+    },
+    svgIcon: '<svg viewBox="0 0 84 42" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="34" y="2" width="16" height="9" rx="1" fill="#09090b" stroke="#94a3b8" stroke-width="1"/><rect x="28" y="10" width="28" height="2.8" rx="1" fill="#18181b"/><circle cx="32" cy="18" r="5" fill="#111827"/><circle cx="52" cy="18" r="5" fill="#111827"/><circle cx="42" cy="17" r="7.5" fill="#dca77c"/><rect x="35" y="14.5" width="6" height="3.8" rx="1" fill="#09090b"/><rect x="43" y="14.5" width="6" height="3.8" rx="1" fill="#09090b"/><rect x="29" y="25" width="26" height="14" rx="3" fill="#18181b" stroke="#dc2626" stroke-width="1.3"/></svg>',
+  },
+  {
+    id: 'bruno-groove',
+    registryId: 'Star_Bruno_SilkGroove',
+    name: 'Bruno-Inspired Silk Groove',
+    shortName: 'Silk Groove',
+    targetRole: 'frontperson',
+    description: 'Vintage pompadour curls, amber tinted shades, retro silk open-collar shirt & gold chain.',
+    swatch: ['#d97706', '#7c2d12'],
+    skinColor: 0xd99e6e,
+    hairStyle: 'pompadour',
+    hairColor: 0x1a120d,
+    torsoColor: 0x9a3412,
+    torsoEmissive: 0x431407,
+    accentColor: 0xfacc15,
+    skirtColor: null,
+    legColor: 0x1c1917,
+    bootColor: 0x451a03,
+    goldChain: true,
+    glitter: false,
+    face: {
+      sunglasses: true,
+      sunglassesTint: '#78350f',
+      mustache: true,
+      expression: 'glam',
+    },
+    svgIcon: '<svg viewBox="0 0 84 42" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M32 13c0-8 20-9 20-1H32z" fill="#1a120d"/><circle cx="42" cy="16" r="8" fill="#d99e6e"/><rect x="34.5" y="13.5" width="6.5" height="4" rx="1.2" fill="#78350f" stroke="#facc15" stroke-width="0.9"/><rect x="43" y="13.5" width="6.5" height="4" rx="1.2" fill="#78350f" stroke="#facc15" stroke-width="0.9"/><rect x="29" y="25" width="26" height="14" rx="3" fill="#9a3412" stroke="#facc15" stroke-width="1.3"/><path d="M36 25l6 7 6-7" stroke="#facc15" stroke-width="2" fill="none"/></svg>',
+  },
+];
+
 export function getBandLineupById(id) {
   return BAND_LINEUPS.find((b) => b.id === id) || BAND_LINEUPS[0];
 }
@@ -260,6 +474,14 @@ export function getBassModelById(id) {
 
 export function getDrumKitModelById(id) {
   return DRUM_KIT_MODELS.find((d) => d.id === id) || DRUM_KIT_MODELS[0];
+}
+
+export function getKeyboardModelById(id) {
+  return KEYBOARD_MODELS.find((k) => k.id === id) || KEYBOARD_MODELS[0];
+}
+
+export function getStarLookById(id) {
+  return STAR_LOOKALIKES.find((s) => s.id === id) || STAR_LOOKALIKES[0];
 }
 
 /* ==========================================================================
@@ -847,3 +1069,300 @@ export function buildCustomDrumKitMesh(modelId = 'pop-single-kick', { forceDoubl
     },
   };
 }
+
+/**
+ * Generates a crisp procedural piano keybed CanvasTexture (88-key ivory + ebony pattern).
+ */
+function createPianoKeysTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, 512, 96);
+
+  const whiteKeys = 28;
+  const kw = 512 / whiteKeys;
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < whiteKeys; i += 1) {
+    ctx.strokeRect(i * kw, 0, kw, 96);
+  }
+
+  // Ebony black keys in authentic 2-3 octave groupings
+  ctx.fillStyle = '#0f172a';
+  for (let i = 0; i < whiteKeys - 1; i += 1) {
+    const pos = i % 7;
+    if (pos === 2 || pos === 6) continue;
+    ctx.fillRect((i + 1) * kw - kw * 0.34, 0, kw * 0.68, 56);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * Builds one of 3 distinct composite 3D Keyboard / Piano stage rigs:
+ *  - concert-grand: glossy concert grand piano with curved case, open lid, brass pedals & keys
+ *  - neon-double-synth: dual stacked neon arena synths on chrome X-stand
+ *  - retro-keytar: slung synth-rock keytar (returns isKeytar: true so StageBand attaches to character torso)
+ */
+export function buildCustomKeyboardMesh(modelId = 'concert-grand') {
+  const group = new THREE.Group();
+  const textures = [];
+  const keysTex = createPianoKeysTexture();
+  textures.push(keysTex);
+
+  const keysMat = new THREE.MeshStandardMaterial({ map: keysTex, roughness: 0.25, metalness: 0.08 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.9 });
+  const brassMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.24, metalness: 0.88 });
+  let ledMat = null;
+
+  if (modelId === 'retro-keytar') {
+    const bodyShape = new THREE.Shape();
+    bodyShape.moveTo(-0.55, 0.12);
+    bodyShape.lineTo(0.45, 0.22);
+    bodyShape.lineTo(0.62, 0.02);
+    bodyShape.lineTo(0.48, -0.2);
+    bodyShape.lineTo(-0.52, -0.14);
+    bodyShape.closePath();
+
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: 0xe11d48,
+      roughness: 0.2,
+      metalness: 0.45,
+      emissive: 0x881337,
+      emissiveIntensity: 0.32,
+    });
+    ledMat = new THREE.MeshStandardMaterial({
+      color: 0x22d3ee,
+      emissive: 0x22d3ee,
+      emissiveIntensity: 1.5,
+      roughness: 0.2,
+    });
+
+    const body = new THREE.Mesh(makeExtrudedBody(bodyShape, 0.09, 0.018), bodyMat);
+    const keybed = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.16, 0.03), keysMat);
+    keybed.position.set(0.06, -0.04, 0.068);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.12, 0.065), bodyMat);
+    neck.position.set(-0.78, 0.05, 0);
+    const pitchStrip = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.032, 0.08), ledMat);
+    pitchStrip.position.set(-0.78, 0.09, 0.01);
+    const accentStripe = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.03, 0.13), brassMat);
+    accentStripe.position.set(0.05, 0.11, 0);
+
+    group.add(body, keybed, neck, pitchStrip, accentStripe);
+
+    return {
+      group,
+      isKeytar: true,
+      ledMat,
+      dispose() {
+        disposeGroupResources(group, textures);
+      },
+    };
+  }
+
+  if (modelId === 'neon-double-synth') {
+    const chassisMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.26, metalness: 0.65 });
+    const upperMat = new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.24, metalness: 0.55 });
+    const pinkLed = new THREE.MeshStandardMaterial({
+      color: 0xec4899,
+      emissive: 0xec4899,
+      emissiveIntensity: 1.7,
+      roughness: 0.2,
+    });
+    const cyanLed = new THREE.MeshStandardMaterial({
+      color: 0x22d3ee,
+      emissive: 0x22d3ee,
+      emissiveIntensity: 1.55,
+      roughness: 0.2,
+    });
+    ledMat = pinkLed;
+
+    // Chrome heavy-duty X-stand
+    [-0.58, 0.58].forEach((sx) => {
+      const barA = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.32, 0.06), chromeMat);
+      barA.position.set(sx, 0.54, 0);
+      barA.rotation.x = 0.55;
+      const barB = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.32, 0.06), chromeMat);
+      barB.position.set(sx, 0.54, 0);
+      barB.rotation.x = -0.55;
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.85), chromeMat);
+      foot.position.set(sx, 0.025, 0);
+      group.add(barA, barB, foot);
+    });
+    const crossBar = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 1.24, 8), chromeMat);
+    crossBar.rotation.z = Math.PI * 0.5;
+    crossBar.position.set(0, 0.54, 0);
+    group.add(crossBar);
+
+    // Lower 88-key workstation synth
+    const lowerDeck = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.14, 0.52), chassisMat);
+    lowerDeck.position.set(0, 1.06, 0);
+    const lowerKeys = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.04, 0.24), keysMat);
+    lowerKeys.position.set(0, 1.14, -0.1);
+    const lowerFrontLed = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.045, 0.04), pinkLed);
+    lowerFrontLed.position.set(0, 1.06, 0.265);
+    group.add(lowerDeck, lowerKeys, lowerFrontLed);
+
+    // Upper angled lead synthesizer tier
+    [-0.55, 0.55].forEach((ux) => {
+      const riser = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.05), chromeMat);
+      riser.position.set(ux, 1.26, 0.16);
+      group.add(riser);
+    });
+    const upperGroup = new THREE.Group();
+    upperGroup.position.set(0, 1.44, 0.16);
+    upperGroup.rotation.x = -0.26;
+    const upperDeck = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.11, 0.42), upperMat);
+    const upperKeys = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.035, 0.2), keysMat);
+    upperKeys.position.set(0, 0.065, -0.08);
+    const upperFrontLed = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.04, 0.04), cyanLed);
+    upperFrontLed.position.set(0, 0, 0.215);
+    upperGroup.add(upperDeck, upperKeys, upperFrontLed);
+    group.add(upperGroup);
+
+    return {
+      group,
+      isKeytar: false,
+      ledMat,
+      dispose() {
+        disposeGroupResources(group, textures);
+      },
+    };
+  }
+
+  // Default: Glossy Concert Grand Piano with curved tail, open propped lid & brass pedal lyre
+  const ebonyMat = new THREE.MeshStandardMaterial({
+    color: 0x0b0d13,
+    roughness: 0.12,
+    metalness: 0.35,
+  });
+  const soundboardMat = new THREE.MeshStandardMaterial({
+    color: 0xb45309,
+    roughness: 0.4,
+    metalness: 0.55,
+  });
+  ledMat = new THREE.MeshStandardMaterial({
+    color: 0xfacc15,
+    emissive: 0xfacc15,
+    emissiveIntensity: 0.9,
+    roughness: 0.2,
+  });
+
+  // Curved Concert Grand body (oriented so keyboard faces -Z toward player, tail extends +Z toward crowd)
+  const grandShape = new THREE.Shape();
+  grandShape.moveTo(-0.88, -0.24);
+  grandShape.lineTo(0.88, -0.24);
+  grandShape.lineTo(0.88, 0.42);
+  grandShape.bezierCurveTo(0.86, 1.15, 0.28, 1.25, 0.05, 1.72);
+  grandShape.bezierCurveTo(-0.18, 2.02, -0.82, 1.92, -0.88, 1.38);
+  grandShape.closePath();
+
+  const bodyGeo = new THREE.ExtrudeGeometry(grandShape, {
+    depth: 0.32,
+    bevelEnabled: true,
+    bevelThickness: 0.02,
+    bevelSize: 0.02,
+    bevelSegments: 2,
+    curveSegments: 14,
+  });
+  bodyGeo.rotateX(Math.PI * 0.5);
+  const body = new THREE.Mesh(bodyGeo, ebonyMat);
+  body.position.set(0, 1.28, 0.1);
+  group.add(body);
+
+  // Golden harp soundboard inside open case
+  const harp = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.04, 1.1), soundboardMat);
+  harp.position.set(-0.08, 1.27, 0.72);
+  group.add(harp);
+
+  // Open angled Concert Grand lid + brass prop stick
+  const lidGeo = new THREE.ExtrudeGeometry(grandShape, {
+    depth: 0.045,
+    bevelEnabled: true,
+    bevelThickness: 0.01,
+    bevelSize: 0.01,
+    bevelSegments: 1,
+    curveSegments: 14,
+  });
+  lidGeo.rotateX(Math.PI * 0.5);
+  const lid = new THREE.Mesh(lidGeo, ebonyMat);
+  lid.position.set(-0.88, 1.34, 0.1);
+  lid.rotation.z = 0.54;
+  // Offset so hinge sits along the left (-X) spine
+  lidGeo.translate(0.88, 0, 0);
+  group.add(lid);
+
+  const propStick = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.86, 8), brassMat);
+  propStick.position.set(0.56, 1.7, 0.48);
+  propStick.rotation.z = -0.26;
+  group.add(propStick);
+
+  // Front keybed shelf + 88-key ivory/ebony keyboard facing player (-Z)
+  const keybedBox = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.14, 0.42), ebonyMat);
+  keybedBox.position.set(0, 1.0, -0.24);
+  const keysMesh = new THREE.Mesh(new THREE.BoxGeometry(1.64, 0.045, 0.24), keysMat);
+  keysMesh.position.set(0, 1.08, -0.3);
+  const musicDesk = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.28, 0.03), ebonyMat);
+  musicDesk.position.set(0, 1.32, -0.05);
+  musicDesk.rotation.x = -0.25;
+  const goldTrim = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.03, 0.03), ledMat);
+  goldTrim.position.set(0, 1.14, 0.1);
+  group.add(keybedBox, keysMesh, musicDesk, goldTrim);
+
+  // 3 tapered grand piano legs + brass casters
+  [
+    [-0.72, -0.18],
+    [0.72, -0.18],
+    [-0.28, 1.56],
+  ].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.045, 0.94, 10), ebonyMat);
+    leg.position.set(lx, 0.49, lz);
+    const caster = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.06, 8), brassMat);
+    caster.position.set(lx, 0.03, lz);
+    group.add(leg, caster);
+  });
+
+  // Brass pedal lyre
+  const lyrePostL = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.84, 8), ebonyMat);
+  lyrePostL.position.set(-0.14, 0.46, -0.02);
+  const lyrePostR = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.84, 8), ebonyMat);
+  lyrePostR.position.set(0.14, 0.46, -0.02);
+  const pedalBox = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.08, 0.14), ebonyMat);
+  pedalBox.position.set(0, 0.09, -0.02);
+  group.add(lyrePostL, lyrePostR, pedalBox);
+  [-0.09, 0, 0.09].forEach((px) => {
+    const pedal = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.02, 0.14), brassMat);
+    pedal.position.set(px, 0.09, -0.12);
+    group.add(pedal);
+  });
+
+  // Piano bench behind the keyboard
+  const benchTop = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.09, 0.36), ebonyMat);
+  benchTop.position.set(0, 0.62, -0.92);
+  group.add(benchTop);
+  [
+    [-0.36, -0.78],
+    [0.36, -0.78],
+    [-0.36, -1.06],
+    [0.36, -1.06],
+  ].forEach(([bx, bz]) => {
+    const bLeg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), ebonyMat);
+    bLeg.position.set(bx, 0.3, bz);
+    group.add(bLeg);
+  });
+
+  return {
+    group,
+    isKeytar: false,
+    ledMat,
+    dispose() {
+      disposeGroupResources(group, textures);
+    },
+  };
+}
+

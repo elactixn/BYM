@@ -23,6 +23,8 @@ const STORAGE_HIGHWAY_SKIN_KEY = 'encore_stage_highway_skin_id';
 const STORAGE_GUITAR_MODEL_KEY = 'encore_stage_guitar_model_id';
 const STORAGE_BASS_MODEL_KEY = 'encore_stage_bass_model_id';
 const STORAGE_DRUM_KIT_KEY = 'encore_stage_drum_kit_id';
+const STORAGE_KEYBOARD_MODEL_KEY = 'encore_stage_keyboard_model_id';
+const STORAGE_STAR_LOOK_KEY = 'encore_stage_star_look_id';
 const STORAGE_DIFFICULTY_KEY = 'encore_stage_difficulty_id';
 const STORAGE_INSTRUMENT_KEY = 'encore_stage_instrument_id';
 
@@ -65,6 +67,16 @@ export const INSTRUMENTS = {
     accent: '#f59e0b',
     accentBright: '#fde68a',
     accentGlow: 'rgba(245, 158, 11, 0.75)',
+  },
+  piano: {
+    id: 'piano',
+    label: 'Piano / Keys',
+    shortLabel: 'Piano',
+    bandLabel: 'Chords & Arpeggios',
+    dropDesc: 'Sustained grand piano chords, synth hooks & cascading arpeggios',
+    accent: '#ec4899',
+    accentBright: '#f9a8d4',
+    accentGlow: 'rgba(236, 72, 153, 0.75)',
   },
 };
 
@@ -213,6 +225,8 @@ export class GameState {
     this.guitarModelId = this.loadStringPref(STORAGE_GUITAR_MODEL_KEY, 'les-paul-sunburst');
     this.bassModelId = this.loadStringPref(STORAGE_BASS_MODEL_KEY, 'precision-blonde');
     this.drumKitModelId = this.loadStringPref(STORAGE_DRUM_KIT_KEY, 'pop-single-kick');
+    this.keyboardModelId = this.loadStringPref(STORAGE_KEYBOARD_MODEL_KEY, 'concert-grand');
+    this.starLookId = this.loadStringPref(STORAGE_STAR_LOOK_KEY, 'default-band');
 
     this.playbackRate = 1.0;
     this.practiceLoop = {
@@ -274,6 +288,16 @@ export class GameState {
     this.saveStringPref(STORAGE_DRUM_KIT_KEY, this.drumKitModelId);
   }
 
+  setKeyboardModelId(id) {
+    this.keyboardModelId = id || 'concert-grand';
+    this.saveStringPref(STORAGE_KEYBOARD_MODEL_KEY, this.keyboardModelId);
+  }
+
+  setStarLookId(id) {
+    this.starLookId = id || 'default-band';
+    this.saveStringPref(STORAGE_STAR_LOOK_KEY, this.starLookId);
+  }
+
   loadCrowdVolume() {
     try {
       const saved = window.localStorage.getItem(STORAGE_CROWD_VOL_KEY);
@@ -304,7 +328,7 @@ export class GameState {
     } catch {
       // Ignore
     }
-    return 'philippine-arena';
+    return 'christmas-wonderland';
   }
 
   setVenueId(id) {

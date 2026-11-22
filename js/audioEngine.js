@@ -63,11 +63,12 @@ export class AudioEngine {
     this.liveDrumEnergy = 0;
     this.liveBassEnergy = 0;
     this.liveGuitarEnergy = 0;
+    this.livePianoEnergy = 0;
     this.liveVocalEnergy = 0;
     this.liveOverallEnergy = 0;
     this.liveSpectrumBins = new Float32Array(24);
 
-    // Per-stem activity gate timeline ({ hopSec, duration, drums: Uint8Array, bass: Uint8Array, guitar: Uint8Array })
+    // Per-stem activity gate timeline ({ hopSec, duration, drums, bass, guitar, piano })
     this.stemActivity = null;
   }
 
@@ -107,15 +108,17 @@ export class AudioEngine {
     this.masterGain.connect(this.speakerAnalyser);
     this.speakerAnalyser.connect(ctx.destination);
 
-    // 3 parallel instrument bus gain nodes (independent 1.0 -> 0.08 on miss)
+    // 4 parallel instrument bus gain nodes (independent 1.0 -> 0.08 on miss)
     this.busGains = {
       drums: ctx.createGain(),
       bass: ctx.createGain(),
       guitar: ctx.createGain(),
+      piano: ctx.createGain(),
     };
     this.busGains.drums.gain.value = 1.0;
     this.busGains.bass.gain.value = 1.0;
     this.busGains.guitar.gain.value = 1.0;
+    this.busGains.piano.gain.value = 1.0;
 
     // Active instrument FX chain: Whammy peaking sweep + Dynamic Combo Stereo Widener
     this.whammyFilter = ctx.createBiquadFilter();
@@ -148,8 +151,8 @@ export class AudioEngine {
     merger.connect(this.stereoWetGain);
     this.stereoWetGain.connect(this.masterGain);
 
-    // Route the 3 parallel bus gains into master (active instrument goes through Whammy + Stereo FX)
-    ['drums', 'bass', 'guitar'].forEach((role) => {
+    // Route parallel bus gains into master (active instrument goes through Whammy + Stereo FX)
+    ['drums', 'bass', 'guitar', 'piano'].forEach((role) => {
       if (role === activeInstrument) {
         this.busGains[role].connect(this.whammyFilter);
       } else {
@@ -157,7 +160,7 @@ export class AudioEngine {
       }
     });
 
-    // Build parallel 3-band crossover filter bank for Local MP3/WAV splitting
+    // Build parallel crossover filter bank for Local MP3/WAV splitting
     // 1. Drums Bus: 45–105Hz sub-kick + > 5.5kHz snare snap & hi-hat/cymbal sheen
     const drumsIn = ctx.createGain();
     const drumsLow = ctx.createBiquadFilter();
@@ -189,10 +192,10 @@ export class AudioEngine {
     bassIn.connect(bassLp);
     bassLp.connect(this.busGains.bass);
 
-    // 3. Lead Guitar / Melody Bus: 300Hz – 4.5kHz harmonic lead
+    // 3. Lead Guitar / Melody Bus: 300Hz – 4.5kHz (or upper 2.2kHz–4.8kHz when Piano is active!)
     const guitarIn = ctx.createBiquadFilter();
     guitarIn.type = 'highpass';
-    guitarIn.frequency.value = 300;
+    guitarIn.frequency.value = activeInstrument === 'piano' ? 2200 : 300;
     guitarIn.Q.value = 0.72;
 
     const guitarLp = ctx.createBiquadFilter();
@@ -203,12 +206,28 @@ export class AudioEngine {
     guitarIn.connect(guitarLp);
     guitarLp.connect(this.busGains.guitar);
 
+    // 4. Piano / Keys Bus: 130Hz – 2.2kHz harmonic keyboard range (only fed on local audio when Piano is selected to avoid double-gain!)
+    const pianoIn = ctx.createBiquadFilter();
+    pianoIn.type = 'highpass';
+    pianoIn.frequency.value = 130;
+    pianoIn.Q.value = 0.72;
+
+    const pianoLp = ctx.createBiquadFilter();
+    pianoLp.type = 'lowpass';
+    pianoLp.frequency.value = 2200;
+    pianoLp.Q.value = 0.72;
+
+    pianoIn.connect(pianoLp);
+    pianoLp.connect(this.busGains.piano);
+
     this.busInputs = {
       drums: drumsIn,
       bass: bassIn,
       bassLp,
       guitar: guitarIn,
       guitarLp,
+      piano: pianoIn,
+      pianoLp,
     };
   }
 
@@ -292,7 +311,8 @@ export class AudioEngine {
     this.startCtxTime = startAt;
 
     if (this.mediaSource.mode === 'stems') {
-      ['drums', 'bass', 'guitar'].forEach((role) => {
+      ['drums', 'bass', 'guitar', 'piano'].forEach((role) => {
+        if (!this.mediaSource[role]) return;
         const src = ctx.createBufferSource();
         src.buffer = this.mediaSource[role];
         src.playbackRate.setValueAtTime(this.playbackRate, startAt);
@@ -308,6 +328,9 @@ export class AudioEngine {
       src.connect(this.busInputs.drums);
       src.connect(this.busInputs.bass);
       src.connect(this.busInputs.guitar);
+      if (this.instrument === 'piano') {
+        src.connect(this.busInputs.piano);
+      }
       src.start(startAt, clampedOffset);
       src._role = 'local';
       this.activeSources.push(src);
@@ -317,14 +340,15 @@ export class AudioEngine {
   /**
    * True Instrument-Only Muting:
    * Ducks ONLY the selected instrument's parallel bus gain to 0.08 while
-   * keeping the other 2 buses at 1.0 full volume and leaving Master untouched!
+   * keeping all other buses at 1.0 full volume and leaving Master untouched!
    */
   setInstrumentStemMuted(muted) {
     if (!this.ctx || !this.busGains) return;
     const now = this.ctx.currentTime;
     const tau = muted ? 0.028 : 0.04;
 
-    ['drums', 'bass', 'guitar'].forEach((role) => {
+    ['drums', 'bass', 'guitar', 'piano'].forEach((role) => {
+      if (!this.busGains[role]) return;
       const target = role === this.instrument && muted ? 0.08 : 1.0;
       this.busGains[role].gain.setTargetAtTime(target, now, tau);
     });
@@ -469,12 +493,16 @@ export class AudioEngine {
       // Lead Guitar: 250Hz - 4.2kHz
       const guitarNorm = bandAvg(250, 4200);
 
+      // Piano / Keys: 130Hz - 2.2kHz
+      const pianoNorm = bandAvg(130, 2200);
+
       // Vocal presence: 450Hz - 2.6kHz
       const vocalNorm = bandAvg(450, 2600);
 
       this.liveDrumEnergy += (drumNorm - this.liveDrumEnergy) * 0.42;
       this.liveBassEnergy += (bassNorm - this.liveBassEnergy) * 0.36;
       this.liveGuitarEnergy += (guitarNorm - this.liveGuitarEnergy) * 0.38;
+      this.livePianoEnergy += (pianoNorm - this.livePianoEnergy) * 0.38;
       this.liveVocalEnergy += (vocalNorm - this.liveVocalEnergy) * 0.32;
 
       let totalSum = 0;
@@ -494,19 +522,20 @@ export class AudioEngine {
   }
 
   /**
-   * O(1) per-frame lookup returning whether Drums, Bass, and Lead Guitar are currently
+   * O(1) per-frame lookup returning whether Drums, Bass, Lead Guitar, and Piano/Keys are currently
    * audible above their active song entry gate (used by 3D StageBand & CameraDirector).
    */
   getStemActivityAt(songTime) {
     const act = this.stemActivity;
     if (!act || !act.hopSec || songTime < 0) {
-      return { drums: true, bass: true, guitar: true };
+      return { drums: true, bass: true, guitar: true, piano: true };
     }
     const idx = Math.max(0, Math.min(act.drums.length - 1, Math.floor(songTime / act.hopSec)));
     return {
       drums: act.drums[idx] === 1,
       bass: act.bass[idx] === 1,
       guitar: act.guitar[idx] === 1,
+      piano: act.piano ? act.piano[Math.min(act.piano.length - 1, idx)] === 1 : act.guitar[idx] === 1,
     };
   }
 
@@ -530,6 +559,7 @@ export class AudioEngine {
     this.liveDrumEnergy = 0;
     this.liveBassEnergy = 0;
     this.liveGuitarEnergy = 0;
+    this.livePianoEnergy = 0;
     this.liveVocalEnergy = 0;
     this.liveOverallEnergy = 0;
     if (this.ctx && this.ctx.state === 'suspended') {
@@ -657,8 +687,8 @@ function computeSingleStemGate(audioBuffer, hopSec = ACTIVITY_HOP_SEC, options =
  * Computes Per-Stem Silence & Entry Activity Gates directly from 3 isolated stem AudioBuffers
  * (used for both built-in multi-stem songs AND virtual-split uploaded MP3/WAV files).
  */
-export function computeStemActivityFromBuffers({ drums, bass, guitar }) {
-  const duration = Math.max(drums.duration, bass.duration, guitar.duration);
+export function computeStemActivityFromBuffers({ drums, bass, guitar, piano = null }) {
+  const duration = Math.max(drums.duration, bass.duration, guitar.duration, piano ? piano.duration : 0);
   const drumGate = computeSingleStemGate(drums, ACTIVITY_HOP_SEC, {
     entryRatio: 0.34,
     exitRatio: 0.21,
@@ -677,6 +707,14 @@ export function computeStemActivityFromBuffers({ drums, bass, guitar }) {
     absFloor: 0.006,
     minHoldFrames: 8,
   });
+  const pianoGate = piano
+    ? computeSingleStemGate(piano, ACTIVITY_HOP_SEC, {
+        entryRatio: 0.26,
+        exitRatio: 0.15,
+        absFloor: 0.005,
+        minHoldFrames: 8,
+      })
+    : guitarGate;
 
   return {
     hopSec: ACTIVITY_HOP_SEC,
@@ -684,10 +722,12 @@ export function computeStemActivityFromBuffers({ drums, bass, guitar }) {
     drums: drumGate.active,
     bass: bassGate.active,
     guitar: guitarGate.active,
+    piano: pianoGate.active,
     rms: {
       drums: drumGate.rms,
       bass: bassGate.rms,
       guitar: guitarGate.rms,
+      piano: pianoGate.rms,
     },
   };
 }
@@ -1151,6 +1191,7 @@ function parseSmfFallback(arrayBuffer) {
   const guitar = [];
   const bass = [];
   const drums = [];
+  const piano = [];
 
   rawEvents.forEach((ev) => {
     const item = {
@@ -1159,9 +1200,13 @@ function parseSmfFallback(arrayBuffer) {
       durationSeconds: Number(Math.max(0.05, ev.durTicks * secPerTick).toFixed(4)),
       amplitude: ev.amplitude,
     };
-    if (ev.isPercussion) drums.push(item);
-    else if (ev.pitchMidi >= 28 && ev.pitchMidi <= 51) bass.push(item);
-    else if (ev.pitchMidi >= 52 && ev.pitchMidi <= 96) guitar.push(item);
+    if (ev.isPercussion) {
+      drums.push(item);
+    } else {
+      if (ev.pitchMidi >= 28 && ev.pitchMidi <= 51) bass.push(item);
+      if (ev.pitchMidi >= 52 && ev.pitchMidi <= 96) guitar.push(item);
+      if (ev.pitchMidi >= 48 && ev.pitchMidi <= 84) piano.push(item);
+    }
   });
 
   const sections = finalizeNativeSections(
@@ -1175,6 +1220,7 @@ function parseSmfFallback(arrayBuffer) {
       guitar: guitar.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
       bass: bass.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
       drums: drums.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
+      piano: piano.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
     },
   };
 }
@@ -1259,12 +1305,14 @@ export async function parseMidiArrayBuffer(midiArrayBuffer) {
       const guitar = [];
       const bass = [];
       const drums = [];
+      const piano = [];
 
       (midi.tracks || []).forEach((track) => {
         const name = `${track.name || ''} ${track.instrument?.name || ''}`.toLowerCase();
         const isPerc = track.instrument?.percussion || track.channel === 9 || /drum|perc|kit/.test(name);
         const isBassTrack = /bass/.test(name);
-        const isGuitarTrack = /guitar|lead|synth|piano|keys/.test(name);
+        const isPianoTrack = /piano|keys|keyboard|synth|organ|rhodes|clav|pad|electric piano/.test(name);
+        const isGuitarTrack = /guitar|lead/.test(name);
 
         (track.notes || []).forEach((n) => {
           const item = {
@@ -1275,10 +1323,15 @@ export async function parseMidiArrayBuffer(midiArrayBuffer) {
           };
           if (isPerc) {
             drums.push(item);
-          } else if (isBassTrack || (!isGuitarTrack && item.pitchMidi >= 28 && item.pitchMidi <= 51)) {
-            bass.push(item);
-          } else if (isGuitarTrack || (item.pitchMidi >= 52 && item.pitchMidi <= 96)) {
-            guitar.push(item);
+          } else {
+            if (isPianoTrack || (!isBassTrack && item.pitchMidi >= 48 && item.pitchMidi <= 84)) {
+              piano.push(item);
+            }
+            if (isBassTrack || (!isGuitarTrack && !isPianoTrack && item.pitchMidi >= 28 && item.pitchMidi <= 51)) {
+              bass.push(item);
+            } else if (isGuitarTrack || isPianoTrack || (item.pitchMidi >= 52 && item.pitchMidi <= 96)) {
+              guitar.push(item);
+            }
           }
         });
       });
@@ -1290,6 +1343,7 @@ export async function parseMidiArrayBuffer(midiArrayBuffer) {
           guitar: guitar.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
           bass: bass.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
           drums: drums.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
+          piano: piano.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds),
         },
       };
     }
@@ -1450,6 +1504,12 @@ export function parseCloneHeroChart(chartText, durationHint = 0) {
       hard: parseNoteBlock('HardDrums'),
       medium: parseNoteBlock('MediumDrums'),
       easy: parseNoteBlock('EasyDrums'),
+    },
+    piano: {
+      expert: parseNoteBlock('ExpertKeyboard') || parseNoteBlock('ExpertSingle'),
+      hard: parseNoteBlock('HardKeyboard') || parseNoteBlock('HardSingle'),
+      medium: parseNoteBlock('MediumKeyboard') || parseNoteBlock('MediumSingle'),
+      easy: parseNoteBlock('EasyKeyboard') || parseNoteBlock('EasySingle'),
     },
   };
 

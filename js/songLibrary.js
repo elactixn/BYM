@@ -31,26 +31,34 @@ export const SONG_TIERS = [
   {
     tier: 1,
     id: 'tier-1-garage',
-    name: 'Tier 1: Garage Warmup',
+    name: 'Tier 1: Garage & Piano Warmup',
     tag: 'OPENING ACT',
     accent: '#22c55e',
-    venueHint: 'Intramuros & Club Warmup',
+    venueHint: 'Intramuros & Indie Club',
   },
   {
     tier: 2,
     id: 'tier-2-club',
-    name: 'Tier 2: Electric Club',
-    tag: 'HEADLINER',
-    accent: '#f59e0b',
-    venueHint: 'Electric Arena Circuit',
+    name: 'Tier 2: Pop-Punk & Synth Club',
+    tag: 'RISING STAR',
+    accent: '#ec4899',
+    venueHint: 'Electric Club Circuit',
   },
   {
     tier: 3,
-    id: 'tier-3-stadium',
-    name: 'Tier 3: Stadium Encore',
+    id: 'tier-3-arena',
+    name: 'Tier 3: Arena & OPM Anthems',
+    tag: 'HEADLINER',
+    accent: '#f59e0b',
+    venueHint: 'Sold-Out Arena Nights',
+  },
+  {
+    tier: 4,
+    id: 'tier-4-stadium',
+    name: 'Tier 4: Stadium Legends & Encore',
     tag: 'WORLD TOUR',
     accent: '#ef4444',
-    venueHint: 'Sold-Out Stadium Finale',
+    venueHint: 'Pyro Stadium Finale',
   },
 ];
 
@@ -120,44 +128,106 @@ export const BUILTIN_TRACKS = [
     ],
   },
 
-  /* ===================== TIER 2: ELECTRIC CLUB ===================== */
   {
-    id: 'velvet-heartbreak',
+    id: 'candlelight-encore',
     sourceType: 'builtin',
-    tier: 2,
-    tierName: 'Tier 2: Electric Club',
-    difficultyRating: 3,
-    title: 'Velvet Heartbreak',
-    subtitle: 'Shimmering verse arpeggios exploding into stadium chorus anthems',
-    artist: 'Starlight Riot',
-    genre: 'Arena Power Ballad',
-    bpm: 98,
-    duration: 112,
-    keyLabel: 'G Major',
-    style: 'ballad',
-    coverPalette: ['#7c3aed', '#1e1b4b', '#f59e0b'],
+    tier: 1,
+    tierName: 'Tier 1: Garage & Piano Warmup',
+    difficultyRating: 1,
+    title: 'Candlelight Encore',
+    subtitle: 'Expressive grand piano ballad chords swelling into warm arena harmonies',
+    artist: 'Clara & The Keys',
+    genre: 'Piano Pop Ballad',
+    bpm: 88,
+    duration: 98,
+    keyLabel: 'C Major',
+    style: 'piano-ballad',
+    coverPalette: ['#db2777', '#1e1b4b', '#fde047'],
     coverEmblem: 'star',
     sections: [
-      { name: 'INTRO', bars: 4, energy: 0.46, guitarMode: 'arp', drumMode: 'silent', bassMode: 'silent' },
-      { name: 'VERSE 1', bars: 8, energy: 0.6, guitarMode: 'arp', drumMode: 'halftime', bassMode: 'hold' },
-      { name: 'PRE-CHORUS', bars: 4, energy: 0.82, guitarMode: 'build', drumMode: 'build', bassMode: 'pulse' },
-      { name: 'CHORUS 1', bars: 8, energy: 0.98, guitarMode: 'anthem', drumMode: 'stadium', bassMode: 'drive' },
-      { name: 'VERSE 2', bars: 8, energy: 0.64, guitarMode: 'arp', drumMode: 'halftime', bassMode: 'pulse' },
-      { name: 'CHORUS 2', bars: 8, energy: 1.0, guitarMode: 'anthem', drumMode: 'stadium', bassMode: 'drive' },
-      { name: 'FINAL CHORUS', bars: 6, energy: 1.06, guitarMode: 'anthem', drumMode: 'stadium', bassMode: 'drive' },
+      { name: 'INTRO', bars: 4, energy: 0.44, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'silent', bassMode: 'silent' },
+      { name: 'VERSE 1', bars: 8, energy: 0.58, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'minimal', bassMode: 'hold' },
+      { name: 'CHORUS 1', bars: 8, energy: 0.88, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'halftime', bassMode: 'pulse' },
+      { name: 'BRIDGE', bars: 6, energy: 0.62, guitarMode: 'arp', pianoMode: 'arpeggio', drumMode: 'minimal', bassMode: 'hold' },
+      { name: 'FINAL CHORUS', bars: 8, energy: 0.96, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'stadium', bassMode: 'pulse' },
+      { name: 'OUTRO', bars: 4, energy: 0.42, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'silent', bassMode: 'hold' },
     ],
     chords: [
-      { root: 43, fifth: 50, chord: [62, 67, 71, 74], riff: [67, 71, 74, 79, 74, 71, 67, 71] },
-      { root: 40, fifth: 47, chord: [64, 67, 71, 76], riff: [64, 67, 71, 76, 71, 67, 64, 67] },
       { root: 36, fifth: 43, chord: [60, 64, 67, 72], riff: [60, 64, 67, 72, 76, 72, 67, 64] },
-      { root: 38, fifth: 45, chord: [62, 66, 69, 74], riff: [62, 66, 69, 74, 78, 74, 69, 66] },
+      { root: 43, fifth: 50, chord: [59, 62, 67, 71], riff: [62, 67, 71, 74, 71, 67, 62, 67] },
+      { root: 45, fifth: 52, chord: [60, 64, 69, 72], riff: [64, 69, 72, 76, 72, 69, 64, 69] },
+      { root: 41, fifth: 48, chord: [60, 65, 69, 72], riff: [65, 69, 72, 77, 72, 69, 65, 69] },
+    ],
+  },
+
+  /* ===================== TIER 2: POP-PUNK & SYNTH CLUB ===================== */
+  {
+    id: 'purple-revenge',
+    sourceType: 'builtin',
+    tier: 2,
+    tierName: 'Tier 2: Pop-Punk & Synth Club',
+    difficultyRating: 2,
+    title: 'Purple Heartbreak Riot',
+    subtitle: 'Angsty pop-punk chorus guitars, punchy piano stabs & shouted hooks',
+    artist: 'Violet Static',
+    genre: 'Pop-Punk Anthem',
+    bpm: 152,
+    duration: 106,
+    keyLabel: 'B Major',
+    style: 'pop-punk',
+    coverPalette: ['#7e22ce', '#18181b', '#f472b6'],
+    coverEmblem: 'flame',
+    sections: [
+      { name: 'INTRO', bars: 4, energy: 0.56, guitarMode: 'riff', pianoMode: 'ballad', drumMode: 'minimal', bassMode: 'hold' },
+      { name: 'VERSE 1', bars: 8, energy: 0.72, guitarMode: 'palm', pianoMode: 'stabs', drumMode: 'verse', bassMode: 'root8' },
+      { name: 'CHORUS 1', bars: 12, energy: 1.0, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'chorus', bassMode: 'drive' },
+      { name: 'VERSE 2', bars: 8, energy: 0.74, guitarMode: 'palm', pianoMode: 'stabs', drumMode: 'verse', bassMode: 'root8' },
+      { name: 'BRIDGE', bars: 8, energy: 0.6, guitarMode: 'arp', pianoMode: 'arpeggio', drumMode: 'halftime', bassMode: 'hold' },
+      { name: 'FINAL CHORUS', bars: 12, energy: 1.06, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'chorus', bassMode: 'drive' },
+    ],
+    chords: [
+      { root: 35, fifth: 42, chord: [59, 63, 66, 71], riff: [71, 75, 78, 75, 71, 66, 71, 75] },
+      { root: 42, fifth: 49, chord: [61, 66, 70, 73], riff: [73, 75, 78, 73, 70, 66, 70, 73] },
+      { root: 44, fifth: 51, chord: [59, 63, 68, 71], riff: [71, 75, 76, 75, 71, 68, 71, 75] },
+      { root: 40, fifth: 47, chord: [59, 64, 68, 71], riff: [76, 75, 71, 68, 64, 68, 71, 75] },
+    ],
+  },
+  {
+    id: 'pink-pony-disco',
+    sourceType: 'builtin',
+    tier: 2,
+    tierName: 'Tier 2: Pop-Punk & Synth Club',
+    difficultyRating: 3,
+    title: 'Glitter Club Runway',
+    subtitle: 'Theatrical synth-pop dance grooves, sparkling piano arpeggios & four-on-the-floor beats',
+    artist: 'Midwest Velvet',
+    genre: 'Theatrical Synth-Pop',
+    bpm: 124,
+    duration: 112,
+    keyLabel: 'F# Major',
+    style: 'synth-pop',
+    coverPalette: ['#ec4899', '#311042', '#38bdf8'],
+    coverEmblem: 'sun',
+    sections: [
+      { name: 'INTRO', bars: 4, energy: 0.54, guitarMode: 'pluck', pianoMode: 'arpeggio', drumMode: 'fourfloor', bassMode: 'octave' },
+      { name: 'VERSE 1', bars: 8, energy: 0.72, guitarMode: 'pluck', pianoMode: 'stabs', drumMode: 'fourfloor', bassMode: 'octave' },
+      { name: 'PRE-CHORUS', bars: 4, energy: 0.88, guitarMode: 'build', pianoMode: 'arpeggio', drumMode: 'build', bassMode: 'syncopated' },
+      { name: 'CHORUS 1', bars: 12, energy: 1.02, guitarMode: 'synthlead', pianoMode: 'virtuoso', drumMode: 'disco', bassMode: 'octave' },
+      { name: 'VERSE 2', bars: 8, energy: 0.74, guitarMode: 'pluck', pianoMode: 'stabs', drumMode: 'fourfloor', bassMode: 'octave' },
+      { name: 'FINAL CHORUS', bars: 12, energy: 1.08, guitarMode: 'synthlead', pianoMode: 'virtuoso', drumMode: 'disco', bassMode: 'syncopated' },
+    ],
+    chords: [
+      { root: 42, fifth: 49, chord: [61, 66, 70, 73], riff: [73, 75, 78, 82, 78, 75, 73, 70] },
+      { root: 39, fifth: 46, chord: [63, 66, 70, 75], riff: [75, 78, 82, 78, 75, 70, 75, 78] },
+      { root: 35, fifth: 42, chord: [59, 63, 66, 71], riff: [71, 75, 78, 83, 78, 75, 71, 75] },
+      { root: 37, fifth: 44, chord: [61, 65, 68, 73], riff: [73, 77, 80, 77, 73, 68, 73, 77] },
     ],
   },
   {
     id: 'pop-punk-drive',
     sourceType: 'builtin',
     tier: 2,
-    tierName: 'Tier 2: Electric Club',
+    tierName: 'Tier 2: Pop-Punk & Synth Club',
     difficultyRating: 3,
     title: 'Pop Punk Drive',
     subtitle: 'High-energy palm-muted power chords & driving double-time punk drums',
@@ -188,12 +258,107 @@ export const BUILTIN_TRACKS = [
     ],
   },
 
-  /* ===================== TIER 3: STADIUM ENCORE ===================== */
+  /* ===================== TIER 3: ARENA & OPM ANTHEMS ===================== */
+  {
+    id: 'velvet-heartbreak',
+    sourceType: 'builtin',
+    tier: 3,
+    tierName: 'Tier 3: Arena & OPM Anthems',
+    difficultyRating: 3,
+    title: 'Velvet Heartbreak',
+    subtitle: 'Shimmering verse arpeggios exploding into stadium chorus anthems',
+    artist: 'Starlight Riot',
+    genre: 'Arena Power Ballad',
+    bpm: 98,
+    duration: 112,
+    keyLabel: 'G Major',
+    style: 'ballad',
+    coverPalette: ['#7c3aed', '#1e1b4b', '#f59e0b'],
+    coverEmblem: 'star',
+    sections: [
+      { name: 'INTRO', bars: 4, energy: 0.46, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'silent', bassMode: 'silent' },
+      { name: 'VERSE 1', bars: 8, energy: 0.6, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'halftime', bassMode: 'hold' },
+      { name: 'PRE-CHORUS', bars: 4, energy: 0.82, guitarMode: 'build', pianoMode: 'arpeggio', drumMode: 'build', bassMode: 'pulse' },
+      { name: 'CHORUS 1', bars: 8, energy: 0.98, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'stadium', bassMode: 'drive' },
+      { name: 'VERSE 2', bars: 8, energy: 0.64, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'halftime', bassMode: 'pulse' },
+      { name: 'CHORUS 2', bars: 8, energy: 1.0, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'stadium', bassMode: 'drive' },
+      { name: 'FINAL CHORUS', bars: 6, energy: 1.06, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'stadium', bassMode: 'drive' },
+    ],
+    chords: [
+      { root: 43, fifth: 50, chord: [62, 67, 71, 74], riff: [67, 71, 74, 79, 74, 71, 67, 71] },
+      { root: 40, fifth: 47, chord: [64, 67, 71, 76], riff: [64, 67, 71, 76, 71, 67, 64, 67] },
+      { root: 36, fifth: 43, chord: [60, 64, 67, 72], riff: [60, 64, 67, 72, 76, 72, 67, 64] },
+      { root: 38, fifth: 45, chord: [62, 66, 69, 74], riff: [62, 66, 69, 74, 78, 74, 69, 66] },
+    ],
+  },
+  {
+    id: 'manila-starlight',
+    sourceType: 'builtin',
+    tier: 3,
+    tierName: 'Tier 3: Arena & OPM Anthems',
+    difficultyRating: 3,
+    title: 'Tala sa Kalawakan',
+    subtitle: 'OPM-inspired acoustic & piano intro soaring into a stadium rock singalong',
+    artist: 'Banda ng Bayan',
+    genre: 'OPM Arena Rock',
+    bpm: 132,
+    duration: 110,
+    keyLabel: 'A Major',
+    style: 'hard-rock',
+    coverPalette: ['#0284c7', '#172554', '#facc15'],
+    coverEmblem: 'star',
+    sections: [
+      { name: 'INTRO', bars: 4, energy: 0.48, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'silent', bassMode: 'silent' },
+      { name: 'VERSE 1', bars: 8, energy: 0.66, guitarMode: 'riff', pianoMode: 'arpeggio', drumMode: 'verse', bassMode: 'pulse' },
+      { name: 'CHORUS 1', bars: 10, energy: 1.0, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'stadium', bassMode: 'drive' },
+      { name: 'GUITAR SOLO', bars: 8, energy: 1.06, guitarMode: 'shred', pianoMode: 'chords', drumMode: 'chorus', bassMode: 'octave' },
+      { name: 'BRIDGE', bars: 6, energy: 0.56, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'halftime', bassMode: 'hold' },
+      { name: 'FINAL CHORUS', bars: 12, energy: 1.08, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'stadium', bassMode: 'drive' },
+    ],
+    chords: [
+      { root: 45, fifth: 52, chord: [61, 64, 69, 73], riff: [69, 73, 76, 81, 76, 73, 69, 73] },
+      { root: 40, fifth: 47, chord: [59, 64, 68, 71], riff: [68, 71, 76, 79, 76, 71, 68, 71] },
+      { root: 42, fifth: 49, chord: [61, 66, 69, 73], riff: [69, 73, 78, 76, 73, 69, 66, 69] },
+      { root: 38, fifth: 45, chord: [62, 66, 69, 74], riff: [74, 73, 69, 66, 69, 73, 74, 78] },
+    ],
+  },
+  {
+    id: 'bohemian-crown',
+    sourceType: 'builtin',
+    tier: 3,
+    tierName: 'Tier 3: Arena & OPM Anthems',
+    difficultyRating: 4,
+    title: 'Crown of the Stadium',
+    subtitle: 'Royal grand piano rock anthem with stomping drum breaks & soaring solos',
+    artist: 'Imperial Queenet',
+    genre: 'Classic Piano Rock',
+    bpm: 118,
+    duration: 116,
+    keyLabel: 'Bb Major',
+    style: 'piano-rock',
+    coverPalette: ['#ca8a04', '#450a18', '#fef08a'],
+    coverEmblem: 'bolt',
+    sections: [
+      { name: 'INTRO', bars: 4, energy: 0.52, guitarMode: 'arp', pianoMode: 'ballad', drumMode: 'silent', bassMode: 'silent' },
+      { name: 'VERSE 1', bars: 8, energy: 0.72, guitarMode: 'palm', pianoMode: 'chords', drumMode: 'stadium', bassMode: 'pulse' },
+      { name: 'CHORUS 1', bars: 10, energy: 1.0, guitarMode: 'anthem', pianoMode: 'virtuoso', drumMode: 'stadium', bassMode: 'drive' },
+      { name: 'GUITAR SOLO', bars: 10, energy: 1.08, guitarMode: 'shred', pianoMode: 'chords', drumMode: 'chorus', bassMode: 'octave' },
+      { name: 'FINAL CHORUS', bars: 12, energy: 1.12, guitarMode: 'anthem', pianoMode: 'virtuoso', drumMode: 'stadium', bassMode: 'drive' },
+    ],
+    chords: [
+      { root: 34, fifth: 41, chord: [58, 62, 65, 70], riff: [70, 74, 77, 82, 77, 74, 70, 74] },
+      { root: 43, fifth: 50, chord: [58, 62, 67, 70], riff: [67, 70, 74, 79, 74, 70, 67, 70] },
+      { root: 39, fifth: 46, chord: [63, 67, 70, 75], riff: [75, 74, 70, 67, 70, 74, 75, 79] },
+      { root: 41, fifth: 48, chord: [60, 65, 69, 72], riff: [72, 77, 81, 77, 72, 69, 72, 77] },
+    ],
+  },
+
+  /* ===================== TIER 4: STADIUM LEGENDS & ENCORE ===================== */
   {
     id: 'voltage-overdrive',
     sourceType: 'builtin',
-    tier: 3,
-    tierName: 'Tier 3: Stadium Encore',
+    tier: 4,
+    tierName: 'Tier 4: Stadium Legends & Encore',
     difficultyRating: 4,
     title: 'Voltage Overdrive',
     subtitle: 'Blistering stadium hard rock with shredding lead runs & syncopated fills',
@@ -206,13 +371,13 @@ export const BUILTIN_TRACKS = [
     coverPalette: ['#dc2626', '#111827', '#fb923c'],
     coverEmblem: 'lightning',
     sections: [
-      { name: 'INTRO', bars: 4, energy: 0.7, guitarMode: 'riff', drumMode: 'build', bassMode: 'pulse' },
-      { name: 'VERSE 1', bars: 8, energy: 0.76, guitarMode: 'palm', drumMode: 'verse', bassMode: 'syncopated' },
-      { name: 'CHORUS 1', bars: 12, energy: 1.02, guitarMode: 'anthem', drumMode: 'chorus', bassMode: 'drive' },
-      { name: 'GUITAR SOLO', bars: 12, energy: 1.08, guitarMode: 'shred', drumMode: 'chorus', bassMode: 'octave' },
-      { name: 'VERSE 2', bars: 8, energy: 0.78, guitarMode: 'palm', drumMode: 'verse', bassMode: 'syncopated' },
-      { name: 'FINAL CHORUS', bars: 16, energy: 1.1, guitarMode: 'anthem', drumMode: 'doublekick', bassMode: 'drive' },
-      { name: 'OUTRO', bars: 6, energy: 0.92, guitarMode: 'shred', drumMode: 'build', bassMode: 'drive' },
+      { name: 'INTRO', bars: 4, energy: 0.7, guitarMode: 'riff', pianoMode: 'stabs', drumMode: 'build', bassMode: 'pulse' },
+      { name: 'VERSE 1', bars: 8, energy: 0.76, guitarMode: 'palm', pianoMode: 'stabs', drumMode: 'verse', bassMode: 'syncopated' },
+      { name: 'CHORUS 1', bars: 12, energy: 1.02, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'chorus', bassMode: 'drive' },
+      { name: 'GUITAR SOLO', bars: 12, energy: 1.08, guitarMode: 'shred', pianoMode: 'virtuoso', drumMode: 'chorus', bassMode: 'octave' },
+      { name: 'VERSE 2', bars: 8, energy: 0.78, guitarMode: 'palm', pianoMode: 'stabs', drumMode: 'verse', bassMode: 'syncopated' },
+      { name: 'FINAL CHORUS', bars: 16, energy: 1.1, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'doublekick', bassMode: 'drive' },
+      { name: 'OUTRO', bars: 6, energy: 0.92, guitarMode: 'shred', pianoMode: 'virtuoso', drumMode: 'build', bassMode: 'drive' },
     ],
     chords: [
       { root: 33, fifth: 40, chord: [57, 64, 69, 72], riff: [69, 72, 74, 76, 79, 76, 74, 72] },
@@ -222,10 +387,40 @@ export const BUILTIN_TRACKS = [
     ],
   },
   {
+    id: 'midnight-concerto',
+    sourceType: 'builtin',
+    tier: 4,
+    tierName: 'Tier 4: Stadium Legends & Encore',
+    difficultyRating: 5,
+    title: 'Neon Sonata Overdrive',
+    subtitle: 'Neoclassical virtuoso piano arpeggios dueling with symphonic metal guitars',
+    artist: 'Symphony X-Volt',
+    genre: 'Symphonic Keys Metal',
+    bpm: 162,
+    duration: 116,
+    keyLabel: 'D Minor',
+    style: 'metal',
+    coverPalette: ['#9333ea', '#09090b', '#22d3ee'],
+    coverEmblem: 'lightning',
+    sections: [
+      { name: 'INTRO', bars: 4, energy: 0.72, guitarMode: 'arp', pianoMode: 'virtuoso', drumMode: 'build', bassMode: 'pulse' },
+      { name: 'VERSE 1', bars: 10, energy: 0.86, guitarMode: 'palm', pianoMode: 'arpeggio', drumMode: 'doublekick', bassMode: 'drive' },
+      { name: 'CHORUS 1', bars: 12, energy: 1.04, guitarMode: 'anthem', pianoMode: 'virtuoso', drumMode: 'doublekick', bassMode: 'drive' },
+      { name: 'GUITAR SOLO', bars: 14, energy: 1.12, guitarMode: 'shred', pianoMode: 'virtuoso', drumMode: 'doublekick', bassMode: 'octave' },
+      { name: 'FINAL ENCORE', bars: 16, energy: 1.15, guitarMode: 'shred', pianoMode: 'virtuoso', drumMode: 'doublekick', bassMode: 'drive' },
+    ],
+    chords: [
+      { root: 38, fifth: 45, chord: [62, 65, 69, 74], riff: [74, 77, 81, 79, 77, 76, 74, 72] },
+      { root: 34, fifth: 41, chord: [58, 62, 65, 70], riff: [70, 74, 77, 82, 77, 74, 70, 74] },
+      { root: 36, fifth: 43, chord: [60, 64, 67, 72], riff: [72, 76, 79, 84, 79, 76, 72, 76] },
+      { root: 33, fifth: 40, chord: [61, 64, 69, 73], riff: [73, 76, 81, 79, 76, 73, 69, 73] },
+    ],
+  },
+  {
     id: 'titans-reckoning',
     sourceType: 'builtin',
-    tier: 3,
-    tierName: 'Tier 3: Stadium Encore',
+    tier: 4,
+    tierName: 'Tier 4: Stadium Legends & Encore',
     difficultyRating: 5,
     title: "Titan's Reckoning",
     subtitle: 'Double-bass thrash metal finale with galloping basslines & rapid shred solos',
@@ -238,13 +433,13 @@ export const BUILTIN_TRACKS = [
     coverPalette: ['#991b1b', '#09090b', '#facc15'],
     coverEmblem: 'skull',
     sections: [
-      { name: 'INTRO', bars: 4, energy: 0.78, guitarMode: 'shred', drumMode: 'build', bassMode: 'drive' },
-      { name: 'VERSE 1', bars: 12, energy: 0.88, guitarMode: 'palm', drumMode: 'doublekick', bassMode: 'drive' },
-      { name: 'CHORUS 1', bars: 12, energy: 1.05, guitarMode: 'anthem', drumMode: 'doublekick', bassMode: 'drive' },
-      { name: 'SHRED SOLO', bars: 16, energy: 1.12, guitarMode: 'shred', drumMode: 'doublekick', bassMode: 'octave' },
-      { name: 'BREAKDOWN', bars: 8, energy: 0.92, guitarMode: 'palm', drumMode: 'halftime', bassMode: 'syncopated' },
-      { name: 'FINAL ENCORE', bars: 20, energy: 1.15, guitarMode: 'shred', drumMode: 'doublekick', bassMode: 'drive' },
-      { name: 'OUTRO', bars: 8, energy: 1.0, guitarMode: 'anthem', drumMode: 'build', bassMode: 'drive' },
+      { name: 'INTRO', bars: 4, energy: 0.78, guitarMode: 'shred', pianoMode: 'stabs', drumMode: 'build', bassMode: 'drive' },
+      { name: 'VERSE 1', bars: 12, energy: 0.88, guitarMode: 'palm', pianoMode: 'stabs', drumMode: 'doublekick', bassMode: 'drive' },
+      { name: 'CHORUS 1', bars: 12, energy: 1.05, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'doublekick', bassMode: 'drive' },
+      { name: 'SHRED SOLO', bars: 16, energy: 1.12, guitarMode: 'shred', pianoMode: 'virtuoso', drumMode: 'doublekick', bassMode: 'octave' },
+      { name: 'BREAKDOWN', bars: 8, energy: 0.92, guitarMode: 'palm', pianoMode: 'ballad', drumMode: 'halftime', bassMode: 'syncopated' },
+      { name: 'FINAL ENCORE', bars: 20, energy: 1.15, guitarMode: 'shred', pianoMode: 'virtuoso', drumMode: 'doublekick', bassMode: 'drive' },
+      { name: 'OUTRO', bars: 8, energy: 1.0, guitarMode: 'anthem', pianoMode: 'chords', drumMode: 'build', bassMode: 'drive' },
     ],
     chords: [
       { root: 40, fifth: 47, chord: [64, 67, 71, 76], riff: [76, 79, 78, 76, 74, 76, 79, 83] },
@@ -452,6 +647,67 @@ async function renderSingleStem(track, stemType) {
         sub.start(time);
         osc.stop(time + dur + 0.02);
         sub.stop(time + dur + 0.02);
+      }
+    } else if (stemType === 'piano') {
+      const pMode = section.pianoMode || (track.style === 'ballad' || track.style === 'piano-ballad' ? 'ballad' : track.style === 'synth-pop' ? 'arpeggio' : 'chords');
+      const emitPianoKey = (midiNote, dur, level) => {
+        const freq = midiToFreq(midiNote);
+        const osc1 = offline.createOscillator();
+        const osc2 = offline.createOscillator();
+        const flt = offline.createBiquadFilter();
+        const g = offline.createGain();
+        // Warm acoustic grand piano overtone stack (triangle fundamental + 2x sine bell)
+        osc1.type = 'triangle';
+        osc1.frequency.value = freq;
+        osc2.type = 'sine';
+        osc2.frequency.value = freq * 2.0;
+
+        flt.type = 'lowpass';
+        flt.frequency.setValueAtTime(3400, time);
+        flt.frequency.exponentialRampToValueAtTime(920, time + Math.min(dur, 0.8));
+
+        g.gain.setValueAtTime(0.0008, time);
+        g.gain.linearRampToValueAtTime(level, time + 0.008);
+        g.gain.exponentialRampToValueAtTime(level * 0.35, time + Math.min(dur * 0.45, 0.25));
+        g.gain.exponentialRampToValueAtTime(0.0008, time + dur);
+
+        const g2 = offline.createGain();
+        g2.gain.value = 0.28;
+        osc1.connect(flt);
+        osc2.connect(g2);
+        g2.connect(flt);
+        flt.connect(g);
+        g.connect(offline.destination);
+        osc1.start(time);
+        osc2.start(time);
+        osc1.stop(time + dur + 0.03);
+        osc2.stop(time + dur + 0.03);
+      };
+
+      const lvl = (track.style === 'piano-ballad' || track.style === 'piano-rock' ? 0.24 : 0.16) * energy;
+      if (pMode === 'ballad') {
+        if (step === 0) {
+          chordObj.chord.forEach((m, ci) => emitPianoKey(m - (ci === 0 ? 12 : 0), eighthSec * 7.2, lvl * 0.72));
+        } else if (step % 2 === 0) {
+          emitPianoKey(chordObj.chord[step % chordObj.chord.length], eighthSec * 2.4, lvl * 0.65);
+        }
+      } else if (pMode === 'arpeggio' || pMode === 'virtuoso') {
+        const arpMidi = chordObj.riff[(step + barIndex) % chordObj.riff.length];
+        emitPianoKey(arpMidi, eighthSec * 1.4, lvl);
+        if (step === 0 || step === 4) {
+          emitPianoKey(chordObj.chord[0] - 12, eighthSec * 3.5, lvl * 0.8);
+          emitPianoKey(chordObj.chord[2], eighthSec * 3.2, lvl * 0.65);
+        }
+      } else if (pMode === 'stabs') {
+        if ([0, 2, 4, 6].includes(step)) {
+          chordObj.chord.slice(0, 3).forEach((m) => emitPianoKey(m, eighthSec * 1.25, lvl * 0.72));
+        }
+      } else {
+        if (step === 0 || step === 4) {
+          chordObj.chord.slice(0, 3).forEach((m) => emitPianoKey(m, eighthSec * 3.8, lvl * 0.76));
+        } else if (step === 2 || step === 6) {
+          emitPianoKey(chordObj.riff[(step + barIndex) % chordObj.riff.length], eighthSec * 1.6, lvl * 0.75);
+        }
       }
     } else {
       const mode = section.guitarMode;
@@ -687,6 +943,79 @@ export function buildPreauthoredBuiltinChart(track, { instrument = 'guitar', dif
         holdDone: false,
       });
       lastTime = timeSec;
+    } else if (instrument === 'piano') {
+      // Piano / Keys: sustained harmonic chords + cascading melodic arpeggios
+      const pMode = section.pianoMode || (track.style === 'ballad' || track.style === 'piano-ballad' ? 'ballad' : track.style === 'synth-pop' ? 'arpeggio' : 'chords');
+      let midi = null;
+      let sustain = 0;
+      let wantChord = false;
+
+      if (pMode === 'ballad') {
+        if (step === 0) {
+          midi = chordObj.chord[0];
+          sustain = eighthSec * 3.4;
+          wantChord = diffLevel >= 1;
+        } else if (step === 2 || step === 4 || step === 6) {
+          if (diffLevel === 0 && step !== 4) continue;
+          midi = chordObj.chord[(step / 2) % chordObj.chord.length];
+          sustain = step === 4 ? eighthSec * 2.1 : 0;
+        }
+      } else if (pMode === 'arpeggio' || pMode === 'virtuoso') {
+        if (diffLevel === 0 && step % 2 !== 0) continue;
+        if (diffLevel === 1 && pMode === 'virtuoso' && step % 2 !== 0 && step !== 3) continue;
+        midi = chordObj.riff[(step + barIndex) % chordObj.riff.length];
+        wantChord = (step === 0 || step === 4) && diffLevel >= 2;
+        if (step === 0 && !wantChord) sustain = eighthSec * 1.6;
+      } else if (pMode === 'stabs') {
+        if ([0, 2, 4, 6].includes(step)) {
+          if (diffLevel === 0 && (step === 2 || step === 6)) continue;
+          midi = chordObj.chord[(step / 2) % chordObj.chord.length];
+          wantChord = (step === 0 || step === 4) && diffLevel >= 2;
+        }
+      } else {
+        if (step === 0 || step === 4) {
+          midi = chordObj.chord[step === 0 ? 0 : 2];
+          wantChord = diffLevel >= 1;
+          sustain = wantChord ? 0 : eighthSec * 2.2;
+        } else if ((step === 2 || step === 6 || (step === 5 && diffLevel >= 2)) && diffLevel >= 1) {
+          midi = chordObj.riff[(step + barIndex) % chordObj.riff.length];
+        }
+      }
+
+      if (midi === null || timeSec - lastTime < minGap) continue;
+      const lane = mapPitchToLane(midi, 56, 82);
+      const chordPartner = wantChord ? (lane <= maxLane - 2 ? lane + 2 : Math.max(0, lane - 2)) : -1;
+
+      notes.push({
+        id: noteId++,
+        hitTimeSec: Number(timeSec.toFixed(4)),
+        lane,
+        sustainDuration: wantChord ? 0 : sustain >= 0.35 ? Number(sustain.toFixed(3)) : 0,
+        isFever: isFeverPhrase,
+        isChord: chordPartner >= 0 && chordPartner !== lane,
+        pitchNorm: Math.max(0, Math.min(1, (midi - 56) / 26)),
+        hit: false,
+        missed: false,
+        holding: false,
+        holdDone: false,
+      });
+
+      if (chordPartner >= 0 && chordPartner !== lane) {
+        notes.push({
+          id: noteId++,
+          hitTimeSec: Number(timeSec.toFixed(4)),
+          lane: chordPartner,
+          sustainDuration: 0,
+          isFever: isFeverPhrase,
+          isChord: true,
+          pitchNorm: Math.max(0, Math.min(1, (midi + 4 - 56) / 26)),
+          hit: false,
+          missed: false,
+          holding: false,
+          holdDone: false,
+        });
+      }
+      lastTime = timeSec;
     } else {
       // Lead Guitar
       const mode = section.guitarMode;
@@ -785,20 +1114,21 @@ export function buildPreauthoredBuiltinChart(track, { instrument = 'guitar', dif
 }
 
 /**
- * Renders (and caches) all 3 isolated stems for a built-in track.
+ * Renders (and caches) all 4 isolated stems (drums, bass, guitar, piano) for a built-in track.
  */
 export async function ensureBuiltinStems(track) {
   if (renderedStemCache.has(track.id)) {
     return renderedStemCache.get(track.id);
   }
 
-  const [drums, bass, guitar] = await Promise.all([
+  const [drums, bass, guitar, piano] = await Promise.all([
     renderSingleStem(track, 'drums'),
     renderSingleStem(track, 'bass'),
     renderSingleStem(track, 'guitar'),
+    renderSingleStem(track, 'piano'),
   ]);
 
-  const bundle = { drums, bass, guitar, duration: drums.duration };
+  const bundle = { drums, bass, guitar, piano, duration: drums.duration };
   renderedStemCache.set(track.id, bundle);
   return bundle;
 }

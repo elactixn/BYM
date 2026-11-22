@@ -24,6 +24,8 @@ import {
   buildCustomGuitarMesh,
   buildCustomBassMesh,
   buildCustomDrumKitMesh,
+  buildCustomKeyboardMesh,
+  getStarLookById,
 } from './bandGearCatalog.js';
 import { CameraDirector } from './cameraDirector.js';
 import { LightingProfileController } from './lightingProfiles.js';
@@ -32,6 +34,7 @@ const THEME_COLORS = {
   guitar: 0x06b6d4,
   bass: 0x8b5cf6,
   drums: 0xf59e0b,
+  piano: 0xec4899,
   fever: 0xfacc15,
   encore: 0xfbbf24,
   miss: 0xff1e42,
@@ -215,7 +218,19 @@ function createGlowParticleTexture() {
   return tex;
 }
 
-function createRobloxFaceTexture({ skin = '#f4c79a', shocked = false, sunglasses = false, smile = 'grin' }) {
+function createRobloxFaceTexture({
+  skin = '#f4c79a',
+  shocked = false,
+  sunglasses = false,
+  sunglassesTint = null,
+  smile = 'grin',
+  eyeliner = false,
+  eyeshadow = null,
+  blush = null,
+  lipColor = null,
+  starMakeup = false,
+  mustache = false,
+}) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
@@ -229,6 +244,36 @@ function createRobloxFaceTexture({ skin = '#f4c79a', shocked = false, sunglasses
   grad.addColorStop(1, 'rgba(0, 0, 0, 0.1)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 256, 256);
+
+  if (blush && !shocked) {
+    ctx.fillStyle = blush;
+    ctx.beginPath();
+    ctx.ellipse(58, 142, 26, 15, 0, 0, Math.PI * 2);
+    ctx.ellipse(198, 142, 26, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (starMakeup && !shocked) {
+    ctx.fillStyle = '#fde047';
+    [
+      [48, 142, 7],
+      [208, 142, 7],
+      [62, 158, 4.5],
+      [194, 158, 4.5],
+    ].forEach(([sx, sy, sr]) => {
+      ctx.beginPath();
+      for (let p = 0; p < 8; p += 1) {
+        const ang = (p * Math.PI) / 4;
+        const rad = p % 2 === 0 ? sr : sr * 0.42;
+        const px = sx + Math.cos(ang) * rad;
+        const py = sy + Math.sin(ang) * rad;
+        if (p === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
 
   if (shocked) {
     ctx.strokeStyle = '#18181b';
@@ -272,12 +317,16 @@ function createRobloxFaceTexture({ skin = '#f4c79a', shocked = false, sunglasses
     ctx.fill();
   } else {
     if (sunglasses) {
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = sunglassesTint || '#0f172a';
       ctx.fillRect(36, 86, 82, 46);
       ctx.fillRect(138, 86, 82, 46);
       ctx.fillRect(114, 100, 28, 12);
+      ctx.strokeStyle = sunglassesTint === '#78350f' ? '#facc15' : '#334155';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(36, 86, 82, 46);
+      ctx.strokeRect(138, 86, 82, 46);
 
-      ctx.fillStyle = 'rgba(192, 132, 252, 0.55)';
+      ctx.fillStyle = sunglassesTint === '#78350f' ? 'rgba(250, 204, 21, 0.35)' : 'rgba(192, 132, 252, 0.55)';
       ctx.beginPath();
       ctx.moveTo(44, 92);
       ctx.lineTo(74, 92);
@@ -293,7 +342,18 @@ function createRobloxFaceTexture({ skin = '#f4c79a', shocked = false, sunglasses
       ctx.closePath();
       ctx.fill();
     } else {
-      [82, 174].forEach((ex) => {
+      if (eyeshadow) {
+        ctx.fillStyle = eyeshadow;
+        ctx.globalAlpha = 0.72;
+        [82, 174].forEach((ex) => {
+          ctx.beginPath();
+          ctx.ellipse(ex, 101, 22, 14, 0, Math.PI, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+      }
+
+      [82, 174].forEach((ex, i) => {
         ctx.fillStyle = '#111827';
         ctx.beginPath();
         ctx.ellipse(ex, 110, 14, 18, 0, 0, Math.PI * 2);
@@ -303,20 +363,52 @@ function createRobloxFaceTexture({ skin = '#f4c79a', shocked = false, sunglasses
         ctx.beginPath();
         ctx.arc(ex - 4, 103, 5, 0, Math.PI * 2);
         ctx.fill();
+
+        if (eyeliner) {
+          ctx.strokeStyle = '#09090b';
+          ctx.lineWidth = 5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          const dir = i === 0 ? -1 : 1;
+          ctx.moveTo(ex - dir * 14, 101);
+          ctx.quadraticCurveTo(ex, 92, ex + dir * 24, 96);
+          ctx.stroke();
+        }
       });
 
       ctx.strokeStyle = '#18181b';
-      ctx.lineWidth = 8;
+      ctx.lineWidth = eyeliner ? 6 : 8;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(58, 82);
-      ctx.lineTo(104, 88);
+      ctx.lineTo(104, 86);
       ctx.moveTo(198, 82);
-      ctx.lineTo(152, 88);
+      ctx.lineTo(152, 86);
       ctx.stroke();
     }
 
-    if (smile === 'sing') {
+    if (mustache) {
+      ctx.fillStyle = '#111827';
+      ctx.beginPath();
+      ctx.moveTo(88, 156);
+      ctx.quadraticCurveTo(128, 136, 168, 156);
+      ctx.quadraticCurveTo(128, 152, 88, 156);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    if (lipColor) {
+      ctx.fillStyle = lipColor;
+      ctx.beginPath();
+      ctx.moveTo(92, 174);
+      ctx.quadraticCurveTo(114, 162, 128, 168);
+      ctx.quadraticCurveTo(142, 162, 164, 174);
+      ctx.quadraticCurveTo(128, 198, 92, 174);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(114, 173, 28, 5);
+    } else if (smile === 'sing') {
       ctx.fillStyle = '#27131a';
       ctx.beginPath();
       ctx.ellipse(128, 176, 26, 20, 0, 0, Math.PI * 2);
@@ -350,6 +442,153 @@ function createRobloxFaceTexture({ skin = '#f4c79a', shocked = false, sunglasses
   return tex;
 }
 
+function populateHairGroup(hairGroup, hairStyle, hairColor, accentMat, extras = {}) {
+  const hairMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.48, metalness: 0.12 });
+
+  if (hairStyle === 'long-wavy') {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.22, 0.74), hairMat);
+    cap.position.set(0, 0.69, -0.02);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.96, 0.24), hairMat);
+    back.position.set(0, 0.24, -0.36);
+    const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.78, 0.3), hairMat);
+    sideL.position.set(-0.36, 0.32, -0.04);
+    const sideR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.78, 0.3), hairMat);
+    sideR.position.set(0.36, 0.32, -0.04);
+    hairGroup.add(cap, back, sideL, sideR);
+  } else if (hairStyle === 'big-red-curls') {
+    const curlGeo = new THREE.SphereGeometry(0.24, 10, 8);
+    const pts = [
+      [0, 0.74, -0.04],
+      [-0.3, 0.66, -0.08],
+      [0.3, 0.66, -0.08],
+      [-0.42, 0.42, -0.14],
+      [0.42, 0.42, -0.14],
+      [-0.38, 0.16, -0.18],
+      [0.38, 0.16, -0.18],
+      [0, 0.48, -0.36],
+      [-0.24, 0.22, -0.38],
+      [0.24, 0.22, -0.38],
+    ];
+    pts.forEach(([x, y, z]) => {
+      const puff = new THREE.Mesh(curlGeo, hairMat);
+      puff.position.set(x, y, z);
+      hairGroup.add(puff);
+    });
+    if (extras.cowgirlHat) {
+      const hatMat = new THREE.MeshStandardMaterial({
+        color: 0xf472b6,
+        emissive: 0xdb2777,
+        emissiveIntensity: 0.45,
+        roughness: 0.3,
+        metalness: 0.35,
+      });
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, 0.06, 16), hatMat);
+      brim.position.set(0, 0.84, 0.02);
+      brim.rotation.x = -0.14;
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, 0.32, 14), hatMat);
+      crown.position.set(0, 1.0, -0.02);
+      const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.06, 14), accentMat);
+      hatBand.position.set(0, 0.88, -0.02);
+      hairGroup.add(brim, crown, hatBand);
+    }
+  } else if (hairStyle === 'blonde-bangs') {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.24, 0.74), hairMat);
+    cap.position.set(0, 0.69, -0.02);
+    const bangs = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.17, 0.12), hairMat);
+    bangs.position.set(0, 0.56, 0.34);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.86, 0.22), hairMat);
+    back.position.set(0, 0.28, -0.35);
+    const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.66, 0.24), hairMat);
+    sideL.position.set(-0.36, 0.36, -0.06);
+    const sideR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.66, 0.24), hairMat);
+    sideR.position.set(0.36, 0.36, -0.06);
+    hairGroup.add(cap, bangs, back, sideL, sideR);
+  } else if (hairStyle === 'slick-back') {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.2, 0.74), hairMat);
+    top.position.set(0, 0.68, -0.04);
+    const sweep = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.54), hairMat);
+    sweep.position.set(0, 0.78, -0.08);
+    sweep.rotation.x = -0.15;
+    hairGroup.add(top, sweep);
+  } else if (hairStyle === 'top-hat-curls') {
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0x0b0d12, roughness: 0.42, metalness: 0.25 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.05, 16), hatMat);
+    brim.position.set(0, 0.72, 0);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.52, 16), hatMat);
+    crown.position.set(0, 0.99, 0);
+    const buckleBand = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.08, 16), accentMat);
+    buckleBand.position.set(0, 0.78, 0);
+    hairGroup.add(brim, crown, buckleBand);
+
+    const curlGeo = new THREE.SphereGeometry(0.19, 8, 8);
+    [
+      [-0.38, 0.42, -0.04],
+      [0.38, 0.42, -0.04],
+      [-0.36, 0.18, -0.08],
+      [0.36, 0.18, -0.08],
+      [0, 0.34, -0.36],
+      [-0.22, 0.18, -0.34],
+      [0.22, 0.18, -0.34],
+    ].forEach(([x, y, z]) => {
+      const c = new THREE.Mesh(curlGeo, hairMat);
+      c.position.set(x, y, z);
+      hairGroup.add(c);
+    });
+  } else if (hairStyle === 'pompadour') {
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.2, 0.72), hairMat);
+    base.position.set(0, 0.68, -0.02);
+    const pomp = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), hairMat);
+    pomp.scale.set(1.08, 0.72, 1.18);
+    pomp.position.set(0, 0.84, 0.08);
+    hairGroup.add(base, pomp);
+  } else {
+    const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.22, 0.72), hairMat);
+    hairTop.position.set(0, 0.69, -0.02);
+    hairGroup.add(hairTop);
+
+    if (hairStyle === 'spiky') {
+      for (let i = -1; i <= 1; i += 1) {
+        const spike = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.2), hairMat);
+        spike.position.set(i * 0.2, 0.84, 0.08);
+        spike.rotation.z = -i * 0.28;
+        hairGroup.add(spike);
+      }
+    } else if (hairStyle === 'mohawk') {
+      const crest = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.72), accentMat);
+      crest.position.set(0, 0.88, -0.02);
+      hairGroup.add(crest);
+    } else if (hairStyle === 'long') {
+      const backHair = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.62, 0.2), hairMat);
+      backHair.position.set(0, 0.38, -0.34);
+      hairGroup.add(backHair);
+    } else if (hairStyle === 'headband') {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.73, 0.1, 0.71), accentMat);
+      band.position.set(0, 0.56, 0);
+      hairGroup.add(band);
+    }
+  }
+}
+
+function clearAndDisposeGroup(group) {
+  if (!group) return;
+  const geos = new Set();
+  const mats = new Set();
+  group.traverse((obj) => {
+    if (obj.geometry) geos.add(obj.geometry);
+    if (obj.material) {
+      if (Array.isArray(obj.material)) obj.material.forEach((m) => mats.add(m));
+      else mats.add(obj.material);
+    }
+  });
+  while (group.children.length > 0) {
+    group.remove(group.children[0]);
+  }
+  geos.forEach((g) => g.dispose());
+  mats.forEach((m) => {
+    if (!m.userData?.shared) m.dispose();
+  });
+}
+
 function buildRobloxCharacter({
   torsoColor,
   pantsColor,
@@ -362,6 +601,16 @@ function buildRobloxCharacter({
   seated = false,
 }) {
   const root = new THREE.Group();
+  const originalSpec = {
+    torsoColor,
+    pantsColor,
+    skinColor,
+    hairColor,
+    hairStyle,
+    accentColor,
+    sunglasses,
+    smile,
+  };
 
   const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.42, metalness: 0.05 });
   const torsoMat = new THREE.MeshStandardMaterial({ color: torsoColor, roughness: 0.48, metalness: 0.14 });
@@ -374,9 +623,10 @@ function buildRobloxCharacter({
     roughness: 0.3,
     metalness: 0.3,
   });
+  accentMat.userData.shared = true;
 
-  const normalTex = createRobloxFaceTexture({ skin: skinColor, shocked: false, sunglasses, smile });
-  const shockedTex = createRobloxFaceTexture({ skin: skinColor, shocked: true, sunglasses: false, smile });
+  let normalTex = createRobloxFaceTexture({ skin: skinColor, shocked: false, sunglasses, smile });
+  let shockedTex = createRobloxFaceTexture({ skin: skinColor, shocked: true, sunglasses: false, smile });
 
   const normalFaceMat = new THREE.MeshStandardMaterial({ map: normalTex, roughness: 0.4, metalness: 0.04 });
   const shockedFaceMat = new THREE.MeshStandardMaterial({ map: shockedTex, roughness: 0.4, metalness: 0.04 });
@@ -422,6 +672,9 @@ function buildRobloxCharacter({
   stripe.position.y = 0.62;
   upperBody.add(stripe);
 
+  const accessoryGroup = new THREE.Group();
+  upperBody.add(accessoryGroup);
+
   const headGroup = new THREE.Group();
   headGroup.position.set(0, 1.06, 0);
   upperBody.add(headGroup);
@@ -430,31 +683,9 @@ function buildRobloxCharacter({
   headMesh.position.y = 0.34;
   headGroup.add(headMesh);
 
-  const hairMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.52, metalness: 0.1 });
-  const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.22, 0.72), hairMat);
-  hairTop.position.set(0, 0.69, -0.02);
-  headGroup.add(hairTop);
-
-  if (hairStyle === 'spiky') {
-    for (let i = -1; i <= 1; i += 1) {
-      const spike = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.2), hairMat);
-      spike.position.set(i * 0.2, 0.84, 0.08);
-      spike.rotation.z = -i * 0.28;
-      headGroup.add(spike);
-    }
-  } else if (hairStyle === 'mohawk') {
-    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.72), accentMat);
-    crest.position.set(0, 0.88, -0.02);
-    headGroup.add(crest);
-  } else if (hairStyle === 'long') {
-    const backHair = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.62, 0.2), hairMat);
-    backHair.position.set(0, 0.38, -0.34);
-    headGroup.add(backHair);
-  } else if (hairStyle === 'headband') {
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.73, 0.1, 0.71), accentMat);
-    band.position.set(0, 0.56, 0);
-    headGroup.add(band);
-  }
+  const hairGroup = new THREE.Group();
+  headGroup.add(hairGroup);
+  populateHairGroup(hairGroup, hairStyle, hairColor, accentMat);
 
   const armGeo = new THREE.BoxGeometry(0.36, 0.92, 0.38);
   const sleeveGeo = new THREE.BoxGeometry(0.38, 0.44, 0.4);
@@ -477,21 +708,149 @@ function buildRobloxCharacter({
 
   upperBody.add(leftArmPivot, rightArmPivot);
 
+  function applyLook(lookSpec) {
+    clearAndDisposeGroup(hairGroup);
+    clearAndDisposeGroup(accessoryGroup);
+
+    if (!lookSpec || lookSpec.id === 'default-band') {
+      skinMat.color.set(originalSpec.skinColor);
+      torsoMat.color.set(originalSpec.torsoColor);
+      torsoMat.emissive.setHex(0x000000);
+      torsoMat.emissiveIntensity = 0;
+      torsoMat.roughness = 0.48;
+      torsoMat.metalness = 0.14;
+      pantsMat.color.set(originalSpec.pantsColor);
+      shoeMat.color.setHex(0x0f121a);
+      accentMat.color.set(originalSpec.accentColor);
+      accentMat.emissive.set(originalSpec.accentColor);
+      accentMat.emissiveIntensity = 0.55;
+
+      populateHairGroup(hairGroup, originalSpec.hairStyle, originalSpec.hairColor, accentMat);
+
+      const nextNormal = createRobloxFaceTexture({
+        skin: originalSpec.skinColor,
+        shocked: false,
+        sunglasses: originalSpec.sunglasses,
+        smile: originalSpec.smile,
+      });
+      const nextShocked = createRobloxFaceTexture({
+        skin: originalSpec.skinColor,
+        shocked: true,
+        sunglasses: false,
+        smile: originalSpec.smile,
+      });
+      normalTex.dispose();
+      shockedTex.dispose();
+      normalTex = nextNormal;
+      shockedTex = nextShocked;
+      normalFaceMat.map = normalTex;
+      normalFaceMat.needsUpdate = true;
+      shockedFaceMat.map = shockedTex;
+      shockedFaceMat.needsUpdate = true;
+      return;
+    }
+
+    const skinHexStr = `#${new THREE.Color(lookSpec.skinColor).getHexString()}`;
+    skinMat.color.setHex(lookSpec.skinColor);
+    torsoMat.color.setHex(lookSpec.torsoColor);
+    torsoMat.emissive.setHex(lookSpec.torsoEmissive || 0x000000);
+    torsoMat.emissiveIntensity = lookSpec.glitter ? 0.52 : 0.24;
+    torsoMat.roughness = lookSpec.glitter ? 0.2 : 0.42;
+    torsoMat.metalness = lookSpec.glitter ? 0.62 : 0.18;
+    pantsMat.color.setHex(lookSpec.legColor ?? originalSpec.pantsColor);
+    shoeMat.color.setHex(lookSpec.bootColor ?? 0x0f121a);
+    accentMat.color.setHex(lookSpec.accentColor ?? 0xfacc15);
+    accentMat.emissive.setHex(lookSpec.accentColor ?? 0xfacc15);
+    accentMat.emissiveIntensity = lookSpec.glitter ? 1.15 : 0.65;
+
+    populateHairGroup(hairGroup, lookSpec.hairStyle, lookSpec.hairColor, accentMat, {
+      cowgirlHat: Boolean(lookSpec.cowgirlHat),
+    });
+
+    // Stage outfit accessories: pleated mini-skirt, glam fringe, or Bruno gold chain
+    if (lookSpec.skirtColor) {
+      const skirtMat = new THREE.MeshStandardMaterial({
+        color: lookSpec.skirtColor,
+        emissive: lookSpec.skirtColor,
+        emissiveIntensity: lookSpec.glitter ? 0.35 : 0.08,
+        roughness: lookSpec.glitter ? 0.22 : 0.52,
+        metalness: lookSpec.glitter ? 0.55 : 0.12,
+      });
+      const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 0.44, 14), skirtMat);
+      skirt.position.set(0, -0.08, 0);
+      accessoryGroup.add(skirt);
+      if (lookSpec.skirtStyle === 'glam-fringe') {
+        const trim = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.04, 8, 20), accentMat);
+        trim.rotation.x = Math.PI * 0.5;
+        trim.position.set(0, -0.28, 0);
+        accessoryGroup.add(trim);
+      }
+    }
+
+    if (lookSpec.goldChain) {
+      const goldMat = new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        emissive: 0xb45309,
+        emissiveIntensity: 0.38,
+        roughness: 0.18,
+        metalness: 0.92,
+      });
+      const chain = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.032, 8, 18), goldMat);
+      chain.position.set(0, 0.84, 0.25);
+      chain.rotation.x = 0.28;
+      accessoryGroup.add(chain);
+    }
+
+    const face = lookSpec.face || {};
+    const nextNormal = createRobloxFaceTexture({
+      skin: skinHexStr,
+      shocked: false,
+      sunglasses: Boolean(face.sunglasses),
+      sunglassesTint: face.sunglassesTint || null,
+      smile: originalSpec.smile,
+      eyeliner: Boolean(face.eyeliner),
+      eyeshadow: face.eyeshadow || null,
+      blush: face.blush || null,
+      lipColor: face.lipColor || null,
+      starMakeup: Boolean(face.starMakeup),
+      mustache: Boolean(face.mustache),
+    });
+    const nextShocked = createRobloxFaceTexture({
+      skin: skinHexStr,
+      shocked: true,
+      sunglasses: false,
+      smile: originalSpec.smile,
+    });
+    normalTex.dispose();
+    shockedTex.dispose();
+    normalTex = nextNormal;
+    shockedTex = nextShocked;
+    normalFaceMat.map = normalTex;
+    normalFaceMat.needsUpdate = true;
+    shockedFaceMat.map = shockedTex;
+    shockedFaceMat.needsUpdate = true;
+  }
+
   return {
     root,
     upperBody,
     headGroup,
     headMesh,
+    hairGroup,
+    accessoryGroup,
     leftArmPivot,
     rightArmPivot,
     leftLegPivot,
     rightLegPivot,
     normalFaceMat,
     shockedFaceMat,
+    applyLook,
     setShocked(isShocked) {
       headMesh.material[4] = isShocked ? shockedFaceMat : normalFaceMat;
     },
     disposeTextures() {
+      clearAndDisposeGroup(hairGroup);
+      clearAndDisposeGroup(accessoryGroup);
       normalTex.dispose();
       shockedTex.dispose();
     },
@@ -741,12 +1100,14 @@ export class StageBand {
   constructor(
     canvas,
     {
-      venueId = 'philippine-arena',
+      venueId = 'christmas-wonderland',
       cameraMode = 'on',
       bandLineupId = 'arena-4piece',
       guitarModelId = 'les-paul-sunburst',
       bassModelId = 'precision-blonde',
       drumKitModelId = 'pop-single-kick',
+      keyboardModelId = 'concert-grand',
+      starLookId = 'default-band',
       onFireworkBurst = null,
     } = {}
   ) {
@@ -755,7 +1116,7 @@ export class StageBand {
     this.isSoftwareGl = false;
     this.clock = 0;
 
-    // Active venue, lineup, custom 3D gear, camera director & lighting profiles
+    // Active venue, lineup, custom 3D gear, star looks, camera director & lighting profiles
     this.venueId = venueId;
     this.venueEnv = null;
     this.cameraMode = cameraMode; // 'on' | 'subtle' | 'locked'
@@ -764,11 +1125,15 @@ export class StageBand {
     this.guitarModelId = guitarModelId;
     this.bassModelId = bassModelId;
     this.drumKitModelId = drumKitModelId;
+    this.keyboardModelId = keyboardModelId;
+    this.starLookId = starLookId;
     this.onFireworkBurst = onFireworkBurst;
 
     this.guitarAsset = null;
     this.bassAsset = null;
     this.drumKitAsset = null;
+    this.keyboardAsset = null;
+    this.pianoRigGroup = null;
     this.vocalistHeadsetGroup = null;
 
     this.cameraDirector = new CameraDirector();
@@ -810,7 +1175,12 @@ export class StageBand {
     this.cymbalWobble = [0, 0, 0];
     this.cymbalPhase = [0, 0, 0];
 
-    // Live LED backdrop screen update throttling + peak-hold caps
+    this.pianoHitImpulse = 0;
+    this.pianoHandPos = 0.5;
+    this.pianoGlissando = 0;
+    this.pianoHandAlt = 1;
+
+    // Live LED backdrop screen + VIP Front-Row Banner update throttling + peak-hold caps
     this.ledUpdateTimer = 0;
     this.ledBarLevels = new Float32Array(24);
     this.ledPeakLevels = new Float32Array(24);
@@ -863,6 +1233,7 @@ export class StageBand {
       guitar: { x: -3.55, y: 0, z: -1.1 },
       bass: { x: 3.55, y: 0, z: -1.1 },
       drums: { x: 0, y: 0.64, z: -3.56 },
+      piano: { x: -2.45, y: 0, z: -2.65 },
       vocals: { x: 0, y: 0, z: -0.78 },
     };
 
@@ -979,6 +1350,7 @@ export class StageBand {
       { key: 'guitar', x: -3.55, z: -1.1, targetY: 1.2, color: THEME_COLORS.guitar },
       { key: 'bass', x: 3.55, z: -1.1, targetY: 1.2, color: THEME_COLORS.bass },
       { key: 'drums', x: 0.0, z: -3.4, targetY: 1.6, color: THEME_COLORS.drums },
+      { key: 'piano', x: -2.45, z: -2.65, targetY: 1.3, color: THEME_COLORS.piano },
       { key: 'vocals', x: 0.0, z: -0.55, targetY: 1.3, color: 0xe2e8f0 },
     ];
 
@@ -1221,9 +1593,63 @@ export class StageBand {
     ledPanel.position.set(0, 4.45, curveRadius - 8.32);
     stageGroup.add(ledPanel);
 
+    // Glowing VIP Front-Row Stage Apron LED Shoutout Banner ("Hello Carmen, and Carmelo! 🎸✨")
+    this.vipBannerCanvas = document.createElement('canvas');
+    this.vipBannerCanvas.width = 1024;
+    this.vipBannerCanvas.height = 96;
+    this.vipBannerCtx = this.vipBannerCanvas.getContext('2d');
+    this.vipBannerTex = new THREE.CanvasTexture(this.vipBannerCanvas);
+    this.vipBannerTex.colorSpace = THREE.SRGBColorSpace;
+    this.drawVipBanner();
+
+    const vipBannerFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(10.2, 0.62, 0.08),
+      new THREE.MeshStandardMaterial({ color: 0x0b0f1a, roughness: 0.35, metalness: 0.8 })
+    );
+    vipBannerFrame.position.set(0, -0.34, 3.22);
+    const vipBannerMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(9.9, 0.5),
+      new THREE.MeshBasicMaterial({ map: this.vipBannerTex })
+    );
+    vipBannerMesh.position.set(0, -0.34, 3.27);
+    stageGroup.add(vipBannerFrame, vipBannerMesh);
+
     this.drawLedBackdrop(0.2, 0.2, 0.2, false, false);
 
     this.scene.add(stageGroup);
+  }
+
+  drawVipBanner() {
+    const ctx = this.vipBannerCtx;
+    if (!ctx) return;
+    const w = 1024;
+    const h = 96;
+
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, '#1e1038');
+    grad.addColorStop(0.25, '#3b0764');
+    grad.addColorStop(0.5, '#500724');
+    grad.addColorStop(0.75, '#3b0764');
+    grad.addColorStop(1, '#1e1038');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(4, 4, w - 8, h - 8);
+
+    const pulse = 0.85 + Math.sin(this.clock * 4.5) * 0.15;
+    ctx.save();
+    ctx.shadowColor = '#f472b6';
+    ctx.shadowBlur = 16 * pulse;
+    ctx.fillStyle = '#fef08a';
+    ctx.font = '700 40px Oswald, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★   HELLO CARMEN, AND CARMELO!  🎸✨   ★', w * 0.5, h * 0.52);
+    ctx.restore();
+
+    this.vipBannerTex.needsUpdate = true;
   }
 
   /**
@@ -1343,8 +1769,29 @@ export class StageBand {
 
     const title = (this.currentTrackTitle || 'ENCORE STAGE').toUpperCase().slice(0, 28);
     ctx.fillStyle = '#ffffff';
-    ctx.font = '700 40px Oswald, sans-serif';
-    ctx.fillText(title, w * 0.5, 86);
+    ctx.font = '700 38px Oswald, sans-serif';
+    ctx.fillText(title, w * 0.5, 82);
+
+    // Glowing Friend Shoutout Ticker Ribbon across bottom of rear Jumbotron!
+    ctx.fillStyle = 'rgba(20, 8, 36, 0.84)';
+    ctx.fillRect(8, h - 38, w - 16, 30);
+    ctx.strokeStyle = '#f472b6';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(8, h - 38, w - 16, 30);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(10, h - 37, w - 20, 28);
+    ctx.clip();
+    const tickerMsg = '★  Hello Carmen, and Carmelo! 🎸✨   •   VIP FRONT ROW   •   Hello Carmen, and Carmelo! 🎸✨  ★';
+    ctx.font = '700 16px Oswald, sans-serif';
+    ctx.fillStyle = '#fde047';
+    ctx.textAlign = 'left';
+    const scrollSpan = 640;
+    const offset = ((this.clock * 46) % scrollSpan);
+    ctx.fillText(tickerMsg, 20 - offset, h - 22);
+    ctx.fillText(tickerMsg, 20 - offset + scrollSpan, h - 22);
+    ctx.restore();
 
     // Frame border glow
     ctx.strokeStyle = accent;
@@ -1429,25 +1876,48 @@ export class StageBand {
     this.micStand.position.set(0, 0, -0.18);
     this.scene.add(this.micStand);
 
+    // 5. KEYBOARDIST + 3D Piano / Synth / Keytar Rig
+    this.pianoRigGroup = new THREE.Group();
+    this.pianoRigGroup.position.set(-2.45, 0, -2.65);
+    this.pianoRigGroup.rotation.y = 0.42;
+    this.scene.add(this.pianoRigGroup);
+
+    this.keyboardist = buildRobloxCharacter({
+      torsoColor: 0xbe185d,
+      pantsColor: 0x0f172a,
+      skinColor: '#f6d0ad',
+      hairColor: '#312e81',
+      hairStyle: 'spiky',
+      accentColor: THEME_COLORS.piano,
+      smile: 'grin',
+    });
+    this.keyboardist.root.position.set(0, 0, -0.92);
+    this.pianoRigGroup.add(this.keyboardist.root);
+
     this.membersByRole = {
       guitar: this.guitarist,
       bass: this.bassist,
       drums: this.drummer,
+      piano: this.keyboardist,
       vocals: this.vocalist,
     };
 
-    // Mount initial custom 3D gear & lineup geometry
+    // Mount initial custom 3D gear, star lookalike & lineup geometry
     this.swapGuitarMesh(this.guitarModelId);
     this.swapBassMesh(this.bassModelId);
+    this.swapKeyboardMesh(this.keyboardModelId);
     this.applyBandLineup();
+    this.applyStarLook(this.starLookId);
   }
 
   getLineupMarks() {
     const id = this.bandLineupId;
+    const pianoPos = this.bandLineup?.positions?.piano || { x: -2.45, z: -2.65, rotY: 0.42 };
     if (id === 'singing-guitarist') {
       return {
         guitar: { x: 0, z: -0.82, rotY: 0 },
         bass: { x: 3.3, z: -1.15, rotY: -0.26 },
+        piano: pianoPos,
         vocals: { x: 0, z: -0.78, rotY: 0, visible: false, headset: false },
         micStandVisible: true,
         forceDoubleKick: false,
@@ -1457,6 +1927,7 @@ export class StageBand {
       return {
         guitar: { x: -3.75, z: -1.35, rotY: 0.28 },
         bass: { x: 3.75, z: -1.35, rotY: -0.28 },
+        piano: pianoPos,
         vocals: { x: 0, z: -0.68, rotY: 0, visible: true, headset: true },
         micStandVisible: false,
         forceDoubleKick: false,
@@ -1466,6 +1937,7 @@ export class StageBand {
       return {
         guitar: { x: -3.15, z: -1.05, rotY: 0.22 },
         bass: { x: 3.15, z: -1.05, rotY: -0.22 },
+        piano: pianoPos,
         vocals: { x: 0, z: -0.78, rotY: 0, visible: false, headset: false },
         micStandVisible: false,
         forceDoubleKick: true,
@@ -1475,6 +1947,7 @@ export class StageBand {
     return {
       guitar: { x: -3.55, z: -1.1, rotY: 0.24 },
       bass: { x: 3.55, z: -1.1, rotY: -0.24 },
+      piano: pianoPos,
       vocals: { x: 0, z: -0.78, rotY: 0, visible: true, headset: false },
       micStandVisible: true,
       forceDoubleKick: false,
@@ -1529,6 +2002,55 @@ export class StageBand {
     this.scene.add(built.group);
   }
 
+  swapKeyboardMesh(modelId) {
+    this.keyboardModelId = modelId || 'concert-grand';
+    if (this.keyboardAsset) {
+      if (this.keyboardAsset.group.parent) {
+        this.keyboardAsset.group.parent.remove(this.keyboardAsset.group);
+      }
+      this.keyboardAsset.dispose?.();
+      this.keyboardAsset = null;
+    }
+    const built = buildCustomKeyboardMesh(this.keyboardModelId);
+    this.keyboardAsset = built;
+
+    if (built.isKeytar && this.keyboardist) {
+      built.group.position.set(0.06, 0.44, 0.38);
+      built.group.rotation.set(0.08, 0.06, 0.24);
+      this.keyboardist.upperBody.add(built.group);
+      this.keyboardist.root.position.set(0, 0, 0.15);
+    } else if (this.pianoRigGroup) {
+      built.group.position.set(0, 0, 0);
+      this.pianoRigGroup.add(built.group);
+      if (this.keyboardist) {
+        this.keyboardist.root.position.set(0, 0, this.keyboardModelId === 'concert-grand' ? -0.92 : -0.68);
+      }
+    }
+  }
+
+  applyStarLook(starLookId) {
+    this.starLookId = starLookId || 'default-band';
+    const look = getStarLookById(this.starLookId);
+
+    // Always reset vocalist & guitarist first so switching looks stays clean
+    this.vocalist?.applyLook(null);
+    this.guitarist?.applyLook(null);
+
+    if (!look || look.id === 'default-band') return;
+
+    const marks = this.getLineupMarks();
+    if (look.targetRole === 'guitar') {
+      this.guitarist?.applyLook(look);
+    } else {
+      // Frontperson look: apply to Vocalist if visible, else Singing Guitarist
+      if (marks.vocals.visible && this.vocalist) {
+        this.vocalist.applyLook(look);
+      } else if (this.guitarist) {
+        this.guitarist.applyLook(look);
+      }
+    }
+  }
+
   applyBandLineup() {
     const marks = this.getLineupMarks();
     if (this.guitarist) {
@@ -1538,6 +2060,10 @@ export class StageBand {
     if (this.bassist) {
       this.bassist.root.position.set(marks.bass.x, 0, marks.bass.z);
       this.bassist.root.rotation.y = marks.bass.rotY;
+    }
+    if (this.pianoRigGroup && marks.piano) {
+      this.pianoRigGroup.position.set(marks.piano.x, 0, marks.piano.z);
+      this.pianoRigGroup.rotation.y = marks.piano.rotY ?? 0.42;
     }
     if (this.vocalist) {
       this.vocalist.root.visible = marks.vocals.visible;
@@ -1560,12 +2086,18 @@ export class StageBand {
       this.memberSpots.bass.baseTargetX = marks.bass.x;
       this.memberSpots.bass.baseTargetZ = marks.bass.z;
     }
+    if (this.memberSpots?.piano && marks.piano) {
+      this.memberSpots.piano.baseTargetX = marks.piano.x;
+      this.memberSpots.piano.baseTargetZ = marks.piano.z;
+    }
 
     // Reset roaming motion state cleanly to lineup home marks
     this.resetBandMotion(marks);
 
     // Rebuild drum kit if double-kick requirement changed for Rock Power Trio
     this.swapDrumKitMesh(this.drumKitModelId, marks.forceDoubleKick);
+    // Re-apply active star look in case vocalist visibility changed
+    this.applyStarLook(this.starLookId);
   }
 
   resetBandMotion(marks = this.getLineupMarks()) {
@@ -1642,6 +2174,14 @@ export class StageBand {
   setDrumKitModel(id) {
     const marks = this.getLineupMarks();
     this.swapDrumKitMesh(id, marks.forceDoubleKick);
+  }
+
+  setKeyboardModel(id) {
+    this.swapKeyboardMesh(id);
+  }
+
+  setStarLook(id) {
+    this.applyStarLook(id);
   }
 
   resetCameraForSong() {
@@ -1828,10 +2368,29 @@ export class StageBand {
     this.updateFullBodiedCrowd(0, 120, 0.12, 0.55, false);
   }
 
-  updateFullBodiedCrowd(songTime, bpm, bassE, hypeNorm, feverOrEncore) {
+  updateFullBodiedCrowd(songTime, bpm, bassE, hypeNorm, feverOrEncore, sectionType = 'VERSE', overallE = 0.35) {
     const t = this.clock;
     const beatRad = songTime * (bpm / 60) * Math.PI * 2;
+    const isBalladSway =
+      !feverOrEncore &&
+      (bpm < 96 || ((sectionType === 'INTRO' || sectionType === 'BRIDGE') && overallE < 0.32));
+    const isChorusUnison = feverOrEncore || sectionType === 'CHORUS' || sectionType === 'OUTRO';
     const energy = Math.min(1.45, 0.24 + bassE * 0.85 + hypeNorm * 0.38 + (feverOrEncore ? 0.36 : 0));
+
+    // Synchronize crowd lightstick glow in unison on Choruses / Fever / Encore!
+    if (this.lightstickMat) {
+      if (feverOrEncore) {
+        this._colorA.setHex(0xfde047);
+      } else if (isChorusUnison) {
+        const hue = (t * 0.16) % 1;
+        this._colorA.setHSL(hue, 0.92, 0.62);
+      } else if (isBalladSway) {
+        this._colorA.setHex(0xfef3c7);
+      } else {
+        this._colorA.setHex(THEME_COLORS[this.activeInstrument] || 0x38bdf8);
+      }
+      this.lightstickMat.color.lerp(this._colorA, 0.12);
+    }
 
     let hairSlot = 0;
     let capSlot = 0;
@@ -1843,11 +2402,15 @@ export class StageBand {
       const cosF = Math.cos(s.facingY);
       const sinF = Math.sin(s.facingY);
 
-      // Front-to-back stadium wave propagation + BPM-locked jump bounce!
-      const wavePhase = beatRad * 0.5 - s.waveDelay * 2.4;
-      const bounceWave = Math.abs(Math.sin(wavePhase + s.phase * 0.25));
-      const jumpY = bounceWave * (0.08 + energy * 0.36) * sc;
-      const baseY = s.floorY + jumpY;
+      // Slow ballad unison side-to-side sway vs. energetic staggered stadium-wave jump & overhead clap!
+      const wavePhase = isBalladSway
+        ? beatRad * 0.25 - s.waveDelay * 0.4
+        : beatRad * 0.5 - s.waveDelay * 2.4;
+      const bounceWave = isBalladSway ? 0 : Math.abs(Math.sin(wavePhase + s.phase * 0.25));
+      const jumpY = isBalladSway
+        ? Math.sin(beatRad * 0.5 + s.phase * 0.2) * 0.025 * sc
+        : bounceWave * (0.09 + energy * 0.4) * sc;
+      const baseY = s.floorY + Math.max(0, jumpY);
 
       // 1. Legs / Pants
       this._dummy.position.set(s.x, baseY + 0.36 * sc, s.z);
@@ -1857,15 +2420,17 @@ export class StageBand {
       this.crowdLegsMesh.setMatrixAt(i, this._dummy.matrix);
 
       // 2. Waist / Belt detail
-      const torsoLean = Math.sin(wavePhase + s.phase * 0.4) * 0.08 * energy;
+      const torsoLean = isBalladSway ? 0.03 : Math.sin(wavePhase + s.phase * 0.4) * 0.09 * energy;
       this._dummy.position.set(s.x, baseY + 0.78 * sc, s.z);
       this._dummy.rotation.set(torsoLean * 0.5, s.facingY, 0);
       this._dummy.scale.set(sc, sc, sc);
       this._dummy.updateMatrix();
       this.crowdBeltMesh.setMatrixAt(i, this._dummy.matrix);
 
-      // 3. Upper R15 Torso
-      const swayZ = Math.sin(t * 2.4 + s.phase) * 0.06;
+      // 3. Upper R15 Torso (gentle unison sway during ballads, bouncy groove during rock sections)
+      const swayZ = isBalladSway
+        ? Math.sin(beatRad * 0.25) * 0.16
+        : Math.sin(t * 2.4 + s.phase) * 0.07;
       this._dummy.position.set(s.x, baseY + 1.15 * sc, s.z);
       this._dummy.rotation.set(torsoLean, s.facingY, swayZ);
       this._dummy.scale.set(sc, sc, sc);
@@ -1876,9 +2441,11 @@ export class StageBand {
       const headX = s.x;
       const headY = baseY + 1.72 * sc;
       const headZ = s.z;
-      const headPitch = -0.07 + Math.sin(beatRad + s.phase * 0.5) * 0.11 * energy;
+      const headPitch = isBalladSway
+        ? -0.05 + Math.sin(beatRad * 0.5) * 0.05
+        : -0.07 + Math.sin(beatRad + s.phase * 0.5) * 0.13 * energy;
       this._dummy.position.set(headX, headY, headZ);
-      this._dummy.rotation.set(headPitch, s.facingY, swayZ * 0.7);
+      this._dummy.rotation.set(headPitch, s.facingY, swayZ * 0.85);
       this._dummy.scale.set(sc, sc, sc);
       this._dummy.updateMatrix();
       this.crowdHeadMesh.setMatrixAt(i, this._dummy.matrix);
@@ -1896,14 +2463,25 @@ export class StageBand {
         hpSlot += 1;
       }
 
-      // 6. Shoulder-Jointed Upper Arms + Elbow-Jointed Forearms waving in stadium rhythm!
+      // 6. Shoulder-Jointed Upper Arms + Elbow-Jointed Forearms (ballad sway / overhead clap / fist pump!)
       const armOffset = 0.45 * sc;
       const shoulderY = baseY + 1.4 * sc;
       const upperLen = 0.34 * sc;
       const foreLen = 0.34 * sc;
 
-      const waveL = Math.sin(wavePhase + s.phase * 0.3) * (0.25 + energy * 0.34);
-      const waveR = Math.sin(wavePhase + s.phase * 0.3 + 0.55) * (0.3 + energy * 0.4);
+      const clapFan = !isBalladSway && !s.hasStick && (i % 3 === 0);
+      const clapPulse = clapFan ? Math.pow(Math.max(0, Math.sin(beatRad * 0.5)), 4) * 0.45 : 0;
+
+      const waveL = isBalladSway
+        ? Math.sin(beatRad * 0.25) * 0.42
+        : clapFan
+          ? -0.28 - clapPulse
+          : Math.sin(wavePhase + s.phase * 0.3) * (0.28 + energy * 0.38);
+      const waveR = isBalladSway
+        ? Math.sin(beatRad * 0.25) * 0.46
+        : clapFan
+          ? 0.28 + clapPulse
+          : Math.sin(wavePhase + s.phase * 0.3 + (isChorusUnison ? 0 : 0.55)) * (0.34 + energy * 0.44);
 
       // Left Upper Arm
       const lx = s.x - cosF * armOffset;
@@ -1919,7 +2497,7 @@ export class StageBand {
       const lElbowX = lx - Math.sin(lTiltZ) * upperLen * cosF;
       const lElbowZ = lz + Math.sin(lTiltZ) * upperLen * sinF;
       const lElbowY = shoulderY + Math.cos(lTiltZ) * upperLen;
-      const lForeTiltZ = lTiltZ * 0.85 - 0.14 + Math.cos(wavePhase * 1.2 + s.phase) * 0.18;
+      const lForeTiltZ = lTiltZ * 0.85 - 0.14 + Math.cos(wavePhase * 1.2 + s.phase) * (isBalladSway ? 0.06 : 0.18);
       this._dummy.position.set(lElbowX, lElbowY, lElbowZ);
       this._dummy.rotation.set(0.24, s.facingY, lForeTiltZ);
       this._dummy.scale.set(sc, sc, sc);
@@ -1940,7 +2518,7 @@ export class StageBand {
       const rElbowX = rx - Math.sin(rTiltZ) * upperLen * cosF;
       const rElbowZ = rz + Math.sin(rTiltZ) * upperLen * sinF;
       const rElbowY = shoulderY + Math.cos(rTiltZ) * upperLen;
-      const rForeTiltZ = rTiltZ * 0.85 + 0.16 + Math.sin(wavePhase * 1.2 + s.phase) * 0.2;
+      const rForeTiltZ = rTiltZ * 0.85 + 0.16 + Math.sin(wavePhase * 1.2 + s.phase) * (isBalladSway ? 0.06 : 0.2);
       this._dummy.position.set(rElbowX, rElbowY, rElbowZ);
       this._dummy.rotation.set(0.26, s.facingY, rForeTiltZ);
       this._dummy.scale.set(sc, sc, sc);
@@ -1954,7 +2532,7 @@ export class StageBand {
         const tipY = rElbowY + Math.cos(rForeTiltZ) * foreLen;
         this._dummy.position.set(tipX, tipY, tipZ);
         this._dummy.rotation.set(0.18, s.facingY, rForeTiltZ * 1.18);
-        this._dummy.scale.set(sc, sc * (0.9 + bassE * 0.35), sc);
+        this._dummy.scale.set(sc, sc * (0.95 + bassE * 0.35 + (isChorusUnison ? 0.18 : 0)), sc);
       } else {
         this._dummy.position.set(0, -40, 0);
         this._dummy.scale.set(0, 0, 0);
@@ -2267,6 +2845,14 @@ export class StageBand {
           this.cameraDirector.triggerKickImpulse(0.68);
         }
       }
+    } else if (instrument === 'piano') {
+      const nextPos = Math.max(0, Math.min(1, Number.isFinite(pitchNorm) ? pitchNorm : lane / 4));
+      if (Math.abs(nextPos - this.pianoHandPos) > 0.32 || isChord) {
+        this.pianoGlissando = 1.0;
+      }
+      this.pianoHandPos = nextPos;
+      this.pianoHitImpulse = isChord ? 1.35 : 1.0;
+      this.pianoHandAlt = -this.pianoHandAlt;
     }
   }
 
@@ -2504,6 +3090,11 @@ export class StageBand {
       this.livePositions.drums.y = this.drummer.root.position.y;
       this.livePositions.drums.z = this.drummer.root.position.z;
     }
+    if (this.pianoRigGroup) {
+      this.livePositions.piano.x = this.pianoRigGroup.position.x;
+      this.livePositions.piano.y = this.pianoRigGroup.position.y;
+      this.livePositions.piano.z = this.pianoRigGroup.position.z;
+    }
     if (this.vocalist) {
       this.livePositions.vocals.x = this.vocalist.root.position.x;
       this.livePositions.vocals.y = this.vocalist.root.position.y;
@@ -2523,10 +3114,12 @@ export class StageBand {
       activeInstrument: stageState?.instrument || this.activeInstrument,
       overallEnergy: telemetry?.overallEnergy || 0,
       bassEnergy: telemetry?.bassEnergy || 0,
-      stemActivity: stageState?.stemActivity || { drums: true, bass: true, guitar: true },
+      stemActivity: stageState?.stemActivity || { drums: true, bass: true, guitar: true, piano: true },
       lineupPositions: {
         guitar: marks.guitar,
         bass: marks.bass,
+        piano: marks.piano,
+        vocalist: marks.vocals,
         drums: { x: 0, y: 0.64, z: -3.56 },
       },
       livePositions: this.livePositions,
@@ -2593,10 +3186,13 @@ export class StageBand {
       }
     }
 
-    // C. Golden Spark Fountains
+    // C. Golden Spark Fountains (plus continuous indoor fountains at Royal Opera House!)
+    if (this.venueEnv?.meta?.continuousIndoorFountains && (playing || this.encoreFinaleActive)) {
+      this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 0.2);
+    }
     if (this.sparkEmitterTimer > 0) {
       this.sparkEmitterTimer = Math.max(0, this.sparkEmitterTimer - dt);
-      const emitPerFrame = Math.min(12, Math.ceil(dt * 120));
+      const emitPerFrame = Math.min(12, Math.ceil(dt * (this.venueEnv?.meta?.continuousIndoorFountains ? 64 : 120)));
       for (let e = 0; e < emitPerFrame; e += 1) {
         const nozzleX = this.pyroNozzleXs[Math.floor(Math.random() * this.pyroNozzleXs.length)];
         const sp = this.sparks[this.sparkCursor];
@@ -2762,7 +3358,11 @@ export class StageBand {
     }
 
     // F. Multi-Beam 3D Concert Laser Sweeps
-    const isHighTechVenue = this.venueId === 'tokyo-dome' || this.venueId === 'coachella';
+    const isHighTechVenue =
+      this.venueId === 'tokyo-dome' ||
+      this.venueId === 'coachella' ||
+      this.venueId === 'cyber-tokyo' ||
+      this.venueId === 'royal-opera';
     const isFinaleLaser = this.encoreFinaleActive && (this.encoreGrade === 'S' || this.encoreGrade === 'A' || encore);
     const laserStrength = isFinaleLaser
       ? 0.44
@@ -3523,6 +4123,7 @@ export class StageBand {
     const drumE = playing ? Math.min(1, (telemetry?.drumEnergy || 0) * 1.65) : 0.12;
     const bassE = playing ? Math.min(1, (telemetry?.bassEnergy || 0) * 1.55) : 0.1;
     const guitarE = playing ? Math.min(1, (telemetry?.guitarEnergy || 0) * 1.65) : 0.12;
+    const pianoE = playing ? Math.min(1, (telemetry?.pianoEnergy || guitarE * 0.72) * 1.6) : 0.12;
     const vocalE = playing ? Math.min(1, (telemetry?.vocalEnergy || 0) * 1.5) : 0.1;
     const hypeBoost = fever || encore || this.encoreFinaleActive ? 1.35 : 1.0;
 
@@ -3534,6 +4135,8 @@ export class StageBand {
     this.drumLeftHit = Math.max(0, this.drumLeftHit - dt * 6.5);
     this.drumRightHit = Math.max(0, this.drumRightHit - dt * 6.5);
     this.drumKickImpulse = Math.max(0, this.drumKickImpulse - dt * 7.5);
+    this.pianoHitImpulse = Math.max(0, this.pianoHitImpulse - dt * 5.5);
+    this.pianoGlissando = Math.max(0, this.pianoGlissando - dt * 2.8);
     for (let c = 0; c < 3; c += 1) {
       this.cymbalWobble[c] = Math.max(0, this.cymbalWobble[c] - dt * 2.1);
       this.cymbalPhase[c] += dt * (14 + c * 2.5);
@@ -4062,6 +4665,73 @@ export class StageBand {
         this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 8, dt);
         this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, rightArmTargetZ, 8, dt);
       }
+
+      // 4B. KEYBOARDIST — Expressive two-hand chord strikes, glissando leans, seated Concert Grand vs. standing Keytar shred!
+      if (this.keyboardist) {
+        const pianoMissed = this.missedInstrument === 'piano';
+        const isKeytar = Boolean(this.keyboardAsset?.isKeytar);
+        const isSeatedGrand = this.keyboardModelId === 'concert-grand';
+        const keyCenterShift = (this.pianoHandPos - 0.5) * 0.42;
+
+        if (isSeatedGrand) {
+          this.keyboardist.leftLegPivot.rotation.set(-1.12, 0, 0);
+          this.keyboardist.rightLegPivot.rotation.set(-1.12 + Math.sin(bpmBeatPhase) * 0.08, 0, 0);
+          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.74, 12, dt);
+        } else {
+          const stepTap = Math.sin(bpmBeatPhase) * (isKeytar ? 0.16 : 0.08);
+          this.keyboardist.leftLegPivot.rotation.set(stepTap, 0, isKeytar ? 0.14 : 0.06);
+          this.keyboardist.rightLegPivot.rotation.set(-stepTap, 0, isKeytar ? -0.14 : -0.06);
+          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.96, 12, dt);
+        }
+
+        if (pianoMissed) {
+          this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(this.keyboardist.upperBody.rotation.x, 0.44, 10, dt);
+          this.keyboardist.headGroup.rotation.x = THREE.MathUtils.damp(this.keyboardist.headGroup.rotation.x, 0.34, 10, dt);
+          this.keyboardist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.leftArmPivot.rotation.x, 0.12, 10, dt);
+          this.keyboardist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.rightArmPivot.rotation.x, 0.12, 10, dt);
+        } else {
+          const playEnergy = Math.max(pianoE, this.pianoHitImpulse * 0.85);
+          const sway = Math.sin(bpmHalfPhase) * (0.09 + playEnergy * 0.16) + keyCenterShift * 0.55;
+          const glissLean = this.pianoGlissando * 0.24 * (this.pianoHandPos > 0.5 ? 1 : -1);
+
+          this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(
+            this.keyboardist.upperBody.rotation.x,
+            (isKeytar ? 0.06 : 0.16) + playEnergy * 0.14,
+            11,
+            dt
+          );
+          this.keyboardist.upperBody.rotation.z = THREE.MathUtils.damp(
+            this.keyboardist.upperBody.rotation.z,
+            sway + glissLean,
+            10,
+            dt
+          );
+          this.keyboardist.headGroup.rotation.x = Math.sin(bpmBeatPhase) * (0.08 + playEnergy * 0.18);
+          this.keyboardist.headGroup.rotation.y = -keyCenterShift * 0.7;
+
+          const fastKeys = Math.sin(t * (11 + playEnergy * 12)) * (0.12 + playEnergy * 0.28);
+          const strikeBoost = this.pianoHitImpulse * 0.34;
+          if (isKeytar) {
+            this.keyboardist.leftArmPivot.rotation.set(-1.12 + this.pianoHandPos * 0.22, 0, 0.2 + this.pianoHandPos * 0.35);
+            this.keyboardist.rightArmPivot.rotation.set(-0.98 + fastKeys + strikeBoost * this.pianoHandAlt, 0, -0.32);
+          } else {
+            this.keyboardist.leftArmPivot.rotation.set(
+              -1.15 + fastKeys * 0.8 + (this.pianoHandAlt > 0 ? strikeBoost : 0),
+              0,
+              0.12 - keyCenterShift * 0.55
+            );
+            this.keyboardist.rightArmPivot.rotation.set(
+              -1.15 - fastKeys * 0.8 + (this.pianoHandAlt < 0 ? strikeBoost : 0),
+              0,
+              -0.12 - keyCenterShift * 0.55
+            );
+          }
+        }
+
+        if (this.keyboardAsset?.ledMat) {
+          this.keyboardAsset.ledMat.emissiveIntensity = 0.85 + pianoE * 1.45 + this.pianoHitImpulse * 0.9;
+        }
+      }
     }
 
     // 5. Moving Overhead SpotLights + Soft Volumetric Fresnel Cones that dynamically follow roaming musicians!
@@ -4074,15 +4744,15 @@ export class StageBand {
     Object.entries(this.memberSpots).forEach(([role, bundle], idx) => {
       const isMissed = this.missedInstrument === role;
       const isPlayerRole = this.activeInstrument === role;
-      const trackedMember = this.membersByRole?.[role];
+      const trackedMember = role === 'piano' ? this.pianoRigGroup : this.membersByRole?.[role]?.root;
 
       const sweepAmp = isWalkOn ? 2.4 : lightState.beamSweepAmp * 0.45;
       const sweepFreq = isWalkOn ? 2.4 : lightState.beamSweepSpeed + idx * 0.22;
       const panOffset = Math.sin(t * sweepFreq + idx * 1.4) * sweepAmp;
 
       // Dynamically follow each roaming musician's live stage position during performance!
-      const anchorX = !isWalkOn && trackedMember ? trackedMember.root.position.x : bundle.baseTargetX;
-      const anchorZ = !isWalkOn && trackedMember ? trackedMember.root.position.z : bundle.baseTargetZ;
+      const anchorX = !isWalkOn && trackedMember ? trackedMember.position.x : bundle.baseTargetX;
+      const anchorZ = !isWalkOn && trackedMember ? trackedMember.position.z : bundle.baseTargetZ;
       bundle.target.position.x = THREE.MathUtils.damp(bundle.target.position.x, anchorX + panOffset, 7.5, dt);
       bundle.target.position.z = THREE.MathUtils.damp(bundle.target.position.z, anchorZ, 7.5, dt);
       bundle.cone.lookAt(bundle.target.position);
@@ -4111,7 +4781,7 @@ export class StageBand {
           .lerp(moodTint, 0.42);
         bundle.coneMat.uniforms.uColor.value.copy(bundle.spot.color);
         const roleEnergy =
-          role === 'drums' ? drumE : role === 'bass' ? bassE : role === 'guitar' ? guitarE : vocalE;
+          role === 'drums' ? drumE : role === 'bass' ? bassE : role === 'guitar' ? guitarE : role === 'piano' ? pianoE : vocalE;
         const roleActive = role === 'vocals' ? marks.vocals.visible : stemActivity[role] !== false;
         const idleDim = playing && songTime >= 0 && !roleActive ? 0.45 : 1.0;
         const baseI = isPlayerRole ? 40 : 24;
@@ -4123,7 +4793,7 @@ export class StageBand {
       }
     });
 
-    // 6. Animate venue-specific dynamic LED ribbons & rotating rigs
+    // 6. Animate venue-specific dynamic LED ribbons, rotating rigs & extravagant themed weather/particles!
     if (this.venueEnv?.dynamicElements) {
       const dyn = this.venueEnv.dynamicElements;
       const pulseLevel = (1.0 + bassE * 1.45 + (fever || encore ? 0.65 : 0)) * lightState.rimMult;
@@ -4133,22 +4803,28 @@ export class StageBand {
       for (let i = 0; i < dyn.rotatingRings.length; i += 1) {
         dyn.rotatingRings[i].rotation.y += dt * (0.08 + bassE * 0.18);
       }
+      if (typeof dyn.update === 'function') {
+        dyn.update(dt, t, telemetry?.overallEnergy || 0);
+      }
     }
 
-    // 7. Update Animated Live LED Backdrop Screen (~16 fps)
+    // 7. Update Animated Live LED Backdrop Screen & VIP Front-Row Banner (~16 fps)
     this.ledUpdateTimer += dt;
     if (this.ledUpdateTimer >= 0.062) {
       this.ledUpdateTimer = 0;
       this.drawLedBackdrop(bassE, guitarE, drumE, fever, encore);
+      this.drawVipBanner();
     }
 
-    // 8. Animate 152 Detailed Roblox R15 Fans & Lightsticks synced to BPM
+    // 8. Animate 152 Detailed Roblox R15 Fans & Lightsticks synced to BPM + Ballad Sway / Chorus Unison
     this.updateFullBodiedCrowd(
       songTime,
       bpm,
       isWalkOn ? 0.45 : bassE,
       isWalkOn ? 0.85 : hypeNorm,
-      fever || encore || this.encoreFinaleActive
+      fever || encore || this.encoreFinaleActive,
+      lightState.sectionType,
+      telemetry?.overallEnergy || 0
     );
 
     // 9. Update 3D Pyrotechnics, Aerial Fireworks, Confetti & Concert Lasers
@@ -4167,8 +4843,10 @@ export class StageBand {
     this.guitarAsset?.dispose?.();
     this.bassAsset?.dispose?.();
     this.drumKitAsset?.dispose?.();
+    this.keyboardAsset?.dispose?.();
     this.crowdFaceTex?.dispose();
     this.ledTexture?.dispose();
+    this.vipBannerTex?.dispose();
     this.deckTex?.dispose();
     this.ampGrillTex?.dispose();
     this.glowTex?.dispose();

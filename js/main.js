@@ -50,14 +50,18 @@ import {
   GUITAR_MODELS,
   BASS_MODELS,
   DRUM_KIT_MODELS,
+  KEYBOARD_MODELS,
+  STAR_LOOKALIKES,
   getBandLineupById,
   getHighwaySkinById,
   getGuitarModelById,
   getBassModelById,
   getDrumKitModelById,
+  getKeyboardModelById,
+  getStarLookById,
 } from './bandGearCatalog.js';
 
-const CHART_CACHE_VERSION = 'v9';
+const CHART_CACHE_VERSION = 'v10';
 const gameState = new GameState();
 const sfx = new SoundEffects();
 let stageBand = null;
@@ -259,6 +263,7 @@ const speedButtons = document.querySelectorAll('[data-playback-rate]');
 const cameraModeButtons = document.querySelectorAll('[data-camera-mode]');
 
 const btnResume = document.getElementById('btn-resume');
+const btnNextSongPause = document.getElementById('btn-next-song-pause');
 const btnRestart = document.getElementById('btn-restart');
 const btnFinishNow = document.getElementById('btn-finish-now');
 const btnBackstagePause = document.getElementById('btn-backstage-pause');
@@ -279,6 +284,7 @@ const resultsEarly = document.getElementById('results-early');
 const resultsLate = document.getElementById('results-late');
 const resultsMiss = document.getElementById('results-miss');
 const btnEncoreSpeedup = document.getElementById('btn-encore-speedup');
+const btnNextSongResults = document.getElementById('btn-next-song-results');
 const btnPlayAgain = document.getElementById('btn-play-again');
 const btnBackstageResults = document.getElementById('btn-backstage-results');
 
@@ -316,6 +322,7 @@ const rhythmCanvas = new RhythmCanvas(canvasEl, {
     drumEnergy: audioEngine.liveDrumEnergy,
     bassEnergy: audioEngine.liveBassEnergy,
     guitarEnergy: audioEngine.liveGuitarEnergy,
+    pianoEnergy: audioEngine.livePianoEnergy,
     vocalEnergy: audioEngine.liveVocalEnergy,
     overallEnergy: audioEngine.liveOverallEnergy,
     spectrum: audioEngine.liveSpectrumBins,
@@ -333,6 +340,8 @@ function initStageBand() {
       guitarModelId: gameState.guitarModelId,
       bassModelId: gameState.bassModelId,
       drumKitModelId: gameState.drumKitModelId,
+      keyboardModelId: gameState.keyboardModelId,
+      starLookId: gameState.starLookId,
       onFireworkBurst: (pan) => sfx.playFireworkBurst(pan),
     });
     stageBand.setBackstageFocus('setlist');
@@ -682,15 +691,21 @@ function renderGigTicket() {
 
   const venue = getVenueById(gameState.venueId);
   const lineup = getBandLineupById(gameState.bandLineupId);
+  const starLook = getStarLookById(gameState.starLookId);
   const gearName =
     gameState.instrument === 'bass'
       ? getBassModelById(gameState.bassModelId).shortName
       : gameState.instrument === 'drums'
         ? getDrumKitModelById(gameState.drumKitModelId).shortName
-        : getGuitarModelById(gameState.guitarModelId).shortName;
+        : gameState.instrument === 'piano'
+          ? getKeyboardModelById(gameState.keyboardModelId).shortName
+          : getGuitarModelById(gameState.guitarModelId).shortName;
 
   if (ticketVenueStamp) ticketVenueStamp.textContent = venue.name;
-  if (ticketGearStamp) ticketGearStamp.textContent = `${lineup.shortName} · ${gearName}`;
+  if (ticketGearStamp) {
+    const lookSuffix = starLook && starLook.id !== 'default-band' ? ` · ${starLook.shortName}` : '';
+    ticketGearStamp.textContent = `${lineup.shortName} · ${gearName}${lookSuffix}`;
+  }
 }
 
 function launchSelectedGig() {
@@ -698,6 +713,30 @@ function launchSelectedGig() {
   if (!track) return;
   gameState.endTour();
   startTrack(track, { playbackRate: lobbyPracticeSpeed, isEncore: false });
+}
+
+function playNextSong() {
+  if (gameState.tourActive && gameState.hasNextTourSong()) {
+    const nextTrack = gameState.advanceTourSong();
+    if (nextTrack) {
+      startTrack(nextTrack, { playbackRate: 1.0, isEncore: gameState.isFinalTourSong() });
+      return;
+    }
+  }
+  const cur = gameState.currentTrack || selectedTrack;
+  const list =
+    cur?.sourceType === 'local' && savedLocalTracks.length > 1
+      ? savedLocalTracks
+      : BUILTIN_TRACKS;
+  if (!list.length) return;
+  const idx = list.findIndex((t) => cur && t.id === cur.id);
+  const nextTrack = list[(idx + 1 + list.length) % list.length];
+  selectedTrack = nextTrack;
+  renderBuiltinTracks();
+  renderSavedLibrary();
+  renderGigTicket();
+  gameState.endTour();
+  startTrack(nextTrack, { playbackRate: 1.0, isEncore: false });
 }
 
 /* ==========================================================================
@@ -719,6 +758,12 @@ function renderGearDock() {
     onSelect = selectBandLineup;
     const cur = getBandLineupById(activeId);
     if (gearActiveDesc) gearActiveDesc.textContent = cur.description;
+  } else if (activeGearCategory === 'stars') {
+    items = STAR_LOOKALIKES;
+    activeId = gameState.starLookId;
+    onSelect = selectStarLook;
+    const cur = getStarLookById(activeId);
+    if (gearActiveDesc) gearActiveDesc.textContent = cur.description;
   } else if (activeGearCategory === 'guitar') {
     items = GUITAR_MODELS;
     activeId = gameState.guitarModelId;
@@ -734,6 +779,12 @@ function renderGearDock() {
     activeId = gameState.drumKitModelId;
     onSelect = selectDrumKitModel;
     if (gearActiveDesc) gearActiveDesc.textContent = 'Customize the rear riser kit with Single-Kick, Double-Bass Metal, or Acrylic LED shells.';
+  } else if (activeGearCategory === 'piano') {
+    items = KEYBOARD_MODELS;
+    activeId = gameState.keyboardModelId;
+    onSelect = selectKeyboardModel;
+    const cur = getKeyboardModelById(activeId);
+    if (gearActiveDesc) gearActiveDesc.textContent = cur.description;
   } else if (activeGearCategory === 'highway') {
     items = HIGHWAY_SKINS;
     activeId = gameState.highwaySkinId;
@@ -786,6 +837,13 @@ function selectBandLineup(id) {
   renderGigTicket();
 }
 
+function selectStarLook(id) {
+  gameState.setStarLookId(id);
+  if (stageBand) stageBand.setStarLook(gameState.starLookId);
+  renderGearDock();
+  renderGigTicket();
+}
+
 function selectHighwaySkin(id) {
   gameState.setHighwaySkinId(id);
   renderGearDock();
@@ -813,11 +871,19 @@ function selectDrumKitModel(id) {
   renderGigTicket();
 }
 
+function selectKeyboardModel(id) {
+  gameState.setKeyboardModelId(id);
+  if (stageBand) stageBand.setKeyboardModel(gameState.keyboardModelId);
+  renderGearDock();
+  renderGigTicket();
+}
+
 /* ==========================================================================
    Tab 3: Venues Horizontal Tour-Poster Carousel
    ========================================================================== */
 
 const VENUE_POSTER_ACCENTS = [
+  '#dc2626', '#f97316', '#f472b6', '#22d3ee', '#eab308', '#06b6d4',
   '#f59e0b', '#06b6d4', '#ef4444', '#a855f7', '#22c55e',
   '#f97316', '#38bdf8', '#ec4899', '#eab308', '#14b8a6',
 ];
@@ -1277,7 +1343,13 @@ async function startTrack(track, { playbackRate = 1.0, keepPracticeLoop = false,
         laneCount: gameState.laneCount,
       });
       const stems = await ensureBuiltinStems(track);
-      mediaSource = { mode: 'stems', drums: stems.drums, bass: stems.bass, guitar: stems.guitar };
+      mediaSource = {
+        mode: 'stems',
+        drums: stems.drums,
+        bass: stems.bass,
+        guitar: stems.guitar,
+        piano: stems.piano,
+      };
       activeStemActivity = computeStemActivityFromBuffers(stems);
     } else {
       showScanProgress(`Loading ${track.title}`, 'Decoding concert audio…', 14);
@@ -1647,6 +1719,7 @@ function handleFrameTick(dt) {
         drumEnergy: audioEngine.liveDrumEnergy,
         bassEnergy: audioEngine.liveBassEnergy,
         guitarEnergy: audioEngine.liveGuitarEnergy,
+        pianoEnergy: audioEngine.livePianoEnergy,
         vocalEnergy: audioEngine.liveVocalEnergy,
         overallEnergy: audioEngine.liveOverallEnergy,
       }
@@ -2161,9 +2234,11 @@ function stepLobbySelection(delta) {
   } else if (activeLobbyTab === 'gear') {
     const map = {
       band: { list: BAND_LINEUPS, cur: gameState.bandLineupId, fn: selectBandLineup },
+      stars: { list: STAR_LOOKALIKES, cur: gameState.starLookId, fn: selectStarLook },
       guitar: { list: GUITAR_MODELS, cur: gameState.guitarModelId, fn: selectGuitarModel },
       bass: { list: BASS_MODELS, cur: gameState.bassModelId, fn: selectBassModel },
       drums: { list: DRUM_KIT_MODELS, cur: gameState.drumKitModelId, fn: selectDrumKitModel },
+      piano: { list: KEYBOARD_MODELS, cur: gameState.keyboardModelId, fn: selectKeyboardModel },
       highway: { list: HIGHWAY_SKINS, cur: gameState.highwaySkinId, fn: selectHighwaySkin },
     };
     const entry = map[activeGearCategory];
@@ -2214,7 +2289,7 @@ function setupKeyboardListeners() {
         if (activeLobbyTab !== 'gear') {
           switchLobbyTab('gear');
         } else {
-          const cats = ['band', 'guitar', 'bass', 'drums', 'highway'];
+          const cats = ['band', 'stars', 'guitar', 'bass', 'drums', 'piano', 'highway'];
           const next = cats[(cats.indexOf(activeGearCategory) + 1) % cats.length];
           switchGearCategory(next);
         }
@@ -2456,6 +2531,7 @@ function setupUiHandlers() {
 
   // Pause & Results actions
   btnResume.addEventListener('click', resumeFromPause);
+  btnNextSongPause?.addEventListener('click', playNextSong);
   btnRestart.addEventListener('click', () => restartCurrentTrack(gameState.playbackRate));
   btnFinishNow.addEventListener('click', handleTrackFinished);
   btnBackstagePause.addEventListener('click', returnToBackstage);
@@ -2464,6 +2540,7 @@ function setupUiHandlers() {
     gameState.clearPracticeLoop();
     startTrack(gameState.currentTrack, { playbackRate: 1.1, keepPracticeLoop: false, isEncore: false });
   });
+  btnNextSongResults?.addEventListener('click', playNextSong);
   btnPlayAgain.addEventListener('click', () => restartCurrentTrack(1.0));
   btnBackstageResults.addEventListener('click', returnToBackstage);
 }

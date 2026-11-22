@@ -20,6 +20,7 @@ export const CAMERA_PRESETS = {
   GUITAR_HERO_LOW_ANGLE: 'GUITAR_HERO_LOW_ANGLE',
   BASS_POCKET_DOLLY: 'BASS_POCKET_DOLLY',
   DRUM_RISER_OVERHEAD: 'DRUM_RISER_OVERHEAD',
+  PIANO_KEYS_CLOSEUP: 'PIANO_KEYS_CLOSEUP',
   CROWD_REVERSE_SILHOUETTE: 'CROWD_REVERSE_SILHOUETTE',
   FEVER_CRANE_ORBIT: 'FEVER_CRANE_ORBIT',
 };
@@ -145,17 +146,19 @@ export class CameraDirector {
         ? CAMERA_PRESETS.GUITAR_HERO_LOW_ANGLE
         : activeInstrument === 'bass'
           ? CAMERA_PRESETS.BASS_POCKET_DOLLY
-          : CAMERA_PRESETS.DRUM_RISER_OVERHEAD;
+          : activeInstrument === 'piano'
+            ? CAMERA_PRESETS.PIANO_KEYS_CLOSEUP
+            : CAMERA_PRESETS.DRUM_RISER_OVERHEAD;
 
     const isInstActive = (role) => !stemActivity || stemActivity[role] !== false;
 
     // 1. Section-driven broadcast choreography (highest priority after Fever!)
     if (sectionType === 'GUITAR_SOLO') {
-      // Lock onto low-angle hero tracking during guitar solos (alternate with dramatic reverse angle on long solos)
-      if (this.currentPreset === CAMERA_PRESETS.GUITAR_HERO_LOW_ANGLE && this.presetAge > 6.5) {
+      const soloShot = activeInstrument === 'piano' ? CAMERA_PRESETS.PIANO_KEYS_CLOSEUP : CAMERA_PRESETS.GUITAR_HERO_LOW_ANGLE;
+      if (this.currentPreset === soloShot && this.presetAge > 6.5) {
         return CAMERA_PRESETS.CROWD_REVERSE_SILHOUETTE;
       }
-      return CAMERA_PRESETS.GUITAR_HERO_LOW_ANGLE;
+      return soloShot;
     }
 
     if (fever || encore || sectionType === 'OUTRO') {
@@ -170,6 +173,7 @@ export class CameraDirector {
 
     if (sectionType === 'INTRO') {
       const introPool = [CAMERA_PRESETS.WIDE_ARENA_SWEEP];
+      if (isInstActive('piano') || activeInstrument === 'piano') introPool.push(CAMERA_PRESETS.PIANO_KEYS_CLOSEUP);
       if (isInstActive('guitar')) introPool.push(CAMERA_PRESETS.GUITAR_HERO_LOW_ANGLE);
       if (isInstActive('bass')) introPool.push(CAMERA_PRESETS.BASS_POCKET_DOLLY);
       if (isInstActive('drums')) introPool.push(CAMERA_PRESETS.DRUM_RISER_OVERHEAD);
@@ -179,6 +183,7 @@ export class CameraDirector {
 
     if (sectionType === 'BRIDGE') {
       const bridgeCycle = [
+        CAMERA_PRESETS.PIANO_KEYS_CLOSEUP,
         CAMERA_PRESETS.GUITAR_HERO_LOW_ANGLE,
         CAMERA_PRESETS.BASS_POCKET_DOLLY,
         CAMERA_PRESETS.WIDE_ARENA_SWEEP,
@@ -209,6 +214,7 @@ export class CameraDirector {
 
     const pool = [CAMERA_PRESETS.WIDE_ARENA_SWEEP];
     if (isInstActive('guitar')) pool.push(CAMERA_PRESETS.GUITAR_HERO_LOW_ANGLE);
+    if (isInstActive('piano') || activeInstrument === 'piano') pool.push(CAMERA_PRESETS.PIANO_KEYS_CLOSEUP);
     if (isInstActive('drums')) pool.push(CAMERA_PRESETS.DRUM_RISER_OVERHEAD);
     if (isInstActive('bass')) pool.push(CAMERA_PRESETS.BASS_POCKET_DOLLY);
     if (overallEnergy > 0.38 || combo >= 12 || !hasVocalist) {
@@ -229,6 +235,7 @@ export class CameraDirector {
     const gPos = livePositions?.guitar || lineupPositions?.guitar || { x: -3.55, y: 0, z: -1.1 };
     const bPos = livePositions?.bass || lineupPositions?.bass || { x: 3.55, y: 0, z: -1.1 };
     const dPos = livePositions?.drums || lineupPositions?.drums || { x: 0, y: 0.64, z: -3.56 };
+    const pPos = livePositions?.piano || lineupPositions?.piano || { x: -2.45, y: 0, z: -2.65 };
 
     const drift = Math.sin(shotTime * 0.44) * 0.24 * this.shotSideSign;
     const dollyPush = Math.min(0.8, shotTime * 0.065);
@@ -275,6 +282,19 @@ export class CameraDirector {
           roll: 0.022 * this.shotSideSign,
         };
 
+      case CAMERA_PRESETS.PIANO_KEYS_CLOSEUP: {
+        const pY = 1.48 + (pPos.y || 0) * 0.45;
+        this._desiredTarget.set(pPos.x, pY, pPos.z + 0.25);
+        const pBias = pPos.x < 0 ? -0.44 : 0.44;
+        return {
+          azimuth: pBias + Math.sin(shotTime * 0.52) * 0.34,
+          radius: 4.45 - dollyPush * 0.55,
+          height: 2.48 + Math.cos(shotTime * 0.42) * 0.22,
+          fov: 40,
+          roll: -0.024 * this.shotSideSign,
+        };
+      }
+
       case CAMERA_PRESETS.CROWD_REVERSE_SILHOUETTE:
         this._desiredTarget.set(this.shotSideSign * 0.55, 1.52, 2.6);
         return {
@@ -315,8 +335,32 @@ export class CameraDirector {
     const gPos = lineupPositions?.guitar || { x: -3.55, y: 0, z: -1.1 };
     const bPos = lineupPositions?.bass || { x: 3.55, y: 0, z: -1.1 };
     const dPos = lineupPositions?.drums || { x: 0, y: 0.64, z: -3.56 };
+    const pPos = lineupPositions?.piano || { x: -2.45, y: 0, z: -2.65 };
+    const vPos = lineupPositions?.vocalist?.visible
+      ? lineupPositions.vocalist
+      : gPos;
 
     switch (this.backstageFocus) {
+      case 'stars':
+        this._desiredTarget.set(vPos.x, 1.72, vPos.z);
+        return {
+          azimuth: Math.sin(clock * 0.42) * 0.34,
+          radius: 3.95,
+          height: 2.15,
+          fov: 38,
+          roll: 0,
+        };
+
+      case 'piano':
+        this._desiredTarget.set(pPos.x, 1.5, pPos.z + 0.15);
+        return {
+          azimuth: (pPos.x < 0 ? -0.45 : 0.45) + Math.sin(clock * 0.42) * 0.22,
+          radius: 4.35,
+          height: 2.45,
+          fov: 40,
+          roll: 0,
+        };
+
       case 'guitar':
         this._desiredTarget.set(gPos.x, 1.55, gPos.z);
         return {

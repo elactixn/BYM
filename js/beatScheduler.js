@@ -1749,6 +1749,146 @@ function buildDrumsChartFromWorker({
 }
 
 /**
+ * Maps sub-second Web Worker Piano/Keys harmonic onsets (130Hz–2.2kHz / MIDI 48–84)
+ * into expressive sustained chord voicings & cascading arpeggio runs!
+ */
+function buildPianoChartFromWorker({
+  workerAnalysis,
+  trackId,
+  laneCount,
+  difficultyConfig,
+}) {
+  const {
+    bpm,
+    beatSec,
+    beatPhaseSec,
+    beats,
+    dynamicBeatGrid,
+    sections,
+    duration,
+    chorusEnergyFloor,
+    pianoOnsets,
+    guitarOnsets,
+  } = workerAnalysis;
+  const sourceOnsets = pianoOnsets?.length >= 10 ? pianoOnsets : guitarOnsets || [];
+  const beatGrid = dynamicBeatGrid?.length ? dynamicBeatGrid : buildBeatGrid(duration, beatSec, beatPhaseSec);
+  const diffId = difficultyConfig?.id || 'medium';
+  const minGapSec = Math.max(0.09, (difficultyConfig?.minNoteGapMs || 205) / 1000);
+  const allowSixteenths = diffId === 'expert' || diffId === 'hard';
+  const subdiv = allowSixteenths ? beatSec / 4 : beatSec / 2;
+  const strengthFloor = diffId === 'easy' ? 1.28 : diffId === 'medium' ? 1.08 : diffId === 'hard' ? 0.94 : 0.84;
+  const chordChance =
+    diffId === 'expert' ? 0.56 : diffId === 'hard' ? 0.42 : diffId === 'medium' ? 0.24 : 0;
+  const rng = createRng(hashSeed(`${trackId}_wpiano_${diffId}`));
+
+  const filtered = [];
+  let lastT = -1;
+  for (let i = 0; i < sourceOnsets.length; i += 1) {
+    const ev = sourceOnsets[i];
+    const isIntroPiano = ev.sectionEnergy < chorusEnergyFloor * 0.72;
+    const reqStrength = isIntroPiano ? strengthFloor * 0.84 : strengthFloor;
+    if (ev.strength < reqStrength) continue;
+
+    const qTime = beats?.length >= 2
+      ? quantizeToDynamicBeatGrid(ev.time, beats, { allowSixteenths, allowTriplets: true, maxSnapSec: 0.044 })
+      : quantizeToSubdivision(ev.time, beatPhaseSec, subdiv, 0.038);
+
+    if (qTime < 0.06 || qTime > duration - 0.12) continue;
+    if (qTime - lastT < minGapSec) continue;
+    filtered.push({ ...ev, time: qTime });
+    lastT = qTime;
+  }
+
+  const pitches = filtered.map((o) => o.pitchHz).sort((a, b) => a - b);
+  const loHz = pitches.length >= 6 ? pitches[Math.floor(pitches.length * 0.08)] : 165;
+  const hiHz = pitches.length >= 6 ? pitches[Math.floor(pitches.length * 0.92)] : 1450;
+  const logLo = Math.log2(Math.max(120, loHz));
+  const logSpan = Math.max(1.1, Math.log2(Math.max(loHz + 120, hiHz)) - logLo);
+
+  const notes = [];
+  let prevLane = Math.floor(laneCount / 2);
+  let arpeggioDir = 1;
+
+  for (let i = 0; i < filtered.length; i += 1) {
+    const ev = filtered[i];
+    const nextEv = filtered[i + 1];
+    const gapToNext = nextEv ? nextEv.time - ev.time : duration - ev.time;
+
+    const logPitch = Math.log2(Math.max(120, ev.pitchHz));
+    const pitchNorm = Math.max(0, Math.min(1, (logPitch - logLo) / logSpan));
+    let lane = Math.min(laneCount - 1, Math.max(0, Math.floor(pitchNorm * laneCount)));
+
+    // Cascading piano arpeggio runs when consecutive notes flow quickly!
+    if (gapToNext < beatSec * 0.62 && lane === prevLane) {
+      if (prevLane + arpeggioDir < 0 || prevLane + arpeggioDir >= laneCount) {
+        arpeggioDir = -arpeggioDir;
+      }
+      lane = Math.max(0, Math.min(laneCount - 1, prevLane + arpeggioDir));
+    }
+
+    let sustainDuration = 0;
+    if (ev.sustainSec >= 0.26 && gapToNext >= 0.4) {
+      sustainDuration = Number(Math.min(2.8, ev.sustainSec, gapToNext - 0.14).toFixed(3));
+      if (sustainDuration < 0.25) sustainDuration = 0;
+    }
+
+    const beatFloat = (ev.time - beatPhaseSec) / beatSec;
+    const beatInBar = ((Math.round(beatFloat * 2) / 2) % 4 + 4) % 4;
+    const isStrongBeat =
+      Math.abs(beatInBar) < 0.18 ||
+      Math.abs(beatInBar - 4) < 0.18 ||
+      Math.abs(beatInBar - 2) < 0.18;
+
+    const makeChord =
+      chordChance > 0 &&
+      (ev.isPolyphonic || isStrongBeat) &&
+      rng() < (ev.isPolyphonic ? chordChance : chordChance * 0.68);
+
+    if (makeChord && laneCount >= 3) {
+      const partner = lane <= laneCount - 3 ? lane + 2 : Math.max(0, lane - 2);
+      const lowL = Math.min(lane, partner);
+      const highL = Math.max(lane, partner);
+      [lowL, highL].forEach((l) => {
+        notes.push({
+          id: `${trackId}_wp_${notes.length}`,
+          lane: l,
+          hitTimeSec: Number(ev.time.toFixed(4)),
+          sustainDuration: sustainDuration >= 0.35 ? sustainDuration : 0,
+          isChord: true,
+          isFever: false,
+          pitchNorm,
+          drumPart: null,
+          hit: false,
+          holding: false,
+          holdCompleted: false,
+          missed: false,
+        });
+      });
+    } else {
+      notes.push({
+        id: `${trackId}_wp_${notes.length}`,
+        lane,
+        hitTimeSec: Number(ev.time.toFixed(4)),
+        sustainDuration,
+        isChord: false,
+        isFever: false,
+        pitchNorm,
+        drumPart: null,
+        hit: false,
+        holding: false,
+        holdCompleted: false,
+        missed: false,
+      });
+    }
+
+    prevLane = lane;
+  }
+
+  markFeverNotes(notes);
+  return { bpm, beatGrid, sections, notes };
+}
+
+/**
  * Public entry point:
  *  1. Runs our Sub-Second Web Worker DP Beat-Grid + Song-Section Segmentation + Multi-Cue FFT engine
  *     (reusing cached workerAnalysis for instant 0ms switches!).
@@ -1845,7 +1985,14 @@ export async function analyzeAndBuildChart({
   }
 
   // 3. Build Instrument-Distinct Chart directly from Sub-Second Web Worker Dynamic Beat & FFT Analysis
-  onProgress(0.92, instrument === 'drums' ? 'Mapping Kick, Snare & Cymbal hits…' : 'Quantizing to dynamic beat grid…');
+  onProgress(
+    0.92,
+    instrument === 'drums'
+      ? 'Mapping Kick, Snare & Cymbal hits…'
+      : instrument === 'piano'
+        ? 'Voicing Piano/Keys chords & melodic runs…'
+        : 'Quantizing to dynamic beat grid…'
+  );
   let result;
   if (instrument === 'drums') {
     result = buildDrumsChartFromWorker({
@@ -1856,6 +2003,13 @@ export async function analyzeAndBuildChart({
     });
   } else if (instrument === 'bass') {
     result = buildBassChartFromWorker({
+      workerAnalysis,
+      trackId,
+      laneCount,
+      difficultyConfig,
+    });
+  } else if (instrument === 'piano') {
+    result = buildPianoChartFromWorker({
       workerAnalysis,
       trackId,
       laneCount,

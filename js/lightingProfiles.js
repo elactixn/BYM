@@ -146,6 +146,7 @@ const INSTRUMENT_ACCENTS = {
   guitar: 0x06b6d4,
   bass: 0x8b5cf6,
   drums: 0xf59e0b,
+  piano: 0xec4899,
 };
 
 export class LightingProfileController {
@@ -327,14 +328,31 @@ export class LightingProfileController {
     const instHex = INSTRUMENT_ACCENTS[instrument] || 0x06b6d4;
     this._instColor.setHex(instHex);
 
-    // Blend venue fog color with mood tint so every real-world venue keeps its identity
+    // Blend venue fog, sky & key colors with mood tint so every real-world & themed stage keeps its identity
     this._venueColor.setHex(venueFogHex);
-    this._targetColor.setHex(p.fogTint).lerp(this._venueColor, 0.5);
+    this._targetColor.setHex(p.fogTint).lerp(this._venueColor, 0.56);
     this.fogColor.lerp(this._targetColor, lerpRate);
 
-    this.hemiSky.lerp(this._targetColor.setHex(p.hemiSky), lerpRate);
-    this.hemiGround.lerp(this._targetColor.setHex(p.hemiGround), lerpRate);
-    this.keyColor.lerp(this._targetColor.setHex(p.keyColor), lerpRate);
+    this._targetColor.setHex(p.hemiSky);
+    if (venueMeta?.hemiSky != null) {
+      this._venueColor.setHex(venueMeta.hemiSky);
+      this._targetColor.lerp(this._venueColor, 0.38);
+    }
+    this.hemiSky.lerp(this._targetColor, lerpRate);
+
+    this._targetColor.setHex(p.hemiGround);
+    if (venueMeta?.hemiGround != null) {
+      this._venueColor.setHex(venueMeta.hemiGround);
+      this._targetColor.lerp(this._venueColor, 0.35);
+    }
+    this.hemiGround.lerp(this._targetColor, lerpRate);
+
+    this._targetColor.setHex(p.keyColor);
+    if (venueMeta?.keyColor != null) {
+      this._venueColor.setHex(venueMeta.keyColor);
+      this._targetColor.lerp(this._venueColor, 0.28);
+    }
+    this.keyColor.lerp(this._targetColor, lerpRate);
 
     // Blend verse/chorus primary accents subtly with the player's chosen instrument color
     const keepInstrumentHue = moodId === 'VERSE_GROOVE' || moodId === 'INTRO_MOOD';

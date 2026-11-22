@@ -726,6 +726,7 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   const snareBodyEnergy = new Float32Array(numFrames);
   const guitarEnergy = new Float32Array(numFrames);
   const guitarHighEnergy = new Float32Array(numFrames);
+  const pianoEnergy = new Float32Array(numFrames);
   const snapEnergy = new Float32Array(numFrames);
   const cymbalEnergy = new Float32Array(numFrames);
   const bandProfiles = new Float32Array(numFrames * 6); // 6-band spectral timbre profile for section novelty
@@ -735,11 +736,14 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   const snareFlux = new Float32Array(numFrames);
   const cymbalFlux = new Float32Array(numFrames);
   const guitarFlux = new Float32Array(numFrames);
+  const pianoFlux = new Float32Array(numFrames);
   const combinedFlux = new Float32Array(numFrames);
 
   const guitarHnr = new Float32Array(numFrames);
   const highFlatness = new Float32Array(numFrames);
   const guitarPitchHz = new Float32Array(numFrames);
+  const pianoPitchHz = new Float32Array(numFrames);
+  const pianoPeakCount = new Uint8Array(numFrames);
   const bassPeakHz = new Float32Array(numFrames);
 
   prevMag.fill(0);
@@ -749,6 +753,8 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   const KICK_HI = 4; // ~110Hz (weighted down at bin 4)
   const BASS_LO = 1; // ~40Hz
   const BASS_HI = 7; // ~220Hz
+  const PIANO_LO = 4; // ~125Hz (MIDI 48 = 130.8Hz)
+  const PIANO_HI = 71; // ~2218Hz (MIDI 84 = 1046Hz + 2nd harmonic)
   const SNARE_BODY_LO = 6; // 187.5Hz
   const SNARE_BODY_HI = 11; // 344Hz
   const GUITAR_LO = 8; // 250Hz
@@ -765,6 +771,7 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   let prevSnapE = 0;
   let prevCymbalE = 0;
   let lastGuitarHz = 440;
+  let lastPianoHz = 392;
   let lastBassHz = 92;
 
   const progressStride = Math.max(200, Math.floor(numFrames / 8));
@@ -911,6 +918,41 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     }
     guitarPitchHz[f] = lastGuitarHz;
 
+    // 4B. Piano / Keys Harmonic Mid-Range (130Hz–2.2kHz / MIDI 48–84) with polyphonic peak counting
+    let pSum = 0;
+    let pFlux = 0;
+    let pWeightedHz = 0;
+    let pWeightedSum = 0;
+    let pMax = 0;
+    for (let k = PIANO_LO; k <= PIANO_HI; k += 1) {
+      const m = curMag[k];
+      pSum += m;
+      if (m > pMax) pMax = m;
+      const d = m - prevMag[k];
+      if (d > 0) pFlux += d;
+      const w = m * m;
+      pWeightedHz += w * (k * BIN_HZ);
+      pWeightedSum += w;
+    }
+    const pBins = PIANO_HI - PIANO_LO + 1;
+    const pMean = pSum / pBins;
+    pianoEnergy[f] = pMean;
+    pianoFlux[f] = (pFlux / pBins) * 2.9;
+
+    let distinctPeaks = 0;
+    const peakCut = Math.max(pMean * 2.15, pMax * 0.34, 0.0025);
+    for (let k = PIANO_LO + 1; k < PIANO_HI; k += 1) {
+      const m = curMag[k];
+      if (m >= peakCut && m >= curMag[k - 1] && m > curMag[k + 1]) {
+        distinctPeaks += 1;
+      }
+    }
+    pianoPeakCount[f] = Math.min(12, distinctPeaks);
+    if (pWeightedSum > 1e-8 && pMean > 0.0014) {
+      lastPianoHz = Math.max(130, Math.min(2200, pWeightedHz / pWeightedSum));
+    }
+    pianoPitchHz[f] = lastPianoHz;
+
     // 5. Snare Wire Snap (2.5kHz–6kHz) + Hi-Hat/Cymbal Sheen (>6.4kHz) + High-Band Spectral Flatness
     let snapSum = 0;
     let snapPosFlux = 0;
@@ -980,6 +1022,8 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   // =========================================================================
   const guitarFloors = computeLocalRollingFloors(guitarEnergy, 2.5, HOP_SEC);
   const guitarFluxFloors = computeLocalRollingFloors(guitarFlux, 2.5, HOP_SEC);
+  const pianoFloors = computeLocalRollingFloors(pianoEnergy, 2.5, HOP_SEC);
+  const pianoFluxFloors = computeLocalRollingFloors(pianoFlux, 2.5, HOP_SEC);
   const bassFloors = computeLocalRollingFloors(bassEnergy, 2.5, HOP_SEC);
   const bassFluxFloors = computeLocalRollingFloors(bassFlux, 2.5, HOP_SEC);
   const kickFloors = computeLocalRollingFloors(kickFlux, 2.5, HOP_SEC);
@@ -1358,6 +1402,88 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   }
 
   // =========================================================================
+  // 3B. PIANO / KEYS ONSETS (130Hz–2.2kHz / MIDI 48–84 Polyphonic Chords & Arpeggios)
+  // =========================================================================
+  const pianoActiveFrame = new Uint8Array(numFrames);
+  const pianoOnsets = [];
+  let lastPianoTime = -1;
+
+  for (let f = 2; f < numFrames - 2; f += 1) {
+    const t = f * HOP_SEC;
+    if (t < 0.06 || t > actualDuration - 0.1) continue;
+
+    const pE = pianoEnergy[f];
+    const pf = pianoFlux[f];
+    const pFloor = pianoFloors.floor[f];
+    const pfMed = pianoFluxFloors.median[f];
+    const pfFloor = pianoFluxFloors.floor[f];
+    const peaks = pianoPeakCount[f];
+
+    const isPianoPresent =
+      pE >= Math.max(0.0016, pFloor * 1.12) &&
+      (peaks >= 2 || guitarHnr[f] >= 2.2 || pE >= Math.max(0.007, pFloor * 1.55));
+
+    if (isPianoPresent) {
+      pianoActiveFrame[f] = 1;
+    }
+
+    if (pf < pianoFlux[f - 1] || pf <= pianoFlux[f + 1]) continue;
+
+    const polyBonus = peaks >= 3 ? 0.82 : 1.0;
+    const localThresh = Math.max(
+      0.0018,
+      (pfMed * 1.24 + pfFloor * 0.5 + 0.0014) * polyBonus
+    );
+
+    if (isPianoPresent && pf >= localThresh && t - lastPianoTime >= 0.085) {
+      const peakE = Math.max(pE, pianoEnergy[Math.min(numFrames - 1, f + 2)]);
+      const sustainFloor = Math.max(0.0014, peakE * 0.4);
+      let holdFrames = 0;
+      const maxHold = Math.min(280, numFrames - 1 - f);
+      for (let h = 3; h <= maxHold; h += 1) {
+        if (h > 8 && pianoFlux[f + h] > localThresh * 1.38 && pianoFlux[f + h] >= pianoFlux[f + h - 1]) {
+          break;
+        }
+        if (pianoEnergy[f + h] >= sustainFloor) {
+          holdFrames = h;
+        } else {
+          break;
+        }
+      }
+
+      const pFrame = Math.min(numFrames - 1, f + 2);
+      pianoOnsets.push({
+        time: Number(t.toFixed(4)),
+        pitchHz: Number(pianoPitchHz[pFrame].toFixed(2)),
+        strength: Number((pf / Math.max(0.001, localThresh)).toFixed(3)),
+        energy: Number(pE.toFixed(5)),
+        sectionEnergy: Number(localOverallEnergy[f].toFixed(5)),
+        peakCount: peaks,
+        isPolyphonic: peaks >= 3,
+        sustainSec: Number((holdFrames * HOP_SEC).toFixed(3)),
+      });
+      lastPianoTime = t;
+    }
+  }
+
+  // Dilate piano active mask gently
+  {
+    let gap = 0;
+    let seen = false;
+    for (let f = 0; f < numFrames; f += 1) {
+      if (pianoActiveFrame[f] === 1) {
+        if (seen && gap > 0 && gap <= 45) {
+          for (let k = f - gap; k < f; k += 1) pianoActiveFrame[k] = 1;
+        }
+        seen = true;
+        gap = 0;
+      } else if (seen) {
+        gap += 1;
+      }
+    }
+  }
+
+  // =========================================================================
   // 4. DOWNSAMPLE PER-STEM ACTIVITY TIMELINE TO 50ms HOP (compact Uint8Arrays)
   // =========================================================================
   const ratio = Math.max(1, Math.round(ACTIVITY_HOP_SEC / HOP_SEC)); // 5 frames per 50ms
@@ -1365,6 +1491,7 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   const actDrums = new Uint8Array(actLen);
   const actBass = new Uint8Array(actLen);
   const actGuitar = new Uint8Array(actLen);
+  const actPiano = new Uint8Array(actLen);
 
   for (let a = 0; a < actLen; a += 1) {
     const start = a * ratio;
@@ -1372,14 +1499,17 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     let dOn = 0;
     let bOn = 0;
     let gOn = 0;
+    let pOn = 0;
     for (let f = start; f < end; f += 1) {
       if (drumActiveFrame[f]) dOn = 1;
       if (bassActiveFrame[f]) bOn = 1;
       if (guitarActiveFrame[f]) gOn = 1;
+      if (pianoActiveFrame[f]) pOn = 1;
     }
     actDrums[a] = dOn;
     actBass[a] = bOn;
     actGuitar[a] = gOn;
+    actPiano[a] = pOn;
   }
 
   // 2-frame lookahead dilation (100ms) so the very first attack of any instrument entry is never clipped
@@ -1400,6 +1530,7 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     drums: dilate2(actDrums),
     bass: dilate2(actBass),
     guitar: dilate2(actGuitar),
+    piano: dilate2(actPiano),
   };
 
   // =========================================================================
@@ -1430,6 +1561,7 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     duration: actualDuration,
     chorusEnergyFloor: Number(chorusEnergyFloor.toFixed(5)),
     guitarOnsets,
+    pianoOnsets,
     bassOnsets,
     drumEvents,
     stemActivity,
@@ -1468,6 +1600,7 @@ if (isWorkerContext) {
           analysis.stemActivity.drums.buffer,
           analysis.stemActivity.bass.buffer,
           analysis.stemActivity.guitar.buffer,
+          analysis.stemActivity.piano.buffer,
         ]
       );
     } catch (err) {
