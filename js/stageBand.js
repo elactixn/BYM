@@ -26,6 +26,7 @@ import {
   buildCustomDrumKitMesh,
   buildCustomKeyboardMesh,
   getStarLookById,
+  createAmpGrilleSkinTexture,
 } from './bandGearCatalog.js';
 import { CameraDirector } from './cameraDirector.js';
 import { LightingProfileController } from './lightingProfiles.js';
@@ -1029,7 +1030,7 @@ function buildAmpStack(accentColor, grillTex) {
   subCone.position.set(0, 0.46, 1.44);
 
   group.add(lowerCab, lowerGrill, upperCab, upperGrill, headAmp, goldFace, ledStrip, subCab, subCone);
-  return { group, ledMat, subCone };
+  return { group, ledMat, subCone, grillMat };
 }
 
 /**
@@ -1108,7 +1109,9 @@ export class StageBand {
       drumKitModelId = 'pop-single-kick',
       keyboardModelId = 'concert-grand',
       starLookId = 'default-band',
+      instrumentSkinId = 'classic-sunburst',
       onFireworkBurst = null,
+      onProjectileImpact = null,
     } = {}
   ) {
     this.canvas = canvas;
@@ -1116,7 +1119,7 @@ export class StageBand {
     this.isSoftwareGl = false;
     this.clock = 0;
 
-    // Active venue, lineup, custom 3D gear, star looks, camera director & lighting profiles
+    // Active venue, lineup, custom 3D gear, star looks, PBR skins, camera director & lighting profiles
     this.venueId = venueId;
     this.venueEnv = null;
     this.cameraMode = cameraMode; // 'on' | 'subtle' | 'locked'
@@ -1127,7 +1130,18 @@ export class StageBand {
     this.drumKitModelId = drumKitModelId;
     this.keyboardModelId = keyboardModelId;
     this.starLookId = starLookId;
+    this.instrumentSkinId = instrumentSkinId;
     this.onFireworkBurst = onFireworkBurst;
+    this.onProjectileImpact = onProjectileImpact;
+
+    // 60 FPS Adaptive Quality Guard & Angry Crowd Projectile / Flinch state
+    this.adaptiveLowPower = false;
+    this.flinchTimers = { guitar: 0, bass: 0, drums: 0, piano: 0, vocals: 0 };
+    this.lastThrowClock = -10;
+    this.projectilePool = [];
+    this.splatParticles = [];
+    this.splatCursor = 0;
+    this.ampGrillMats = [];
 
     this.guitarAsset = null;
     this.bassAsset = null;
@@ -1281,7 +1295,7 @@ export class StageBand {
     this.renderer.toneMappingExposure = 1.18;
     this.renderer.shadowMap.enabled = !this.isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.isSoftwareGl ? 1 : 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.isSoftwareGl ? 1 : 1.5));
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x050814);
@@ -1303,6 +1317,7 @@ export class StageBand {
     this.buildPerformingBand();
     this.buildFullBodiedCrowd3D();
     this.buildPyrotechnicsAndFX();
+    this.buildCrowdProjectilePool();
     this.setVenue(this.venueId);
 
     this.resize();
@@ -1360,6 +1375,16 @@ export class StageBand {
     spotConfigs.forEach((cfg) => {
       const spot = new THREE.SpotLight(cfg.color, 38, 28, Math.PI / 5.0, 0.62, 1.2);
       spot.position.set(cfg.x * 1.05, 8.6, cfg.z + 1.4);
+      // Strict 2-light shadow budget: frontKey + 1 primary hero spotlight ('guitar')
+      if (!this.isSoftwareGl && cfg.key === 'guitar') {
+        spot.castShadow = true;
+        spot.shadow.mapSize.set(1024, 1024);
+        spot.shadow.camera.near = 2;
+        spot.shadow.camera.far = 24;
+        spot.shadow.bias = -0.001;
+      } else {
+        spot.castShadow = false;
+      }
       const target = new THREE.Object3D();
       target.position.set(cfg.x, cfg.targetY, cfg.z);
       this.scene.add(target);
@@ -1391,7 +1416,7 @@ export class StageBand {
 
     // Glossy dark brushed-metal concert stage deck (top surface strictly at y = 0)
     this.deckTex = createBrushedMetalTexture();
-    this.ampGrillTex = createAmpGrillTexture();
+    this.ampGrillTex = createAmpGrilleSkinTexture(this.instrumentSkinId);
     const deckMat = new THREE.MeshStandardMaterial({
       map: this.deckTex,
       color: 0xdbeafe,
@@ -1535,6 +1560,7 @@ export class StageBand {
     stageGroup.add(rightAmp.group);
 
     this.ampLedMats = [leftAmp.ledMat, rightAmp.ledMat];
+    this.ampGrillMats = [leftAmp.grillMat, rightAmp.grillMat];
     this.subCones = [leftAmp.subCone, rightAmp.subCone];
 
     // Stage Floor Monitor Wedges + realistic coiled stage mic cables
@@ -1902,6 +1928,18 @@ export class StageBand {
       vocals: this.vocalist,
     };
 
+    // Strict shadow budget: castShadow = true strictly on the 5 performing band members
+    if (!this.isSoftwareGl) {
+      Object.values(this.membersByRole).forEach((member) => {
+        member?.root?.traverse((obj) => {
+          if (obj.isMesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = false;
+          }
+        });
+      });
+    }
+
     // Mount initial custom 3D gear, star lookalike & lineup geometry
     this.swapGuitarMesh(this.guitarModelId);
     this.swapBassMesh(this.bassModelId);
@@ -1961,7 +1999,7 @@ export class StageBand {
       this.guitarAsset.dispose?.();
       this.guitarAsset = null;
     }
-    const built = buildCustomGuitarMesh(this.guitarModelId);
+    const built = buildCustomGuitarMesh(this.guitarModelId, this.instrumentSkinId);
     built.group.position.set(0.08, 0.42, 0.36);
     built.group.rotation.set(0.06, 0.08, 0.26);
     this.guitarAsset = built;
@@ -1978,7 +2016,7 @@ export class StageBand {
       this.bassAsset.dispose?.();
       this.bassAsset = null;
     }
-    const built = buildCustomBassMesh(this.bassModelId);
+    const built = buildCustomBassMesh(this.bassModelId, this.instrumentSkinId);
     built.group.position.set(0.06, 0.44, 0.36);
     built.group.rotation.set(0.05, -0.08, 0.3);
     this.bassAsset = built;
@@ -1995,7 +2033,10 @@ export class StageBand {
       this.drumKitAsset.dispose?.();
       this.drumKitAsset = null;
     }
-    const built = buildCustomDrumKitMesh(this.drumKitModelId, { forceDoubleKick });
+    const built = buildCustomDrumKitMesh(this.drumKitModelId, {
+      forceDoubleKick,
+      skinId: this.instrumentSkinId,
+    });
     built.group.position.set(0, 0.64, -3.4);
     this.drumKitAsset = built;
     this.drumKit = built;
@@ -2011,7 +2052,7 @@ export class StageBand {
       this.keyboardAsset.dispose?.();
       this.keyboardAsset = null;
     }
-    const built = buildCustomKeyboardMesh(this.keyboardModelId);
+    const built = buildCustomKeyboardMesh(this.keyboardModelId, this.instrumentSkinId);
     this.keyboardAsset = built;
 
     if (built.isKeytar && this.keyboardist) {
@@ -2184,6 +2225,34 @@ export class StageBand {
     this.applyStarLook(id);
   }
 
+  setInstrumentSkin(skinId) {
+    this.instrumentSkinId = skinId || 'classic-sunburst';
+    const marks = this.getLineupMarks();
+    this.swapGuitarMesh(this.guitarModelId);
+    this.swapBassMesh(this.bassModelId);
+    this.swapDrumKitMesh(this.drumKitModelId, marks.forceDoubleKick);
+    this.swapKeyboardMesh(this.keyboardModelId);
+
+    // Swap amp cabinet grille texture cleanly and dispose old texture
+    const prevGrillTex = this.ampGrillTex;
+    this.ampGrillTex = createAmpGrilleSkinTexture(this.instrumentSkinId);
+    for (let i = 0; i < this.ampGrillMats.length; i += 1) {
+      this.ampGrillMats[i].map = this.ampGrillTex;
+      this.ampGrillMats[i].needsUpdate = true;
+    }
+    prevGrillTex?.dispose?.();
+  }
+
+  setAdaptiveQualityMode(lowPower) {
+    const next = Boolean(lowPower);
+    if (this.adaptiveLowPower === next) return;
+    this.adaptiveLowPower = next;
+    if (this.renderer) {
+      const targetDpr = next ? 1 : Math.min(window.devicePixelRatio || 1, this.isSoftwareGl ? 1 : 1.5);
+      this.renderer.setPixelRatio(targetDpr);
+    }
+  }
+
   resetCameraForSong() {
     this.resetBandMotion();
     this.cameraDirector?.resetForSong();
@@ -2337,6 +2406,7 @@ export class StageBand {
 
     [
       this.crowdLegsMesh,
+      this.crowdBeltMesh,
       this.crowdTorsoMesh,
       this.crowdHeadMesh,
       this.crowdHairMesh,
@@ -2346,8 +2416,12 @@ export class StageBand {
       this.crowdUpperArmRMesh,
       this.crowdForearmLMesh,
       this.crowdForearmRMesh,
+      this.lightstickMesh,
     ].forEach((m) => {
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      m.castShadow = false;
+      m.receiveShadow = false;
+      m.frustumCulled = false;
     });
 
     this.scene.add(
@@ -2786,6 +2860,320 @@ export class StageBand {
   }
 
   /**
+   * Pre-allocates 10 pooled theme-aware Angry Crowd Projectiles + 120 pooled stage splat particles
+   * for zero per-frame allocations during gameplay.
+   */
+  buildCrowdProjectilePool() {
+    this.projectilePool = [];
+    const poolSize = 10;
+
+    // Shared geometries & materials across pool (minimal draw calls & zero GC)
+    const tomatoGeo = new THREE.SphereGeometry(0.16, 10, 8);
+    const stemGeo = new THREE.ConeGeometry(0.05, 0.08, 5);
+    const cupGeo = new THREE.CylinderGeometry(0.11, 0.075, 0.24, 10);
+    const snowGeo = new THREE.IcosahedronGeometry(0.16, 1);
+    const pumpkinGeo = new THREE.SphereGeometry(0.18, 10, 8);
+    const fanGeo = new THREE.ConeGeometry(0.22, 0.24, 8);
+    const ballGeo = new THREE.SphereGeometry(0.22, 12, 10);
+
+    const tomatoMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.32, metalness: 0.05 });
+    const stemMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.65 });
+    const cupMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.52, metalness: 0.08 });
+    const snowMat = new THREE.MeshStandardMaterial({ color: 0xe0f2fe, roughness: 0.45, emissive: 0x38bdf8, emissiveIntensity: 0.18 });
+    const pumpkinMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.48, emissive: 0x7c2d12, emissiveIntensity: 0.2 });
+    const sakuraMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.35, emissive: 0xbe185d, emissiveIntensity: 0.25 });
+    const ballMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.25, emissive: 0xfacc15, emissiveIntensity: 0.22 });
+
+    for (let i = 0; i < poolSize; i += 1) {
+      const root = new THREE.Group();
+      root.visible = false;
+
+      // Variant 1: Tomato
+      const tomatoGroup = new THREE.Group();
+      const tBody = new THREE.Mesh(tomatoGeo, tomatoMat);
+      tBody.scale.set(1.1, 0.88, 1.1);
+      const tStem = new THREE.Mesh(stemGeo, stemMat);
+      tStem.position.y = 0.15;
+      tomatoGroup.add(tBody, tStem);
+
+      // Variant 2: Crumpled Cup
+      const cupMesh = new THREE.Mesh(cupGeo, cupMat);
+      cupMesh.scale.set(1, 1, 0.72);
+
+      // Variant 3: Snowball (Christmas Wonderland)
+      const snowMesh = new THREE.Mesh(snowGeo, snowMat);
+
+      // Variant 4: Mini Pumpkin (Halloween Cathedral)
+      const pumpkinGroup = new THREE.Group();
+      const pBody = new THREE.Mesh(pumpkinGeo, pumpkinMat);
+      pBody.scale.set(1.15, 0.86, 1.15);
+      const pStem = new THREE.Mesh(stemGeo, stemMat);
+      pStem.position.y = 0.17;
+      pumpkinGroup.add(pBody, pStem);
+
+      // Variant 5: Sakura Fan (Sakura Festival)
+      const fanMesh = new THREE.Mesh(fanGeo, sakuraMat);
+      fanMesh.scale.set(1.2, 1.0, 0.24);
+
+      // Variant 6: Beach Ball (Tropical Beach)
+      const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+
+      const variants = {
+        tomato: tomatoGroup,
+        cup: cupMesh,
+        snowball: snowMesh,
+        pumpkin: pumpkinGroup,
+        sakuraFan: fanMesh,
+        beachBall: ballMesh,
+      };
+      Object.values(variants).forEach((v) => {
+        v.visible = false;
+        root.add(v);
+      });
+
+      this.scene.add(root);
+      this.projectilePool.push({
+        active: false,
+        bouncing: false,
+        root,
+        variants,
+        activeVariant: 'tomato',
+        splatHex: 0xef4444,
+        targetRole: 'guitar',
+        x: 0,
+        y: -50,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        spinX: 0,
+        spinY: 0,
+        spinZ: 0,
+        life: 0,
+        maxLife: 1.8,
+      });
+    }
+
+    // Pre-allocated 120-slot stage splat particle buffer
+    this.splatCount = 120;
+    const splatPos = new Float32Array(this.splatCount * 3);
+    const splatCol = new Float32Array(this.splatCount * 3);
+    this.splatParticles = [];
+    for (let i = 0; i < this.splatCount; i += 1) {
+      splatPos[i * 3 + 1] = -999;
+      this.splatParticles.push({
+        active: false,
+        x: 0,
+        y: -999,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        r: 1,
+        g: 0.25,
+        b: 0.25,
+        life: 0,
+        maxLife: 0.65,
+      });
+    }
+    const splatGeo = new THREE.BufferGeometry();
+    splatGeo.setAttribute('position', new THREE.BufferAttribute(splatPos, 3));
+    splatGeo.setAttribute('color', new THREE.BufferAttribute(splatCol, 3));
+    const splatMat = new THREE.PointsMaterial({
+      size: 0.34,
+      map: this.glowTex,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+    });
+    this.splatPoints = new THREE.Points(splatGeo, splatMat);
+    this.splatPoints.frustumCulled = false;
+    this.scene.add(this.splatPoints);
+  }
+
+  /**
+   * Launches a pooled theme-aware projectile from the front-row crowd toward a band member.
+   */
+  triggerCrowdThrow({ targetRole = null, laneIndex = 2, forced = false } = {}) {
+    if (!this.projectilePool || this.projectilePool.length === 0) return;
+    if (!forced && this.clock - this.lastThrowClock < 0.55) return;
+    this.lastThrowClock = this.clock;
+
+    const slot = this.projectilePool.find((p) => !p.active);
+    if (!slot) return;
+
+    const role = targetRole || this.activeInstrument || 'guitar';
+    const targetPos = this.livePositions?.[role] || { x: 0, y: 0, z: -1.1 };
+
+    // Pick a front-row crowd fan seed as the launch point
+    const frontCount = Math.min(28, this.crowdSeeds.length);
+    const seed = frontCount > 0 ? this.crowdSeeds[Math.floor(Math.random() * frontCount)] : null;
+    const startX = seed ? seed.x * 0.72 : (laneIndex - 2) * 2.2 + (Math.random() - 0.5) * 1.6;
+    const startY = seed ? seed.floorY + 1.55 : 0.6;
+    const startZ = seed ? Math.min(8.5, seed.z) : 6.2;
+
+    const flightTime = 0.52 + Math.random() * 0.14;
+    const gravity = 15.8;
+    const aimX = targetPos.x + (Math.random() - 0.5) * 0.45;
+    const aimY = targetPos.y + 1.15 + (Math.random() - 0.5) * 0.25;
+    const aimZ = targetPos.z;
+
+    // Pick theme-aware prop matching the current concert venue
+    let variant = Math.random() < 0.62 ? 'tomato' : 'cup';
+    let splatHex = variant === 'tomato' ? 0xef4444 : 0xe2e8f0;
+    if (this.venueId === 'christmas-wonderland') {
+      variant = 'snowball';
+      splatHex = 0xe0f2fe;
+    } else if (this.venueId === 'halloween-cathedral') {
+      variant = 'pumpkin';
+      splatHex = 0xf97316;
+    } else if (this.venueId === 'sakura-festival') {
+      variant = 'sakuraFan';
+      splatHex = 0xf472b6;
+    } else if (this.venueId === 'tropical-beach') {
+      variant = 'beachBall';
+      splatHex = 0x38bdf8;
+    }
+
+    Object.entries(slot.variants).forEach(([k, mesh]) => {
+      mesh.visible = k === variant;
+    });
+
+    slot.active = true;
+    slot.bouncing = false;
+    slot.activeVariant = variant;
+    slot.splatHex = splatHex;
+    slot.targetRole = role;
+    slot.x = startX;
+    slot.y = startY;
+    slot.z = startZ;
+    slot.vx = (aimX - startX) / flightTime;
+    slot.vz = (aimZ - startZ) / flightTime;
+    slot.vy = (aimY - startY + 0.5 * gravity * flightTime * flightTime) / flightTime;
+    slot.spinX = (Math.random() - 0.5) * 14;
+    slot.spinY = (Math.random() - 0.5) * 14;
+    slot.spinZ = (Math.random() - 0.5) * 14;
+    slot.life = 0;
+    slot.maxLife = flightTime + 0.55;
+
+    slot.root.position.set(startX, startY, startZ);
+    slot.root.visible = true;
+  }
+
+  spawnSplatBurst(x, y, z, hexColor) {
+    const count = this.adaptiveLowPower ? 8 : 16;
+    this._colorC.setHex(hexColor);
+    for (let i = 0; i < count; i += 1) {
+      const p = this.splatParticles[this.splatCursor];
+      this.splatCursor = (this.splatCursor + 1) % this.splatCount;
+      const a = Math.random() * Math.PI * 2;
+      const spd = 1.2 + Math.random() * 2.8;
+      p.active = true;
+      p.x = x;
+      p.y = Math.max(0.15, y);
+      p.z = z;
+      p.vx = Math.cos(a) * spd;
+      p.vy = 1.4 + Math.random() * 2.6;
+      p.vz = Math.sin(a) * spd;
+      p.r = this._colorC.r;
+      p.g = this._colorC.g;
+      p.b = this._colorC.b;
+      p.life = 0;
+      p.maxLife = 0.36 + Math.random() * 0.28;
+    }
+  }
+
+  updateCrowdProjectiles(dt) {
+    const gravity = 15.8;
+
+    // 1. Decay musician flinch timers
+    Object.keys(this.flinchTimers).forEach((k) => {
+      if (this.flinchTimers[k] > 0) {
+        this.flinchTimers[k] = Math.max(0, this.flinchTimers[k] - dt);
+      }
+    });
+
+    // 2. Step pooled flying projectiles
+    for (let i = 0; i < this.projectilePool.length; i += 1) {
+      const p = this.projectilePool[i];
+      if (!p.active) continue;
+
+      p.life += dt;
+      p.vy -= gravity * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+
+      p.root.position.set(p.x, p.y, p.z);
+      p.root.rotation.x += p.spinX * dt;
+      p.root.rotation.y += p.spinY * dt;
+      p.root.rotation.z += p.spinZ * dt;
+
+      const targetPos = this.livePositions?.[p.targetRole] || { x: 0, y: 0, z: -1.1 };
+      const dx = p.x - targetPos.x;
+      const dz = p.z - targetPos.z;
+      const dy = p.y - (targetPos.y + 1.15);
+      const hitMusician = !p.bouncing && dx * dx + dz * dz < 0.78 && Math.abs(dy) < 0.95;
+      const hitFloor = !p.bouncing && p.y <= 0.14;
+
+      if (hitMusician || hitFloor) {
+        p.bouncing = true;
+        p.y = Math.max(0.14, p.y);
+        p.vy = hitMusician ? 2.4 : 2.8;
+        p.vx *= -0.35;
+        p.vz = Math.abs(p.vz) * 0.38;
+        this.spawnSplatBurst(p.x, p.y, p.z, p.splatHex);
+        if (hitMusician && this.flinchTimers[p.targetRole] !== undefined) {
+          this.flinchTimers[p.targetRole] = 0.48;
+        }
+        if (typeof this.onProjectileImpact === 'function') {
+          const pan = Math.max(-0.85, Math.min(0.85, p.x / 6.5));
+          this.onProjectileImpact(pan);
+        }
+      }
+
+      if (p.life >= p.maxLife || p.y < -2.0) {
+        p.active = false;
+        p.root.visible = false;
+      }
+    }
+
+    // 3. Step pre-allocated splat particle buffer
+    if (this.splatPoints) {
+      const posArr = this.splatPoints.geometry.attributes.position.array;
+      const colArr = this.splatPoints.geometry.attributes.color.array;
+      let anyUpdated = false;
+      for (let i = 0; i < this.splatCount; i += 1) {
+        const sp = this.splatParticles[i];
+        if (!sp.active) continue;
+        anyUpdated = true;
+        sp.life += dt;
+        if (sp.life >= sp.maxLife) {
+          sp.active = false;
+          posArr[i * 3 + 1] = -999;
+          continue;
+        }
+        sp.vy -= 11.5 * dt;
+        sp.x += sp.vx * dt;
+        sp.y = Math.max(0.05, sp.y + sp.vy * dt);
+        sp.z += sp.vz * dt;
+        const fade = 1 - sp.life / sp.maxLife;
+        posArr[i * 3] = sp.x;
+        posArr[i * 3 + 1] = sp.y;
+        posArr[i * 3 + 2] = sp.z;
+        colArr[i * 3] = sp.r * fade;
+        colArr[i * 3 + 1] = sp.g * fade;
+        colArr[i * 3 + 2] = sp.b * fade;
+      }
+      if (anyUpdated) {
+        this.splatPoints.geometry.attributes.position.needsUpdate = true;
+        this.splatPoints.geometry.attributes.color.needsUpdate = true;
+      }
+    }
+  }
+
+  /**
    * Called on real note hits to drive instrument-matched physical animation impulses!
    */
   notifyNoteEvent({ instrument, lane = 1, pitchNorm = 0.5, drumPart = null, isChord = false } = {}) {
@@ -3005,7 +3393,7 @@ export class StageBand {
   }
 
   detonateFireworkShell(shell) {
-    const starCount = 46;
+    const starCount = this.adaptiveLowPower ? 24 : 46;
     const pal = shell.palette;
     const pan = Math.max(-0.85, Math.min(0.85, shell.x / 13));
     if (typeof this.onFireworkBurst === 'function') {
@@ -4732,6 +5120,17 @@ export class StageBand {
           this.keyboardAsset.ledMat.emissiveIntensity = 0.85 + pianoE * 1.45 + this.pianoHitImpulse * 0.9;
         }
       }
+
+      // 4C. Musician flinch recoil when struck by an angry crowd projectile
+      ['guitar', 'bass', 'drums', 'piano', 'vocals'].forEach((role) => {
+        const ft = this.flinchTimers?.[role] || 0;
+        const member = this.membersByRole?.[role];
+        if (ft > 0 && member) {
+          const pulse = Math.sin((ft / 0.48) * Math.PI);
+          member.upperBody.rotation.x += pulse * 0.34;
+          member.headGroup.rotation.z += pulse * 0.28;
+        }
+      });
     }
 
     // 5. Moving Overhead SpotLights + Soft Volumetric Fresnel Cones that dynamically follow roaming musicians!
@@ -4808,9 +5207,10 @@ export class StageBand {
       }
     }
 
-    // 7. Update Animated Live LED Backdrop Screen & VIP Front-Row Banner (~16 fps)
+    // 7. Update Animated Live LED Backdrop Screen & VIP Front-Row Banner (throttled under Adaptive Quality Guard)
     this.ledUpdateTimer += dt;
-    if (this.ledUpdateTimer >= 0.062) {
+    const ledInterval = this.adaptiveLowPower ? 0.115 : 0.062;
+    if (this.ledUpdateTimer >= ledInterval) {
       this.ledUpdateTimer = 0;
       this.drawLedBackdrop(bassE, guitarE, drumE, fever, encore);
       this.drawVipBanner();
@@ -4827,8 +5227,9 @@ export class StageBand {
       telemetry?.overallEnergy || 0
     );
 
-    // 9. Update 3D Pyrotechnics, Aerial Fireworks, Confetti & Concert Lasers
+    // 9. Update 3D Pyrotechnics, Aerial Fireworks, Confetti, Lasers & Pooled Angry Crowd Projectiles
     this.updatePyrotechnics(dt, stageState, telemetry);
+    this.updateCrowdProjectiles(dt);
 
     // 10. Update Neversoft-Style Rule-Based Concert Camera Director
     this.updateCamera(dt, stageState, telemetry);
@@ -4844,6 +5245,8 @@ export class StageBand {
     this.bassAsset?.dispose?.();
     this.drumKitAsset?.dispose?.();
     this.keyboardAsset?.dispose?.();
+    this.splatPoints?.geometry?.dispose?.();
+    this.splatPoints?.material?.dispose?.();
     this.crowdFaceTex?.dispose();
     this.ledTexture?.dispose();
     this.vipBannerTex?.dispose();

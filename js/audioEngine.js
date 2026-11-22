@@ -933,7 +933,7 @@ export async function splitVirtualStems(audioBuffer) {
    + DIRECT .MID PARSER (@tonejs/midi via ESM CDN + Pure-JS SMF Fallback)
    ============================================================================ */
 
-const WORKER_SAMPLE_RATE = 16000;
+const WORKER_SAMPLE_RATE = 22050;
 const TONEJS_MIDI_ESM_URL = 'https://esm.sh/@tonejs/midi@2.0.28';
 
 let cachedToneMidiMod = null;
@@ -942,10 +942,10 @@ let workerJobSeq = 0;
 const pendingWorkerJobs = new Map();
 
 /**
- * Ultra-fast (~10ms for a 4-minute song) anti-aliased mono 16kHz downsampler
+ * Ultra-fast (~12ms for a 4-minute song) anti-aliased mono 22.05kHz downsampler
  * running purely in typed arrays without OfflineAudioContext overhead.
  */
-export function downsampleToMono16k(audioBuffer) {
+export function downsampleToMono22k(audioBuffer) {
   const srcRate = audioBuffer.sampleRate;
   const srcLen = audioBuffer.length;
   const numCh = audioBuffer.numberOfChannels;
@@ -953,10 +953,10 @@ export function downsampleToMono16k(audioBuffer) {
   const ch1 = numCh > 1 ? audioBuffer.getChannelData(1) : null;
 
   const ratio = srcRate / WORKER_SAMPLE_RATE;
-  const outLen = Math.max(512, Math.floor(srcLen / ratio));
+  const outLen = Math.max(1024, Math.floor(srcLen / ratio));
   const out = new Float32Array(outLen);
 
-  // Simple box-car anti-aliasing average over each downsampling window to prevent high-freq aliasing
+  // Box-car anti-aliasing average over each downsampling window to prevent high-freq aliasing
   const winHalf = Math.max(1, Math.floor(ratio * 0.5));
   for (let i = 0; i < outLen; i += 1) {
     const center = Math.floor(i * ratio);
@@ -978,6 +978,8 @@ export function downsampleToMono16k(audioBuffer) {
 
   return out;
 }
+
+export const downsampleToMono16k = downsampleToMono22k;
 
 function getOrCreateAudioWorker() {
   if (typeof Worker === 'undefined') return null;
@@ -1001,7 +1003,6 @@ function getOrCreateAudioWorker() {
       }
     };
     worker.onerror = (err) => {
-      // Reject all pending jobs and clear broken worker so fallback kicks in smoothly
       pendingWorkerJobs.forEach((job) => job.reject(err));
       pendingWorkerJobs.clear();
       try {
@@ -1019,13 +1020,12 @@ function getOrCreateAudioWorker() {
 }
 
 /**
- * Runs the sub-second pure-JS Radix-2 FFT + Local 2.5s Rolling Noise Floor + HNR
+ * Runs the client-side WASM AI (Essentia.js) + 22.05kHz Median-Filtered HPSS Radix-2 FFT
  * analysis inside a background Web Worker (with transparent main-thread fallback).
- * Returns { bpm, beatSec, beatPhaseSec, duration, chorusEnergyFloor, guitarOnsets, bassOnsets, drumEvents, stemActivity, elapsedMs }.
  */
 export async function analyzeAudioInWorker(audioBuffer, { bpmHint = null, onProgress = () => {} } = {}) {
-  onProgress(0.05, 'Preparing 16kHz audio waveform…');
-  const mono16k = downsampleToMono16k(audioBuffer);
+  onProgress(0.05, 'Preparing 22.05kHz waveform for HPSS & AI beat tracking…');
+  const mono22k = downsampleToMono22k(audioBuffer);
   const duration = Math.max(0.5, audioBuffer.duration);
 
   const worker = getOrCreateAudioWorker();
@@ -1036,11 +1036,14 @@ export async function analyzeAudioInWorker(audioBuffer, { bpmHint = null, onProg
         const timeout = setTimeout(() => {
           pendingWorkerJobs.delete(id);
           reject(new Error('Audio worker timeout'));
-        }, 12000);
+        }, 16000);
 
         pendingWorkerJobs.set(id, {
           onProgress: (pct) => {
-            onProgress(0.08 + Math.max(0, Math.min(1, pct)) * 0.88, 'Scanning riffs, bassline & drum transients…');
+            onProgress(
+              0.08 + Math.max(0, Math.min(1, pct)) * 0.88,
+              pct >= 0.62 ? 'Refining beats & pitch contours…' : 'Separating harmonic & percussive stems…'
+            );
           },
           resolve: (val) => {
             clearTimeout(timeout);
@@ -1052,10 +1055,10 @@ export async function analyzeAudioInWorker(audioBuffer, { bpmHint = null, onProg
           },
         });
 
-        // Transfer mono16k Float32Array zero-copy to the background Web Worker!
+        // Transfer mono22k Float32Array zero-copy to the background Web Worker!
         worker.postMessage(
-          { id, mono16k, bpmHint, duration },
-          [mono16k.buffer]
+          { id, mono22k, sampleRate: WORKER_SAMPLE_RATE, bpmHint, duration },
+          [mono22k.buffer]
         );
       });
       onProgress(0.98, 'Quantizing beat-locked chart…');
@@ -1066,13 +1069,13 @@ export async function analyzeAudioInWorker(audioBuffer, { bpmHint = null, onProg
   }
 
   // Fallback if Worker is unavailable in the environment
-  const { analyzeMono16k } = await import('./audioWorker.js');
-  const fallbackMono = mono16k.byteLength > 0 ? mono16k : downsampleToMono16k(audioBuffer);
+  const { analyzeMono22k } = await import('./audioWorker.js');
+  const fallbackMono = mono22k.byteLength > 0 ? mono22k : downsampleToMono22k(audioBuffer);
   const t0 = performance.now();
-  const analysis = analyzeMono16k(fallbackMono, {
+  const analysis = await analyzeMono22k(fallbackMono, {
     bpmHint,
     duration,
-    onProgress: (pct) => onProgress(0.08 + pct * 0.88, 'Scanning riffs, bassline & drum transients…'),
+    onProgress: (pct) => onProgress(0.08 + pct * 0.88, 'Separating harmonic & percussive stems…'),
   });
   return { ...analysis, elapsedMs: Math.round(performance.now() - t0) };
 }

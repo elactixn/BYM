@@ -60,8 +60,10 @@ export class RhythmCanvas {
     this.avgTimingRatio = 0;
     this.timingMeterAlpha = 0;
 
-    // Cached offscreen procedural rosewood woodgrain pattern for 'rosewood-classic' skin
+    // Cached offscreen procedural rosewood woodgrain pattern & static deck gradients
     this.rosewoodPattern = this.createRosewoodPattern();
+    this.cachedDeckGrads = {};
+    this.lowParticleMode = false;
 
     // Pooled note hit particles
     this.particles = Array.from({ length: PARTICLE_POOL_SIZE }, () => ({
@@ -146,13 +148,18 @@ export class RhythmCanvas {
       ? this.canvas.parentElement.getBoundingClientRect()
       : { width: window.innerWidth, height: window.innerHeight };
 
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     this.width = Math.max(320, Math.floor(rect.width));
     this.height = Math.max(280, Math.floor(rect.height));
 
     this.canvas.width = Math.floor(this.width * this.dpr);
     this.canvas.height = Math.floor(this.height * this.dpr);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.cachedDeckGrads = {};
+  }
+
+  setLowParticleMode(low) {
+    this.lowParticleMode = Boolean(low);
   }
 
   getHighwayGeometry() {
@@ -351,6 +358,40 @@ export class RhythmCanvas {
     }
   }
 
+  triggerHazardDetonateVisual(laneIndex) {
+    const geom = this.getHighwayGeometry();
+    const laneCount = this.getGameState().laneCount;
+    const laneW = geom.bottomWidth / laneCount;
+    const hitX = geom.cx - geom.bottomWidth * 0.5 + laneW * (laneIndex + 0.5);
+
+    this.padPulse[laneIndex] = 1.0;
+    this.shakeAmount = Math.max(this.shakeAmount, 10.5);
+    this.spawnStereoRipple(hitX, geom.hitY, '#ef4444', true, true);
+    this.spawnBurst(hitX, geom.hitY, { base: '#ef4444', bright: '#fde047' }, 24, true);
+
+    this.judgementPopup = {
+      text: 'PANGGULO HIT!',
+      color: '#ef4444',
+      age: 0,
+      duration: 0.72,
+    };
+  }
+
+  triggerHazardDodgedVisual(laneIndex) {
+    const geom = this.getHighwayGeometry();
+    const laneCount = this.getGameState().laneCount;
+    const laneW = geom.bottomWidth / laneCount;
+    const hitX = geom.cx - geom.bottomWidth * 0.5 + laneW * (laneIndex + 0.5);
+
+    this.spawnBurst(hitX, geom.hitY, { base: '#22c55e', bright: '#bbf7d0' }, 8, false);
+    this.judgementPopup = {
+      text: 'DODGED!',
+      color: '#4ade80',
+      age: 0,
+      duration: 0.44,
+    };
+  }
+
   spawnStereoRipple(x, y, color, isFever, isChord) {
     const r = this.ripples[this.rippleCursor];
     this.rippleCursor = (this.rippleCursor + 1) % RIPPLE_POOL_SIZE;
@@ -367,7 +408,8 @@ export class RhythmCanvas {
   }
 
   spawnBurst(x, y, colorObj, count, intense) {
-    for (let i = 0; i < count; i += 1) {
+    const effectiveCount = this.lowParticleMode ? Math.max(3, Math.ceil(count * 0.45)) : count;
+    for (let i = 0; i < effectiveCount; i += 1) {
       const p = this.particles[this.particleCursor];
       this.particleCursor = (this.particleCursor + 1) % PARTICLE_POOL_SIZE;
 
@@ -396,7 +438,7 @@ export class RhythmCanvas {
     const rightInner = Math.min(this.width - 76, geom.cx + geom.bottomWidth * 0.5 + 18);
     const sources = [leftOuter, leftInner, rightInner, rightOuter];
 
-    const perCannon = Math.ceil(2 * this.pyroEmitterStrength);
+    const perCannon = this.lowParticleMode ? 1 : Math.ceil(2 * this.pyroEmitterStrength);
     for (let s = 0; s < sources.length; s += 1) {
       const sx = sources[s];
       const outward = s < 2 ? -1 : 1;
@@ -773,20 +815,26 @@ export class RhythmCanvas {
       ctx.globalAlpha = 0.78;
       ctx.fillStyle = this.rosewoodPattern;
       ctx.fillRect(botLeft, geom.topY, botRight - botLeft, geom.bottomY - geom.topY);
-      const shadeGrad = ctx.createLinearGradient(0, geom.topY, 0, geom.bottomY);
-      shadeGrad.addColorStop(0, 'rgba(18, 7, 4, 0.64)');
-      shadeGrad.addColorStop(0.45, 'rgba(38, 17, 10, 0.14)');
-      shadeGrad.addColorStop(1, 'rgba(14, 6, 3, 0.34)');
-      ctx.fillStyle = shadeGrad;
+      if (!this.cachedDeckGrads.rosewood) {
+        const shadeGrad = ctx.createLinearGradient(0, geom.topY, 0, geom.bottomY);
+        shadeGrad.addColorStop(0, 'rgba(18, 7, 4, 0.64)');
+        shadeGrad.addColorStop(0.45, 'rgba(38, 17, 10, 0.14)');
+        shadeGrad.addColorStop(1, 'rgba(14, 6, 3, 0.34)');
+        this.cachedDeckGrads.rosewood = shadeGrad;
+      }
+      ctx.fillStyle = this.cachedDeckGrads.rosewood;
       ctx.fillRect(botLeft, geom.topY, botRight - botLeft, geom.bottomY - geom.topY);
       ctx.restore();
     } else if (skinId === 'inferno-flames') {
-      const deckGrad = ctx.createLinearGradient(0, geom.topY, 0, geom.bottomY);
-      deckGrad.addColorStop(0, 'rgba(26, 8, 6, 0.38)');
-      deckGrad.addColorStop(0.38, 'rgba(36, 10, 7, 0.62)');
-      deckGrad.addColorStop(0.82, 'rgba(58, 15, 8, 0.68)');
-      deckGrad.addColorStop(1, 'rgba(92, 24, 9, 0.78)');
-      ctx.fillStyle = deckGrad;
+      if (!this.cachedDeckGrads.inferno) {
+        const deckGrad = ctx.createLinearGradient(0, geom.topY, 0, geom.bottomY);
+        deckGrad.addColorStop(0, 'rgba(26, 8, 6, 0.38)');
+        deckGrad.addColorStop(0.38, 'rgba(36, 10, 7, 0.62)');
+        deckGrad.addColorStop(0.82, 'rgba(58, 15, 8, 0.68)');
+        deckGrad.addColorStop(1, 'rgba(92, 24, 9, 0.78)');
+        this.cachedDeckGrads.inferno = deckGrad;
+      }
+      ctx.fillStyle = this.cachedDeckGrads.inferno;
       ctx.fill();
 
       // Animated ember wave ribbons licking inward from left & right border rails
@@ -1252,10 +1300,10 @@ export class RhythmCanvas {
       ctx.restore();
     }
 
-    // 3. Draw rectangular bar note heads locked directly to hitTimeSec
+    // 3. Draw note heads + unmistakable "Panggulo" Hazard Bomb notes locked directly to hitTimeSec
     for (let i = 0; i < notes.length; i += 1) {
       const note = notes[i];
-      if (note.hit) continue;
+      if (note.hit || note.dodged) continue;
 
       const timeRemaining = note.hitTimeSec - songTime;
       if (timeRemaining > geom.windowSec) break;
@@ -1263,11 +1311,6 @@ export class RhythmCanvas {
 
       const proj = this.projectAudioTime(note.hitTimeSec, songTime, geom);
       if (!proj.visible || proj.progress <= 0.01 || proj.progress > 1.12) continue;
-
-      const isGolden = note.isFever || feverActive;
-      const color = isGolden
-        ? { base: '#f59e0b', bright: '#fef08a' }
-        : laneConfig.colors[note.lane];
 
       const laneW = proj.width / laneCount;
       const leftEdge = geom.cx - proj.width * 0.5;
@@ -1280,6 +1323,88 @@ export class RhythmCanvas {
       const fadeIn = Math.min(1, proj.progress * 4.4);
       const fadeOut = proj.progress > 1.02 ? Math.max(0, 1 - (proj.progress - 1.02) * 10) : 1;
       const alpha = (note.missed ? 0.25 : 1) * fadeIn * fadeOut;
+
+      // Distinct "Panggulo" Hazard Bomb Gem (DO NOT HIT!)
+      if (note.isHazard) {
+        const cx = noteX + noteW * 0.5;
+        const cy = proj.y;
+        const rx = Math.max(9, noteW * 0.38);
+        const ry = Math.max(7, noteH * 0.72);
+        const pulse = 0.75 + 0.25 * Math.sin(this.animClock * 18 + i);
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // Pulsing crimson danger aura
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = Math.max(8, 22 * proj.scale * pulse);
+
+        // Spiked crimson-obsidian octagon silhouette
+        ctx.beginPath();
+        const spikes = 8;
+        for (let s = 0; s < spikes * 2; s += 1) {
+          const ang = (s * Math.PI) / spikes + this.animClock * 1.4;
+          const mult = s % 2 === 0 ? 1.16 : 0.78;
+          const px = cx + Math.cos(ang) * rx * mult;
+          const py = cy + Math.sin(ang) * ry * mult;
+          if (s === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#18060a';
+        ctx.fill();
+        ctx.lineWidth = Math.max(1.6, 2.8 * proj.scale);
+        ctx.strokeStyle = '#ef4444';
+        ctx.stroke();
+
+        // Diagonal yellow/black hazard caution ribbon clipped inside body
+        ctx.shadowBlur = 0;
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx * 0.78, ry * 0.74, 0, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = Math.max(2, 4 * proj.scale);
+        const step = Math.max(5, 9 * proj.scale);
+        for (let sx = -rx * 1.6; sx <= rx * 1.6; sx += step * 1.6) {
+          ctx.beginPath();
+          ctx.moveTo(cx + sx - ry, cy + ry);
+          ctx.lineTo(cx + sx + ry, cy - ry);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Crisp dark badge & glowing red X / "!" warning symbol in center
+        ctx.fillStyle = '#09090b';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx * 0.48, ry * 0.48, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = Math.max(1.2, 2.2 * proj.scale);
+        ctx.stroke();
+
+        const xArm = rx * 0.25;
+        const yArm = ry * 0.25;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = Math.max(1.6, 2.8 * proj.scale);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - xArm, cy - yArm);
+        ctx.lineTo(cx + xArm, cy + yArm);
+        ctx.moveTo(cx + xArm, cy - yArm);
+        ctx.lineTo(cx - xArm, cy + yArm);
+        ctx.stroke();
+
+        ctx.restore();
+        continue;
+      }
+
+      const isGolden = note.isFever || feverActive;
+      const color = isGolden
+        ? { base: '#f59e0b', bright: '#fef08a' }
+        : laneConfig.colors[note.lane];
 
       ctx.save();
       ctx.globalAlpha = alpha;

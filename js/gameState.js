@@ -25,6 +25,7 @@ const STORAGE_BASS_MODEL_KEY = 'encore_stage_bass_model_id';
 const STORAGE_DRUM_KIT_KEY = 'encore_stage_drum_kit_id';
 const STORAGE_KEYBOARD_MODEL_KEY = 'encore_stage_keyboard_model_id';
 const STORAGE_STAR_LOOK_KEY = 'encore_stage_star_look_id';
+const STORAGE_INSTRUMENT_SKIN_KEY = 'encore_stage_instrument_skin_id';
 const STORAGE_DIFFICULTY_KEY = 'encore_stage_difficulty_id';
 const STORAGE_INSTRUMENT_KEY = 'encore_stage_instrument_id';
 
@@ -227,6 +228,7 @@ export class GameState {
     this.drumKitModelId = this.loadStringPref(STORAGE_DRUM_KIT_KEY, 'pop-single-kick');
     this.keyboardModelId = this.loadStringPref(STORAGE_KEYBOARD_MODEL_KEY, 'concert-grand');
     this.starLookId = this.loadStringPref(STORAGE_STAR_LOOK_KEY, 'default-band');
+    this.instrumentSkinId = this.loadStringPref(STORAGE_INSTRUMENT_SKIN_KEY, 'classic-sunburst');
 
     this.playbackRate = 1.0;
     this.practiceLoop = {
@@ -296,6 +298,11 @@ export class GameState {
   setStarLookId(id) {
     this.starLookId = id || 'default-band';
     this.saveStringPref(STORAGE_STAR_LOOK_KEY, this.starLookId);
+  }
+
+  setInstrumentSkinId(id) {
+    this.instrumentSkinId = id || 'classic-sunburst';
+    this.saveStringPref(STORAGE_INSTRUMENT_SKIN_KEY, this.instrumentSkinId);
   }
 
   loadCrowdVolume() {
@@ -619,6 +626,9 @@ export class GameState {
     this.earlyCount = 0;
     this.lateCount = 0;
     this.missCount = 0;
+    this.consecutiveMisses = 0;
+    this.hazardsDodged = 0;
+    this.hazardsHit = 0;
     this.totalChartNotes = Math.max(24, Number(totalChartNotes) || 120);
 
     this.feverCharge = isEncore ? 50 : 0;
@@ -711,6 +721,7 @@ export class GameState {
     const windows = this.getTimingWindows();
 
     this.combo += 1;
+    this.consecutiveMisses = 0;
     if (this.combo > this.maxCombo) this.maxCombo = this.combo;
     this.baseMultiplier = this.computeBaseMultiplier(this.combo);
     const mult = this.getEffectiveMultiplier();
@@ -796,6 +807,7 @@ export class GameState {
     this.baseMultiplier = 1;
     this.stereoWidthTier = 0;
     this.missCount += 1;
+    this.consecutiveMisses += 1;
     this.stemDropped = true;
 
     if (!this.hasValidPracticeLoop()) {
@@ -810,6 +822,51 @@ export class GameState {
       brokeStreak,
       failedOut: this.failedOut,
       stereoReset: prevStereo > 0,
+      crowdHype: this.crowdHype,
+      consecutiveMisses: this.consecutiveMisses,
+    };
+  }
+
+  registerHazardHit() {
+    const diff = this.getDifficultyConfig();
+    const brokeStreak = this.combo >= 4;
+    const prevStereo = this.stereoWidthTier;
+
+    this.combo = 0;
+    this.baseMultiplier = 1;
+    this.stereoWidthTier = 0;
+    this.hazardsHit += 1;
+    this.missCount += 1;
+    this.consecutiveMisses += 2;
+    this.stemDropped = true;
+    this.feverCharge = Math.max(0, this.feverCharge - 18);
+
+    if (!this.hasValidPracticeLoop()) {
+      this.crowdHype = Math.max(0, this.crowdHype - diff.hypeDrainOnMiss * 1.8);
+      if (diff.allowFailOut && this.crowdHype <= 0) {
+        this.failedOut = true;
+      }
+    }
+
+    return {
+      judgement: 'PANGGULO HIT!',
+      brokeStreak,
+      failedOut: this.failedOut,
+      stereoReset: prevStereo > 0,
+      crowdHype: this.crowdHype,
+      consecutiveMisses: this.consecutiveMisses,
+    };
+  }
+
+  registerHazardDodged() {
+    this.hazardsDodged += 1;
+    const bonus = Math.round(75 * this.getEffectiveMultiplier());
+    this.score += bonus;
+    this.crowdHype = Math.min(100, this.crowdHype + 1.5);
+    return {
+      judgement: 'DODGED!',
+      bonus,
+      crowdHype: this.crowdHype,
     };
   }
 

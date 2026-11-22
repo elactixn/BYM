@@ -18,13 +18,43 @@
  *        pure guitar-only intros generate ZERO drum notes, and drums lock in the instant they enter!
  */
 
-const SAMPLE_RATE = 16000;
-const FFT_SIZE = 512;
-const HALF_FFT = FFT_SIZE >> 1; // 256 bins (0..8000 Hz, 31.25 Hz/bin)
-const HOP_SIZE = 160; // 10ms per frame (100 fps)
-const HOP_SEC = HOP_SIZE / SAMPLE_RATE; // 0.01s
-const BIN_HZ = SAMPLE_RATE / FFT_SIZE; // 31.25 Hz
+const SAMPLE_RATE = 22050;
+const FFT_SIZE = 1024;
+const HALF_FFT = FFT_SIZE >> 1; // 512 bins (0..11025 Hz, 21.53 Hz/bin)
+const HOP_SIZE = 220; // ~9.98ms per frame (~100.2 fps)
+const HOP_SEC = HOP_SIZE / SAMPLE_RATE;
+const BIN_HZ = SAMPLE_RATE / FFT_SIZE; // ~21.533 Hz
 const ACTIVITY_HOP_SEC = 0.05; // 50ms activity timeline for 3D band & charts
+
+// Essentia.js WASM CDN endpoints (100% client-side, zero API key, automatic fallback if offline)
+const ESSENTIA_WASM_ES_URL = 'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.es.js';
+const ESSENTIA_CORE_ES_URL = 'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.es.js';
+let essentiaPromise = null;
+
+async function getEssentiaInstance(timeoutMs = 3200) {
+  if (essentiaPromise) return essentiaPromise;
+  essentiaPromise = (async () => {
+    try {
+      const loadJob = (async () => {
+        const [wasmMod, coreMod] = await Promise.all([
+          import(/* @vite-ignore */ ESSENTIA_WASM_ES_URL),
+          import(/* @vite-ignore */ ESSENTIA_CORE_ES_URL),
+        ]);
+        const EssentiaWASM = wasmMod?.EssentiaWASM || wasmMod?.default || wasmMod;
+        const EssentiaCtor = coreMod?.default || coreMod?.Essentia;
+        if (!EssentiaWASM || typeof EssentiaCtor !== 'function') return null;
+        const wasmBackend = typeof EssentiaWASM === 'function' ? await EssentiaWASM() : EssentiaWASM;
+        return new EssentiaCtor(wasmBackend);
+      })();
+
+      const timeoutJob = new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs));
+      return await Promise.race([loadJob, timeoutJob]);
+    } catch {
+      return null;
+    }
+  })();
+  return essentiaPromise;
+}
 
 // Precomputed Hann Window
 const HANN = new Float32Array(FFT_SIZE);
@@ -32,7 +62,7 @@ for (let i = 0; i < FFT_SIZE; i += 1) {
   HANN[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (FFT_SIZE - 1)));
 }
 
-// Precomputed Bit-Reversal Permutation Table for FFT_SIZE = 512
+// Precomputed Bit-Reversal Permutation Table for FFT_SIZE = 1024
 const BIT_REV = new Uint16Array(FFT_SIZE);
 {
   const bits = Math.log2(FFT_SIZE);
@@ -56,11 +86,32 @@ for (let k = 0; k < HALF_FFT; k += 1) {
   TWIDDLE_SIN[k] = Math.sin(ang);
 }
 
-// Scratch FFT buffers (reused across all frames -> zero GC pressure)
+// Scratch FFT & HPSS Median-Filter buffers (reused across all frames -> zero GC pressure)
 const fftRe = new Float32Array(FFT_SIZE);
 const fftIm = new Float32Array(FFT_SIZE);
 const curMag = new Float32Array(HALF_FFT);
-const prevMag = new Float32Array(HALF_FFT);
+const prevHarmMag = new Float32Array(HALF_FFT);
+const prevPercMag = new Float32Array(HALF_FFT);
+const harmMag = new Float32Array(HALF_FFT);
+const percMag = new Float32Array(HALF_FFT);
+const HPSS_WIN = 7;
+const HPSS_HALF = 3;
+const hpssRing = Array.from({ length: HPSS_WIN }, () => new Float32Array(HALF_FFT));
+const medScratch = new Float32Array(HPSS_WIN);
+
+function median7(buf) {
+  // Fast in-place insertion sort on 7 floats -> returns index 3 (median) with zero allocations
+  for (let i = 1; i < 7; i += 1) {
+    const key = buf[i];
+    let j = i - 1;
+    while (j >= 0 && buf[j] > key) {
+      buf[j + 1] = buf[j];
+      j -= 1;
+    }
+    buf[j + 1] = key;
+  }
+  return buf[3];
+}
 
 function runFastRadix2Fft(re, im) {
   // Bit-reversal reorder
@@ -711,13 +762,17 @@ function estimateBassFundamentalHz(mono, centerSample, fallbackHz) {
 }
 
 /**
- * Core sub-second single-pass FFT & Adaptive Local-Contrast analyzer.
- * Can be called either from Web Worker `onmessage` or directly as a fallback.
+ * Core WASM AI (Essentia.js) + 22.05kHz Median-Filtered HPSS Radix-2 FFT Analyzer.
+ * Runs in the background Web Worker with zero main-thread lag and automatic offline fallback.
  */
-export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgress = null } = {}) {
-  const totalSamples = mono16k.length;
+export async function analyzeMono22k(mono22k, { bpmHint = null, duration = 0, onProgress = null } = {}) {
+  const mono16k = mono22k; // preserved internal alias for downstream routines
+  const totalSamples = mono22k.length;
   const actualDuration = duration > 0 ? duration : totalSamples / SAMPLE_RATE;
   const numFrames = Math.max(1, Math.floor((totalSamples - FFT_SIZE) / HOP_SIZE) + 1);
+
+  // Kick off optional Essentia.js WASM MIR loader in parallel with STFT+HPSS
+  const essentiaTask = getEssentiaInstance(3000);
 
   // Per-frame band energies, fluxes, HNR & pitch estimates
   const rmsAll = new Float32Array(numFrames);
@@ -729,7 +784,7 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   const pianoEnergy = new Float32Array(numFrames);
   const snapEnergy = new Float32Array(numFrames);
   const cymbalEnergy = new Float32Array(numFrames);
-  const bandProfiles = new Float32Array(numFrames * 6); // 6-band spectral timbre profile for section novelty
+  const bandProfiles = new Float32Array(numFrames * 6);
 
   const kickFlux = new Float32Array(numFrames);
   const bassFlux = new Float32Array(numFrames);
@@ -746,24 +801,26 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   const pianoPeakCount = new Uint8Array(numFrames);
   const bassPeakHz = new Float32Array(numFrames);
 
-  prevMag.fill(0);
+  prevHarmMag.fill(0);
+  prevPercMag.fill(0);
 
-  // Frequency bin boundaries (31.25 Hz / bin @ 16kHz / 512-pt FFT)
-  const KICK_LO = 1; // ~45Hz
-  const KICK_HI = 4; // ~110Hz (weighted down at bin 4)
-  const BASS_LO = 1; // ~40Hz
-  const BASS_HI = 7; // ~220Hz
-  const PIANO_LO = 4; // ~125Hz (MIDI 48 = 130.8Hz)
-  const PIANO_HI = 71; // ~2218Hz (MIDI 84 = 1046Hz + 2nd harmonic)
-  const SNARE_BODY_LO = 6; // 187.5Hz
-  const SNARE_BODY_HI = 11; // 344Hz
-  const GUITAR_LO = 8; // 250Hz
-  const GUITAR_HI = 144; // 4500Hz
-  const GUITAR_SOLO_LO = 28; // 875Hz (lead-guitar upper register dominance)
-  const SNAP_LO = 80; // 2500Hz (snare wire snap 2.5kHz–6kHz)
-  const SNAP_HI = 192; // 6000Hz
-  const CYMBAL_LO = 205; // ~6.4kHz–7.9kHz hi-hat/cymbal sheen (>6.4kHz up to 8kHz Nyquist)
-  const CYMBAL_HI = 254; // 7937Hz
+  // Frequency bin boundaries (21.533 Hz / bin @ 22.05kHz / 1024-pt FFT)
+  const KICK_LO = Math.max(1, Math.round(40 / BIN_HZ)); // ~43Hz
+  const KICK_HI = Math.round(112 / BIN_HZ); // ~108Hz
+  const BASS_LO = Math.max(1, Math.round(40 / BIN_HZ)); // ~43Hz
+  const BASS_HI = Math.round(220 / BIN_HZ); // ~215Hz
+  const PIANO_LO = Math.round(130 / BIN_HZ); // ~129Hz (MIDI 48)
+  const PIANO_HI = Math.round(2200 / BIN_HZ); // ~2196Hz (MIDI 84+)
+  const SNARE_BODY_LO = Math.round(180 / BIN_HZ); // ~172Hz
+  const SNARE_BODY_HI = Math.round(400 / BIN_HZ); // ~409Hz
+  const GUITAR_LO = Math.round(250 / BIN_HZ); // ~258Hz
+  const GUITAR_HI = Math.min(HALF_FFT - 2, Math.round(4500 / BIN_HZ)); // ~4500Hz
+  const GUITAR_SOLO_LO = Math.round(880 / BIN_HZ); // ~883Hz
+  const GUITAR_PITCH_MAX_BIN = Math.min(HALF_FFT - 2, Math.round(2400 / BIN_HZ));
+  const SNAP_LO = Math.round(2500 / BIN_HZ); // 2.5kHz
+  const SNAP_HI = Math.round(6000 / BIN_HZ); // 6.0kHz
+  const CYMBAL_LO = Math.round(7000 / BIN_HZ); // >7.0kHz true hi-hat/cymbal sheen
+  const CYMBAL_HI = Math.min(HALF_FFT - 1, Math.round(10600 / BIN_HZ)); // ~10.6kHz
 
   let prevKickE = 0;
   let prevBassE = 0;
@@ -776,47 +833,97 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
 
   const progressStride = Math.max(200, Math.floor(numFrames / 8));
 
-  for (let f = 0; f < numFrames; f += 1) {
-    const base = f * HOP_SIZE;
+  const computeFrameMag = (frameIdx, targetBuf) => {
+    const clampedF = Math.max(0, Math.min(numFrames - 1, frameIdx));
+    const base = clampedF * HOP_SIZE;
     let sqSum = 0;
     for (let i = 0; i < FFT_SIZE; i += 1) {
-      const s = mono16k[base + i] || 0;
+      const s = mono22k[base + i] || 0;
       sqSum += s * s;
       fftRe[i] = s * HANN[i];
       fftIm[i] = 0;
     }
-    rmsAll[f] = Math.sqrt(sqSum / FFT_SIZE);
-
+    if (frameIdx >= 0 && frameIdx < numFrames) {
+      rmsAll[frameIdx] = Math.sqrt(sqSum / FFT_SIZE);
+    }
     runFastRadix2Fft(fftRe, fftIm);
-
-    // Compute magnitude spectrum
+    const norm = 2 / FFT_SIZE;
     for (let k = 0; k < HALF_FFT; k += 1) {
       const r = fftRe[k];
       const im = fftIm[k];
-      curMag[k] = Math.sqrt(r * r + im * im) * (2 / FFT_SIZE);
+      targetBuf[k] = Math.sqrt(r * r + im * im) * norm;
+    }
+  };
+
+  // Pre-fill 7-frame HPSS ring buffer centered at frame 0 (clamped edges)
+  for (let r = 0; r < HPSS_WIN; r += 1) {
+    computeFrameMag(r - HPSS_HALF, hpssRing[r]);
+  }
+
+  for (let f = 0; f < numFrames; f += 1) {
+    if (f > 0) {
+      const writeSlot = (f + HPSS_WIN - 1) % HPSS_WIN;
+      computeFrameMag(f + HPSS_HALF, hpssRing[writeSlot]);
+    }
+    const centerSlot = (f + HPSS_HALF) % HPSS_WIN;
+    const centerMag = hpssRing[centerSlot];
+
+    // =========================================================================
+    // MEDIAN-FILTERED HPSS (Harmonic-Percussive Source Separation, Wiener Soft Mask)
+    // Time-axis median (7 frames) -> steady Harmonic ridges (Guitar/Bass/Piano)
+    // Frequency-axis median (7 bins) -> broadband Percussive attacks (Kick/Snare/Cymbals)
+    // =========================================================================
+    harmMag[0] = centerMag[0];
+    percMag[0] = 0;
+    for (let k = 1; k < HALF_FFT; k += 1) {
+      // 7-frame time median
+      medScratch[0] = hpssRing[0][k];
+      medScratch[1] = hpssRing[1][k];
+      medScratch[2] = hpssRing[2][k];
+      medScratch[3] = hpssRing[3][k];
+      medScratch[4] = hpssRing[4][k];
+      medScratch[5] = hpssRing[5][k];
+      medScratch[6] = hpssRing[6][k];
+      const hMed = median7(medScratch);
+
+      // 7-bin frequency median
+      for (let d = -3; d <= 3; d += 1) {
+        const bk = k + d;
+        medScratch[d + 3] = centerMag[bk < 0 ? 0 : bk >= HALF_FFT ? HALF_FFT - 1 : bk];
+      }
+      const pMed = median7(medScratch);
+
+      const h2 = hMed * hMed;
+      const p2 = pMed * pMed;
+      const denom = h2 + p2 + 1e-12;
+      const mVal = centerMag[k];
+      harmMag[k] = mVal * (h2 / denom);
+      percMag[k] = mVal * (p2 / denom);
     }
 
-    // 1. Sub-Kick (31–110Hz)
-    let kE = curMag[1] * 0.9 + curMag[2] * 1.15 + curMag[3] * 1.1 + curMag[4] * 0.45;
-    kE *= 0.28;
-    kickEnergy[f] = kE;
+    // 1. Sub-Kick (40–110Hz) — strictly from Percussive Spectrogram!
+    let kE = 0;
     let kPosFlux = 0;
     for (let k = KICK_LO; k <= KICK_HI; k += 1) {
-      const d = curMag[k] - prevMag[k];
+      const pm = percMag[k] * 0.8 + centerMag[k] * 0.2;
+      kE += pm;
+      const d = pm - prevPercMag[k];
       if (d > 0) kPosFlux += d;
     }
-    kickFlux[f] = kPosFlux * 0.55 + Math.max(0, kE - prevKickE) * 1.25;
+    kE /= Math.max(1, KICK_HI - KICK_LO + 1);
+    kickEnergy[f] = kE;
+    kickFlux[f] = kPosFlux * 0.52 + Math.max(0, kE - prevKickE) * 1.3;
     prevKickE = kE;
 
-    // 2. Bass (40–220Hz) + peak bin tracking
+    // 2. Bass (40–220Hz) — strictly from Harmonic Spectrogram + peak bin tracking
     let bE = 0;
     let bFlux = 0;
-    let bestBassBin = 2;
+    let bestBassBin = KICK_LO + 1;
     let bestBassVal = 0;
     for (let k = BASS_LO; k <= BASS_HI; k += 1) {
-      const m = curMag[k];
+      const m = harmMag[k];
       bE += m;
-      const d = m - prevMag[k];
+      const d = m - prevHarmMag[k];
       if (d > 0) bFlux += d;
       if (k >= 2 && m > bestBassVal) {
         bestBassVal = m;
@@ -825,25 +932,25 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     }
     bE /= (BASS_HI - BASS_LO + 1);
     bassEnergy[f] = bE;
-    bassFlux[f] = bFlux * 0.35 + Math.max(0, bE - prevBassE) * 1.4;
+    bassFlux[f] = bFlux * 0.36 + Math.max(0, bE - prevBassE) * 1.45;
     prevBassE = bE;
-    if (bestBassVal > 0.0015 && bestBassBin > 1 && bestBassBin < BASS_HI) {
-      const y0 = curMag[bestBassBin - 1];
-      const y1 = curMag[bestBassBin];
-      const y2 = curMag[bestBassBin + 1];
+    if (bestBassVal > 0.0012 && bestBassBin > 1 && bestBassBin < BASS_HI) {
+      const y0 = harmMag[bestBassBin - 1];
+      const y1 = harmMag[bestBassBin];
+      const y2 = harmMag[bestBassBin + 1];
       const denom = y0 - 2 * y1 + y2;
-      const delta = Math.abs(denom) > 1e-8 ? 0.5 * (y0 - y2) / denom : 0;
+      const delta = Math.abs(denom) > 1e-8 ? (0.5 * (y0 - y2)) / denom : 0;
       lastBassHz = Math.max(41, Math.min(220, (bestBassBin + Math.max(-0.5, Math.min(0.5, delta))) * BIN_HZ));
     }
     bassPeakHz[f] = lastBassHz;
 
-    // 3. Snare Body (160–345Hz)
+    // 3. Snare Body (180–400Hz) — strictly from Percussive Spectrogram!
     let sbE = 0;
-    for (let k = SNARE_BODY_LO; k <= SNARE_BODY_HI; k += 1) sbE += curMag[k];
-    sbE /= (SNARE_BODY_HI - SNARE_BODY_LO + 1);
+    for (let k = SNARE_BODY_LO; k <= SNARE_BODY_HI; k += 1) sbE += percMag[k];
+    sbE /= Math.max(1, SNARE_BODY_HI - SNARE_BODY_LO + 1);
     snareBodyEnergy[f] = sbE;
 
-    // 4. Lead Guitar (250Hz–4500Hz) + Harmonic-to-Noise Ratio (HNR) + Solo High-Register Tracking
+    // 4. Lead Guitar (250Hz–4500Hz) — strictly from Harmonic Spectrogram + HNR + Solo High-Register
     let gSum = 0;
     let gHighSum = 0;
     let gFlux = 0;
@@ -851,19 +958,18 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     let top2 = 0;
     let top3 = 0;
     let bestHarmScore = 0;
-    let bestPitchBin = 14;
+    let bestPitchBin = GUITAR_LO + 4;
     let weightedHz = 0;
     let weightedSum = 0;
 
     for (let k = GUITAR_LO; k <= GUITAR_HI; k += 1) {
-      const m = curMag[k];
+      const m = harmMag[k];
       gSum += m;
       if (k >= GUITAR_SOLO_LO) gHighSum += m;
-      const d = m - prevMag[k];
+      const d = m - prevHarmMag[k];
       if (d > 0) gFlux += d;
 
-      // Track top-3 narrowband peaks for HNR calculation
-      if (k > GUITAR_LO && k < GUITAR_HI && m >= curMag[k - 1] && m >= curMag[k + 1]) {
+      if (k > GUITAR_LO && k < GUITAR_HI && m >= harmMag[k - 1] && m >= harmMag[k + 1]) {
         if (m > top1) {
           top3 = top2;
           top2 = top1;
@@ -876,10 +982,9 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
         }
       }
 
-      if (k <= 76) {
-        // Harmonic summation (fundamental + 2nd + 3rd harmonic) for accurate guitar pitch!
-        const h2 = k * 2 < HALF_FFT ? curMag[k * 2] : 0;
-        const h3 = k * 3 < HALF_FFT ? curMag[k * 3] : 0;
+      if (k <= GUITAR_PITCH_MAX_BIN) {
+        const h2 = k * 2 < HALF_FFT ? harmMag[k * 2] : 0;
+        const h3 = k * 3 < HALF_FFT ? harmMag[k * 3] : 0;
         const harmScore = m + h2 * 0.55 + h3 * 0.3;
         if (harmScore > bestHarmScore) {
           bestHarmScore = harmScore;
@@ -897,38 +1002,36 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     guitarEnergy[f] = gMean;
     guitarHighEnergy[f] = gHighSum / Math.max(1, GUITAR_HI - GUITAR_SOLO_LO + 1);
 
-    // Harmonic-to-Noise Ratio: ratio of top 3 narrowband spectral peaks to average band floor
     const peakAvg = (top1 + top2 * 0.75 + top3 * 0.5) / 2.25;
     const hnr = peakAvg / Math.max(1e-6, gMean);
     guitarHnr[f] = hnr;
 
-    // Weight guitar flux up when signal is cleanly harmonic (boosts clean plucked acoustic/electric intros!)
-    const hnrBoost = hnr > 3.2 ? 1.35 : hnr > 2.2 ? 1.05 : 0.72;
-    guitarFlux[f] = (gFlux / gBins) * 2.8 * hnrBoost;
+    const hnrBoost = hnr > 3.2 ? 1.38 : hnr > 2.2 ? 1.08 : 0.74;
+    guitarFlux[f] = (gFlux / gBins) * 3.1 * hnrBoost;
 
-    if (bestHarmScore > 0.0012 && bestPitchBin > GUITAR_LO && bestPitchBin < 76) {
-      const y0 = curMag[bestPitchBin - 1];
-      const y1 = curMag[bestPitchBin];
-      const y2 = curMag[bestPitchBin + 1];
+    if (bestHarmScore > 0.001 && bestPitchBin > GUITAR_LO && bestPitchBin < GUITAR_PITCH_MAX_BIN) {
+      const y0 = harmMag[bestPitchBin - 1];
+      const y1 = harmMag[bestPitchBin];
+      const y2 = harmMag[bestPitchBin + 1];
       const denom = y0 - 2 * y1 + y2;
-      const delta = Math.abs(denom) > 1e-8 ? 0.5 * (y0 - y2) / denom : 0;
+      const delta = Math.abs(denom) > 1e-8 ? (0.5 * (y0 - y2)) / denom : 0;
       const interpHz = (bestPitchBin + Math.max(-0.5, Math.min(0.5, delta))) * BIN_HZ;
       const centroidHz = weightedSum > 1e-8 ? weightedHz / weightedSum : interpHz;
       lastGuitarHz = Math.max(180, Math.min(3400, interpHz * 0.78 + centroidHz * 0.22));
     }
     guitarPitchHz[f] = lastGuitarHz;
 
-    // 4B. Piano / Keys Harmonic Mid-Range (130Hz–2.2kHz / MIDI 48–84) with polyphonic peak counting
+    // 4B. Piano / Keys Harmonic Mid-Range (130Hz–2.2kHz / MIDI 48–84) from Harmonic Spectrogram
     let pSum = 0;
     let pFlux = 0;
     let pWeightedHz = 0;
     let pWeightedSum = 0;
     let pMax = 0;
     for (let k = PIANO_LO; k <= PIANO_HI; k += 1) {
-      const m = curMag[k];
+      const m = harmMag[k];
       pSum += m;
       if (m > pMax) pMax = m;
-      const d = m - prevMag[k];
+      const d = m - prevHarmMag[k];
       if (d > 0) pFlux += d;
       const w = m * m;
       pWeightedHz += w * (k * BIN_HZ);
@@ -937,23 +1040,23 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     const pBins = PIANO_HI - PIANO_LO + 1;
     const pMean = pSum / pBins;
     pianoEnergy[f] = pMean;
-    pianoFlux[f] = (pFlux / pBins) * 2.9;
+    pianoFlux[f] = (pFlux / pBins) * 3.1;
 
     let distinctPeaks = 0;
-    const peakCut = Math.max(pMean * 2.15, pMax * 0.34, 0.0025);
+    const peakCut = Math.max(pMean * 2.15, pMax * 0.34, 0.0022);
     for (let k = PIANO_LO + 1; k < PIANO_HI; k += 1) {
-      const m = curMag[k];
-      if (m >= peakCut && m >= curMag[k - 1] && m > curMag[k + 1]) {
+      const m = harmMag[k];
+      if (m >= peakCut && m >= harmMag[k - 1] && m > harmMag[k + 1]) {
         distinctPeaks += 1;
       }
     }
     pianoPeakCount[f] = Math.min(12, distinctPeaks);
-    if (pWeightedSum > 1e-8 && pMean > 0.0014) {
+    if (pWeightedSum > 1e-8 && pMean > 0.0012) {
       lastPianoHz = Math.max(130, Math.min(2200, pWeightedHz / pWeightedSum));
     }
     pianoPitchHz[f] = lastPianoHz;
 
-    // 5. Snare Wire Snap (2.5kHz–6kHz) + Hi-Hat/Cymbal Sheen (>6.4kHz) + High-Band Spectral Flatness
+    // 5. Snare Wire Snap (2.5kHz–6kHz) + Hi-Hat/Cymbal Sheen (>7kHz) — strictly from Percussive Spectrogram!
     let snapSum = 0;
     let snapPosFlux = 0;
     let snapLogSum = 0;
@@ -962,8 +1065,8 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     let cymPosFlux = 0;
 
     for (let k = SNAP_LO; k <= CYMBAL_HI; k += 1) {
-      const m = curMag[k];
-      const d = m - prevMag[k];
+      const m = percMag[k];
+      const d = m - prevPercMag[k];
       if (k <= SNAP_HI) {
         snapSum += m;
         snapLogSum += Math.log(m + 1e-6);
@@ -979,15 +1082,12 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     const sMean = snapSum / Math.max(1, snapBinCount);
     snapEnergy[f] = sMean;
     const geomMean = Math.exp(snapLogSum / Math.max(1, snapBinCount));
-    // High spectral flatness (~0.35..0.9) = broadband percussive noise (snare wires/hi-hat/crash)!
-    // Low spectral flatness (~0.02..0.2) = tonal guitar harmonics!
     highFlatness[f] = Math.min(1, geomMean / Math.max(1e-6, sMean));
 
-    const cymBins = CYMBAL_HI - CYMBAL_LO + 1;
+    const cymBins = Math.max(1, CYMBAL_HI - CYMBAL_LO + 1);
     const cMean = cymSum / cymBins;
     cymbalEnergy[f] = cMean;
 
-    // Snare flux combines sharp 180–350Hz body punch + 2.5–6kHz broadband wire snap
     const sbRise = Math.max(0, sbE - prevSnareBodyE);
     const snapRise = Math.max(0, sMean - prevSnapE);
     const cymRise = Math.max(0, cMean - prevCymbalE);
@@ -995,13 +1095,12 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     prevSnapE = sMean;
     prevCymbalE = cMean;
 
-    const flatMult = highFlatness[f] >= 0.34 ? 1.25 : highFlatness[f] >= 0.22 ? 0.75 : 0.25;
-    snareFlux[f] = (sbRise * 1.15 + snapRise * 2.45 + (snapPosFlux / Math.max(1, snapBinCount)) * 1.85) * flatMult;
-    cymbalFlux[f] = (cymRise * 2.75 + (cymPosFlux / cymBins) * 2.2) * flatMult;
+    const flatMult = highFlatness[f] >= 0.3 ? 1.32 : highFlatness[f] >= 0.18 ? 0.85 : 0.3;
+    snareFlux[f] = (sbRise * 1.25 + snapRise * 2.6 + (snapPosFlux / Math.max(1, snapBinCount)) * 2.0) * flatMult;
+    cymbalFlux[f] = (cymRise * 2.9 + (cymPosFlux / cymBins) * 2.35) * flatMult;
 
-    combinedFlux[f] = kickFlux[f] * 1.15 + snareFlux[f] * 1.05 + guitarFlux[f] * 0.85 + bassFlux[f] * 0.65;
+    combinedFlux[f] = kickFlux[f] * 1.18 + snareFlux[f] * 1.08 + guitarFlux[f] * 0.85 + bassFlux[f] * 0.65;
 
-    // Populate compact 6-band spectral timbre profile for beat-synchronous song-section novelty
     const pOff = f * 6;
     bandProfiles[pOff] = kE;
     bandProfiles[pOff + 1] = bE;
@@ -1010,10 +1109,11 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     bandProfiles[pOff + 4] = guitarHighEnergy[f];
     bandProfiles[pOff + 5] = sMean + cMean;
 
-    prevMag.set(curMag);
+    prevHarmMag.set(harmMag);
+    prevPercMag.set(percMag);
 
     if (onProgress && f % progressStride === 0) {
-      onProgress(0.1 + (f / numFrames) * 0.55);
+      onProgress(0.1 + (f / numFrames) * 0.5);
     }
   }
 
@@ -1031,15 +1131,14 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
   const cymbalFloors = computeLocalRollingFloors(cymbalFlux, 2.5, HOP_SEC);
   const localOverallEnergy = computeRollingMean(rmsAll, 125); // 2.5s window
 
-  // Song-wide 72nd-percentile energy strictly for identifying CHORUS / HIGH-ENERGY sections (NOT for gating quiet intros!)
   const sortedRms = Array.from(localOverallEnergy).sort((a, b) => a - b);
   const chorusEnergyFloor = sortedRms[Math.floor(sortedRms.length * 0.72)] || 0.08;
   const globalMedianRms = sortedRms[Math.floor(sortedRms.length * 0.5)] || 0.05;
 
-  // Estimate Primary BPM + Dynamic Programming Beat & Downbeat Tracker (eliminates tempo drift!)
-  const tempo = estimateTempoAndPhase(combinedFlux, HOP_SEC, bpmHint);
-  const { bpm, beatSec, beatPhaseSec } = tempo;
-  const dpBeats = trackDynamicBeats(
+  // Estimate Primary BPM + Dynamic Programming Beat & Downbeat Tracker (baseline)
+  let tempo = estimateTempoAndPhase(combinedFlux, HOP_SEC, bpmHint);
+  let { bpm, beatSec, beatPhaseSec } = tempo;
+  let dpBeats = trackDynamicBeats(
     combinedFlux,
     kickEnergy,
     bassEnergy,
@@ -1048,6 +1147,115 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     bpm,
     actualDuration
   );
+  let analysisEngine = 'hpss-fft-dp';
+
+  // =========================================================================
+  // ESSENTIA.JS WASM AI REFINEMENT (RhythmExtractor2013 + PredominantPitchMelodia)
+  // Automatically skipped cleanly if offline or CDN unavailable!
+  // =========================================================================
+  const essentia = await essentiaTask;
+  if (essentia && totalSamples >= SAMPLE_RATE * 2) {
+    let signalVec = null;
+    try {
+      if (onProgress) onProgress(0.65);
+      signalVec = essentia.arrayToVector(mono22k);
+
+      // 1. Essentia RhythmExtractor2013 / BeatTrackerDegara for drift-free beat & downbeat ticks
+      let ticksArr = null;
+      let essBpm = 0;
+      if (typeof essentia.RhythmExtractor2013 === 'function') {
+        const rhythm = essentia.RhythmExtractor2013(signalVec, 208, 'multifeature', 40);
+        if (rhythm?.ticks) {
+          ticksArr = Array.from(essentia.vectorToArray(rhythm.ticks));
+          rhythm.ticks.delete?.();
+        }
+        if (rhythm?.estimates) rhythm.estimates.delete?.();
+        if (rhythm?.bpmIntervals) rhythm.bpmIntervals.delete?.();
+        if (Number.isFinite(rhythm?.bpm) && rhythm.bpm >= 55 && rhythm.bpm <= 215) {
+          essBpm = Math.round(rhythm.bpm);
+        }
+      } else if (typeof essentia.BeatTrackerDegara === 'function') {
+        const bt = essentia.BeatTrackerDegara(signalVec);
+        if (bt?.ticks) {
+          ticksArr = Array.from(essentia.vectorToArray(bt.ticks));
+          bt.ticks.delete?.();
+        }
+      }
+
+      if (ticksArr && ticksArr.length >= 8) {
+        if (essBpm >= 55 && essBpm <= 215) {
+          bpm = essBpm;
+          beatSec = 60 / bpm;
+        }
+        // Determine downbeat phase (0..3) via kick + bass accent scoring
+        const phaseScores = [0, 0, 0, 0];
+        for (let i = 0; i < ticksArr.length; i += 1) {
+          const fIdx = Math.max(0, Math.min(numFrames - 1, Math.round(ticksArr[i] / HOP_SEC)));
+          phaseScores[i % 4] += kickEnergy[fIdx] * 1.45 + bassEnergy[fIdx] * 0.9 - snareFlux[fIdx] * 0.25;
+        }
+        let bestDownbeatMod = 0;
+        for (let m = 1; m < 4; m += 1) {
+          if (phaseScores[m] > phaseScores[bestDownbeatMod]) bestDownbeatMod = m;
+        }
+        dpBeats = {
+          beats: ticksArr.map((t) => Number(t.toFixed(4))),
+          dynamicBeatGrid: ticksArr.map((t, idx) => ({
+            timeSec: Number(t.toFixed(4)),
+            isMeasure: idx % 4 === bestDownbeatMod,
+            beatIndex: idx,
+          })),
+        };
+        beatPhaseSec = ticksArr[bestDownbeatMod] || ticksArr[0] || beatPhaseSec;
+        analysisEngine = 'essentia-wasm-hpss';
+      }
+
+      // 2. Essentia PredominantPitchMelodia for melodic pitch contour & voicing confidence
+      if (typeof essentia.PredominantPitchMelodia === 'function' && actualDuration <= 360) {
+        const melHop = 256;
+        const mel = essentia.PredominantPitchMelodia(
+          signalVec,
+          10, // binResolution
+          0.9, // filterIterations
+          2048, // frameSize
+          true, // guessUnvoiced
+          0.8, // harmonicWeight
+          melHop,
+          1, // magnitudeCompression
+          40, // magnitudeThreshold
+          1100, // maxFrequency
+          100, // minDuration
+          130, // minFrequency
+          80, // numberHarmonics
+          0.9, // peakDistributionThreshold
+          0.1, // peakFrameThreshold
+          27.5625, // pitchContinuity
+          0.9, // pitchContinuityRuns
+          false, // referenceFrequency
+          SAMPLE_RATE
+        );
+        if (mel?.pitch && mel?.pitchConfidence) {
+          const pArr = essentia.vectorToArray(mel.pitch);
+          const cArr = essentia.vectorToArray(mel.pitchConfidence);
+          const melHopSec = melHop / SAMPLE_RATE;
+          for (let f = 0; f < numFrames; f += 1) {
+            const mIdx = Math.min(pArr.length - 1, Math.floor((f * HOP_SEC) / melHopSec));
+            if (mIdx >= 0 && cArr[mIdx] > 0.22 && pArr[mIdx] >= 130 && pArr[mIdx] <= 2400) {
+              guitarPitchHz[f] = pArr[mIdx];
+              if (pArr[mIdx] <= 2100) {
+                pianoPitchHz[f] = pianoPitchHz[f] * 0.35 + pArr[mIdx] * 0.65;
+              }
+            }
+          }
+          mel.pitch.delete?.();
+          mel.pitchConfidence.delete?.();
+        }
+      }
+    } catch {
+      // Seamless fallback to HPSS + Radix-2 FFT + DP Beat Tracker already computed!
+    } finally {
+      signalVec?.delete?.();
+    }
+  }
 
   if (onProgress) onProgress(0.74);
 
@@ -1565,8 +1773,12 @@ export function analyzeMono16k(mono16k, { bpmHint = null, duration = 0, onProgre
     bassOnsets,
     drumEvents,
     stemActivity,
+    analysisEngine,
   };
 }
+
+// Backwards-compatible alias
+export const analyzeMono16k = analyzeMono22k;
 
 // =========================================================================
 // Web Worker Message Handler (only binds when running inside a Worker!)
@@ -1577,11 +1789,12 @@ const isWorkerContext =
   typeof window === 'undefined';
 
 if (isWorkerContext) {
-  self.onmessage = (event) => {
-    const { id, mono16k, bpmHint, duration } = event.data || {};
+  self.onmessage = async (event) => {
+    const { id, mono22k, mono16k, bpmHint, duration } = event.data || {};
+    const audioBuf = mono22k || mono16k;
     try {
       const t0 = performance.now();
-      const analysis = analyzeMono16k(mono16k, {
+      const analysis = await analyzeMono22k(audioBuf, {
         bpmHint,
         duration,
         onProgress: (pct) => {

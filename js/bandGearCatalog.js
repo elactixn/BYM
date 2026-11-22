@@ -456,6 +456,149 @@ export const STAR_LOOKALIKES = [
   },
 ];
 
+export const INSTRUMENT_SKINS = [
+  {
+    id: 'classic-sunburst',
+    registryId: 'Skin_Classic_Sunburst',
+    name: 'Classic Sunburst & Chrome',
+    shortName: 'Classic Sunburst',
+    description: 'Warm flame-maple sunburst lacquer, polished chrome hardware & vintage tour trim.',
+    swatch: ['#7c2d12', '#f59e0b'],
+    pattern: 'sunburst',
+    baseHex: '#ea580c',
+    secondaryHex: '#fde047',
+    darkHex: '#1c0a05',
+    accentHex: '#f59e0b',
+    hardwareColor: 0xe2e8f0,
+    roughness: 0.22,
+    metalness: 0.28,
+    emissiveHex: 0x000000,
+    emissiveIntensity: 0.0,
+    drumSubLabel: 'LIVE',
+    svgIcon: '<svg viewBox="0 0 84 40" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="skSun" cx="50%" cy="50%" r="55%"><stop offset="0%" stop-color="#fde047"/><stop offset="52%" stop-color="#ea580c"/><stop offset="100%" stop-color="#290f07"/></radialGradient></defs><rect x="6" y="5" width="72" height="30" rx="8" fill="url(#skSun)" stroke="#e2e8f0" stroke-width="2"/><path d="M12 14h60M12 20h60M12 26h60" stroke="#fef3c7" stroke-opacity="0.22" stroke-width="1.5"/></svg>',
+  },
+  {
+    id: 'royal-gold',
+    registryId: 'Skin_Royal_Gold_24K',
+    name: '24K Royal Gold & Ivory',
+    shortName: '24K Royal Gold',
+    description: 'Mirror-burnished 24K gold leaf plating, pearl ivory filigree & gilded stage hardware.',
+    swatch: ['#78350f', '#fde047'],
+    pattern: 'royal-gold',
+    baseHex: '#eab308',
+    secondaryHex: '#fef9c3',
+    darkHex: '#451a03',
+    accentHex: '#facc15',
+    hardwareColor: 0xfef08a,
+    roughness: 0.14,
+    metalness: 0.88,
+    emissiveHex: 0x713f12,
+    emissiveIntensity: 0.28,
+    drumSubLabel: '24K GOLD',
+    svgIcon: '<svg viewBox="0 0 84 40" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="skGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fef08a"/><stop offset="48%" stop-color="#d97706"/><stop offset="100%" stop-color="#fef9c3"/></linearGradient></defs><rect x="6" y="5" width="72" height="30" rx="8" fill="url(#skGold)" stroke="#fef9c3" stroke-width="2"/><path d="M42 10l6 10-6 10-6-10 6-10z" fill="#fffbeb" stroke="#78350f" stroke-width="1.3"/></svg>',
+  },
+  {
+    id: 'cyber-hologram',
+    registryId: 'Skin_Cyber_Hologram',
+    name: 'Cyber Neon Hologram',
+    shortName: 'Cyber Hologram',
+    description: 'Iridescent synthwave prism weave with glowing cyan & magenta neon circuit veins.',
+    swatch: ['#06b6d4', '#ec4899'],
+    pattern: 'cyber-holo',
+    baseHex: '#06b6d4',
+    secondaryHex: '#ec4899',
+    darkHex: '#0f172a',
+    accentHex: '#22d3ee',
+    hardwareColor: 0x67e8f9,
+    roughness: 0.16,
+    metalness: 0.72,
+    emissiveHex: 0x0891b2,
+    emissiveIntensity: 0.72,
+    drumSubLabel: 'CYBER',
+    svgIcon: '<svg viewBox="0 0 84 40" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="skHolo" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="50%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#ec4899"/></linearGradient></defs><rect x="6" y="5" width="72" height="30" rx="8" fill="#0f172a" stroke="url(#skHolo)" stroke-width="2.2"/><path d="M12 13l14 14 14-14 14 14 18-14" stroke="#22d3ee" stroke-width="2"/><path d="M12 27l14-14 14 14 14-14 18 14" stroke="#ec4899" stroke-width="1.6" opacity="0.85"/></svg>',
+  },
+  {
+    id: 'inferno-lava',
+    registryId: 'Skin_Inferno_Lava',
+    name: 'Inferno Lava Crackle',
+    shortName: 'Inferno Lava',
+    description: 'Charred volcanic basalt shell split by molten glowing magma fissures & ember trim.',
+    swatch: ['#1c0a05', '#f97316'],
+    pattern: 'inferno-lava',
+    baseHex: '#dc2626',
+    secondaryHex: '#fb923c',
+    darkHex: '#180907',
+    accentHex: '#f97316',
+    hardwareColor: 0x3f3f46,
+    roughness: 0.42,
+    metalness: 0.34,
+    emissiveHex: 0xea580c,
+    emissiveIntensity: 0.85,
+    drumSubLabel: 'INFERNO',
+    svgIcon: '<svg viewBox="0 0 84 40" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="5" width="72" height="30" rx="8" fill="#1c0a05" stroke="#f97316" stroke-width="2"/><path d="M12 28l12-10 9 7 13-14 11 9 15-8" stroke="#f97316" stroke-width="2.5" stroke-linecap="round"/><path d="M12 28l12-10 9 7 13-14 11 9 15-8" stroke="#fde047" stroke-width="1" stroke-linecap="round"/></svg>',
+  },
+  {
+    id: 'frostbite-ice',
+    registryId: 'Skin_Frostbite_Ice',
+    name: 'Frostbite Crystal Ice',
+    shortName: 'Frostbite Ice',
+    description: 'Glacial crystalline prism facets with arctic frost sheen & icy sapphire glow.',
+    swatch: ['#bae6fd', '#0284c7'],
+    pattern: 'frost-ice',
+    baseHex: '#7dd3fc',
+    secondaryHex: '#e0f2fe',
+    darkHex: '#0c4a6e',
+    accentHex: '#38bdf8',
+    hardwareColor: 0xe0f2fe,
+    roughness: 0.12,
+    metalness: 0.56,
+    emissiveHex: 0x0284c7,
+    emissiveIntensity: 0.48,
+    drumSubLabel: 'FROST',
+    svgIcon: '<svg viewBox="0 0 84 40" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="skIce" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f0f9ff"/><stop offset="50%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0369a1"/></linearGradient></defs><rect x="6" y="5" width="72" height="30" rx="8" fill="url(#skIce)" stroke="#e0f2fe" stroke-width="2"/><path d="M24 8l12 12-12 12M60 8L48 20l12 12M42 9v22" stroke="#ffffff" stroke-opacity="0.7" stroke-width="1.6"/></svg>',
+  },
+  {
+    id: 'sakura-pearl',
+    registryId: 'Skin_Sakura_Pearl',
+    name: 'Sakura Pearl Blossom',
+    shortName: 'Sakura Pearl',
+    description: 'Lustrous mother-of-pearl blush lacquer adorned with hand-painted sakura petals & rose gold.',
+    swatch: ['#fbcfe8', '#f43f5e'],
+    pattern: 'sakura-pearl',
+    baseHex: '#f9a8d4',
+    secondaryHex: '#fff1f2',
+    darkHex: '#881337',
+    accentHex: '#fb7185',
+    hardwareColor: 0xfecdd3,
+    roughness: 0.18,
+    metalness: 0.36,
+    emissiveHex: 0xbe185d,
+    emissiveIntensity: 0.24,
+    drumSubLabel: 'SAKURA',
+    svgIcon: '<svg viewBox="0 0 84 40" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="skSakura" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff1f2"/><stop offset="55%" stop-color="#fbcfe8"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs><rect x="6" y="5" width="72" height="30" rx="8" fill="url(#skSakura)" stroke="#fb7185" stroke-width="2"/><circle cx="30" cy="20" r="4.5" fill="#f43f5e"/><circle cx="44" cy="15" r="3.5" fill="#fb7185"/><circle cx="56" cy="24" r="4" fill="#e11d48"/></svg>',
+  },
+  {
+    id: 'midnight-stealth',
+    registryId: 'Skin_Midnight_Stealth',
+    name: 'Midnight Stealth Matte',
+    shortName: 'Midnight Stealth',
+    description: 'Tactical matte carbon-fiber weave, blacked-out gunmetal hardware & subtle crimson pin-stripes.',
+    swatch: ['#09090b', '#ef4444'],
+    pattern: 'carbon-stealth',
+    baseHex: '#18181b',
+    secondaryHex: '#27272a',
+    darkHex: '#09090b',
+    accentHex: '#ef4444',
+    hardwareColor: 0x27272a,
+    roughness: 0.62,
+    metalness: 0.42,
+    emissiveHex: 0x7f1d1d,
+    emissiveIntensity: 0.22,
+    drumSubLabel: 'STEALTH',
+    svgIcon: '<svg viewBox="0 0 84 40" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="5" width="72" height="30" rx="8" fill="#111114" stroke="#52525b" stroke-width="2"/><path d="M12 13h60M12 20h60M12 27h60" stroke="#27272a" stroke-width="2"/><line x1="12" y1="30" x2="72" y2="30" stroke="#ef4444" stroke-width="2"/></svg>',
+  },
+];
+
 export function getBandLineupById(id) {
   return BAND_LINEUPS.find((b) => b.id === id) || BAND_LINEUPS[0];
 }
@@ -484,45 +627,253 @@ export function getStarLookById(id) {
   return STAR_LOOKALIKES.find((s) => s.id === id) || STAR_LOOKALIKES[0];
 }
 
+export function getInstrumentSkinById(id) {
+  return INSTRUMENT_SKINS.find((s) => s.id === id) || INSTRUMENT_SKINS[0];
+}
+
 /* ==========================================================================
    4. PROCEDURAL TEXTURES & COMPOSITE 3D INSTRUMENT MESH BUILDERS
    ========================================================================== */
 
-function createSunburstTexture() {
+export function createInstrumentSkinTexture(skinId = 'classic-sunburst') {
+  const skin = getInstrumentSkinById(skinId);
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  const grad = ctx.createRadialGradient(128, 128, 16, 128, 128, 134);
-  grad.addColorStop(0, '#fde047');
-  grad.addColorStop(0.42, '#ea580c');
-  grad.addColorStop(0.75, '#7c2d12');
-  grad.addColorStop(1, '#1c0a05');
-  ctx.fillStyle = grad;
+
+  if (skin.pattern === 'royal-gold') {
+    const grad = ctx.createLinearGradient(0, 0, 256, 256);
+    grad.addColorStop(0, '#fef9c3');
+    grad.addColorStop(0.32, '#eab308');
+    grad.addColorStop(0.65, '#ca8a04');
+    grad.addColorStop(1, '#fef08a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    // Subtle ivory filigree diamonds
+    ctx.strokeStyle = 'rgba(255, 251, 235, 0.38)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y < 256; y += 32) {
+      for (let x = 0; x < 256; x += 32) {
+        ctx.beginPath();
+        ctx.moveTo(x + 16, y + 4);
+        ctx.lineTo(x + 28, y + 16);
+        ctx.lineTo(x + 16, y + 28);
+        ctx.lineTo(x + 4, y + 16);
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+  } else if (skin.pattern === 'cyber-holo') {
+    const grad = ctx.createLinearGradient(0, 0, 256, 256);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(0.42, '#1e1b4b');
+    grad.addColorStop(0.75, '#4c1d95');
+    grad.addColorStop(1, '#083344');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    // Neon hex/circuit lattice
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2;
+    for (let i = -256; i < 512; i += 28) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + 256, 256);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(236, 72, 153, 0.72)';
+    ctx.lineWidth = 2;
+    for (let i = -256; i < 512; i += 36) {
+      ctx.beginPath();
+      ctx.moveTo(i + 256, 0);
+      ctx.lineTo(i, 256);
+      ctx.stroke();
+    }
+  } else if (skin.pattern === 'inferno-lava') {
+    ctx.fillStyle = '#140806';
+    ctx.fillRect(0, 0, 256, 256);
+    // Glowing magma crackle veins
+    const veins = [
+      [[0, 48], [62, 74], [116, 40], [186, 98], [256, 62]],
+      [[0, 148], [54, 122], [118, 168], [174, 132], [256, 174]],
+      [[34, 0], [82, 88], [68, 162], [112, 256]],
+      [[172, 0], [146, 96], [204, 184], [180, 256]],
+    ];
+    veins.forEach((pts) => {
+      ctx.strokeStyle = 'rgba(234, 88, 12, 0.72)';
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
+      ctx.stroke();
+
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
+      ctx.stroke();
+    });
+  } else if (skin.pattern === 'frost-ice') {
+    const grad = ctx.createLinearGradient(0, 0, 256, 256);
+    grad.addColorStop(0, '#f0f9ff');
+    grad.addColorStop(0.4, '#7dd3fc');
+    grad.addColorStop(0.75, '#0284c7');
+    grad.addColorStop(1, '#e0f2fe');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    // Crystalline ice shards
+    for (let i = 0; i < 18; i += 1) {
+      const cx = ((i * 67) % 240) + 8;
+      const cy = ((i * 97) % 240) + 8;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.34)' : 'rgba(12, 74, 110, 0.22)';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 26);
+      ctx.lineTo(cx + 22, cy + 4);
+      ctx.lineTo(cx - 8, cy + 26);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (skin.pattern === 'sakura-pearl') {
+    const grad = ctx.createRadialGradient(128, 128, 12, 128, 128, 175);
+    grad.addColorStop(0, '#fff1f2');
+    grad.addColorStop(0.55, '#fbcfe8');
+    grad.addColorStop(1, '#f472b6');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    // Floating sakura blossoms
+    for (let i = 0; i < 14; i += 1) {
+      const bx = ((i * 53 + 22) % 224) + 16;
+      const by = ((i * 79 + 18) % 224) + 16;
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(i * 0.7);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(244, 63, 94, 0.55)' : 'rgba(255, 255, 255, 0.78)';
+      for (let p = 0; p < 5; p += 1) {
+        ctx.rotate((Math.PI * 2) / 5);
+        ctx.beginPath();
+        ctx.ellipse(0, -7, 3.6, 7.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#fde047';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  } else if (skin.pattern === 'carbon-stealth') {
+    ctx.fillStyle = '#121216';
+    ctx.fillRect(0, 0, 256, 256);
+    // Carbon fiber twill weave
+    for (let y = 0; y < 256; y += 12) {
+      for (let x = 0; x < 256; x += 12) {
+        const alt = ((x + y) / 12) % 2 === 0;
+        ctx.fillStyle = alt ? '#1f1f25' : '#0b0b0e';
+        ctx.fillRect(x, y, 10, 10);
+      }
+    }
+    // Crisp crimson racing pinstripe
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(0, 122, 256, 6);
+    ctx.fillRect(0, 132, 256, 2);
+  } else {
+    // Classic flame-maple sunburst
+    const grad = ctx.createRadialGradient(128, 128, 16, 128, 128, 134);
+    grad.addColorStop(0, '#fde047');
+    grad.addColorStop(0.42, '#ea580c');
+    grad.addColorStop(0.75, '#7c2d12');
+    grad.addColorStop(1, '#1c0a05');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.strokeStyle = 'rgba(255, 224, 150, 0.14)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y < 256; y += 7) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(80, y + 4, 170, y - 4, 256, y);
+      ctx.stroke();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+export function createAmpGrilleSkinTexture(skinId = 'classic-sunburst') {
+  const skin = getInstrumentSkinById(skinId);
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = skin.id === 'frostbite-ice' ? '#0c273b' : skin.id === 'sakura-pearl' ? '#2c1020' : '#12151f';
   ctx.fillRect(0, 0, 256, 256);
 
-  // Subtle flame-maple grain lines
-  ctx.strokeStyle = 'rgba(255, 224, 150, 0.12)';
-  ctx.lineWidth = 2;
-  for (let y = 0; y < 256; y += 7) {
+  // Speaker grille weave
+  ctx.strokeStyle = skin.id === 'royal-gold' ? 'rgba(250, 204, 21, 0.24)' : 'rgba(255, 255, 255, 0.12)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 256; i += 8) {
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.bezierCurveTo(80, y + 4, 170, y - 4, 256, y);
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, 256);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i);
+    ctx.lineTo(256, i);
     ctx.stroke();
   }
+
+  // Skin-themed border trim & speaker silhouette rings
+  ctx.strokeStyle = skin.accentHex;
+  ctx.lineWidth = 7;
+  ctx.strokeRect(8, 8, 240, 240);
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.36)';
+  [
+    [76, 78],
+    [180, 78],
+    [76, 178],
+    [180, 178],
+  ].forEach(([cx, cy]) => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = skin.accentHex;
+    ctx.globalAlpha = 0.32;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  // Emblem plaque across center
+  ctx.fillStyle = skin.darkHex;
+  ctx.fillRect(58, 114, 140, 28);
+  ctx.strokeStyle = skin.accentHex;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(58, 114, 140, 28);
+
+  ctx.fillStyle = skin.secondaryHex;
+  ctx.font = 'bold 16px Oswald, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(skin.drumSubLabel || 'ENCORE', 128, 128);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-function createDrumheadCanvasTexture(accentHex = '#f59e0b', subLabel = 'LIVE') {
+function createDrumheadCanvasTexture(accentHex = '#f59e0b', subLabel = 'LIVE', bgHex = '#0f1320') {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#0f1320';
+  ctx.fillStyle = bgHex;
   ctx.fillRect(0, 0, 256, 256);
 
   ctx.strokeStyle = accentHex;
@@ -531,7 +882,7 @@ function createDrumheadCanvasTexture(accentHex = '#f59e0b', subLabel = 'LIVE') {
   ctx.arc(128, 128, 112, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.24)';
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.arc(128, 128, 96, 0, Math.PI * 2);
@@ -583,15 +934,46 @@ function makeExtrudedBody(shape, depth = 0.11, bevel = 0.022) {
 /**
  * Builds one of 4 distinct composite 3D Electric Guitar meshes.
  */
-export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
+export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst', skinId = 'classic-sunburst') {
   const group = new THREE.Group();
   const textures = [];
+  const skin = getInstrumentSkinById(skinId);
+  const useCustomSkin = skin.id !== 'classic-sunburst';
 
-  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.18, metalness: 0.92 });
+  const chromeMat = new THREE.MeshStandardMaterial({
+    color: skin.hardwareColor,
+    roughness: skin.id === 'midnight-stealth' ? 0.5 : 0.18,
+    metalness: 0.9,
+  });
   const darkMetal = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.34, metalness: 0.85 });
-  const neckMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.56, metalness: 0.06 });
+  const neckMat = new THREE.MeshStandardMaterial({
+    color: skin.id === 'midnight-stealth' ? 0x18181b : skin.id === 'frostbite-ice' ? 0x94a3b8 : 0x5c3a21,
+    roughness: 0.52,
+    metalness: skin.id === 'midnight-stealth' ? 0.25 : 0.06,
+  });
   const fretboardMat = new THREE.MeshStandardMaterial({ color: 0x1f1410, roughness: 0.68, metalness: 0.04 });
-  const inlayMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25, metalness: 0.2 });
+  const inlayMat = new THREE.MeshStandardMaterial({
+    color: useCustomSkin ? skin.accentHex : 0xf8fafc,
+    emissive: useCustomSkin ? skin.emissiveHex : 0x000000,
+    emissiveIntensity: useCustomSkin ? skin.emissiveIntensity * 0.65 : 0,
+    roughness: 0.25,
+    metalness: 0.2,
+  });
+
+  const makeSkinBodyMat = (fallbackOpts) => {
+    if (!useCustomSkin && fallbackOpts) {
+      return new THREE.MeshStandardMaterial(fallbackOpts);
+    }
+    const skinTex = createInstrumentSkinTexture(skin.id);
+    textures.push(skinTex);
+    return new THREE.MeshStandardMaterial({
+      map: skinTex,
+      roughness: skin.roughness,
+      metalness: skin.metalness,
+      emissive: skin.emissiveHex,
+      emissiveIntensity: skin.emissiveIntensity,
+    });
+  };
 
   let bodyMesh = null;
   let headstockMat = null;
@@ -608,7 +990,7 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
     shape.lineTo(0.46, -0.42);
     shape.closePath();
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = makeSkinBodyMat({
       color: 0xb91c1c,
       roughness: 0.22,
       metalness: 0.42,
@@ -619,7 +1001,11 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
     bodyMesh = new THREE.Mesh(makeExtrudedBody(shape, 0.1, 0.018), bodyMat);
     group.add(bodyMesh);
 
-    const guardMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.32, metalness: 0.1 });
+    const guardMat = new THREE.MeshStandardMaterial({
+      color: useCustomSkin ? skin.secondaryHex : 0xf8fafc,
+      roughness: 0.3,
+      metalness: useCustomSkin ? 0.35 : 0.1,
+    });
     const guardShape = new THREE.Shape();
     guardShape.moveTo(-0.34, 0);
     guardShape.lineTo(0.18, 0.22);
@@ -644,7 +1030,7 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
     }
     shape.closePath();
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = makeSkinBodyMat({
       color: 0xec4899,
       roughness: 0.18,
       metalness: 0.55,
@@ -652,8 +1038,8 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
       emissiveIntensity: 0.42,
     });
     const trimMat = new THREE.MeshStandardMaterial({
-      color: 0x22d3ee,
-      emissive: 0x22d3ee,
+      color: useCustomSkin ? skin.accentHex : 0x22d3ee,
+      emissive: useCustomSkin ? skin.accentHex : 0x22d3ee,
       emissiveIntensity: 1.25,
       roughness: 0.2,
     });
@@ -680,7 +1066,7 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
     shape.lineTo(-0.38, -0.16);
     shape.closePath();
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = makeSkinBodyMat({
       color: 0xf1f5f9,
       roughness: 0.24,
       metalness: 0.28,
@@ -688,9 +1074,9 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
       emissiveIntensity: 0.16,
     });
     const stripeMat = new THREE.MeshStandardMaterial({
-      color: 0x0ea5e9,
-      emissive: 0x0ea5e9,
-      emissiveIntensity: 0.75,
+      color: useCustomSkin ? skin.accentHex : 0x0ea5e9,
+      emissive: useCustomSkin ? skin.accentHex : 0x0ea5e9,
+      emissiveIntensity: 0.78,
       roughness: 0.22,
     });
     headstockMat = bodyMat;
@@ -703,7 +1089,7 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
     group.add(boltStripe);
     neckOffsetX = -0.36;
   } else {
-    // Classic Sunburst Les Paul (single-cut rounded body with cream binding & sunburst top)
+    // Classic Sunburst Les Paul (single-cut rounded body with active PBR skin finish)
     const shape = new THREE.Shape();
     shape.moveTo(-0.36, 0.08);
     shape.quadraticCurveTo(-0.22, 0.28, 0.02, 0.24);
@@ -713,18 +1099,28 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
     shape.quadraticCurveTo(-0.32, -0.3, -0.4, -0.12);
     shape.closePath();
 
-    const burstTex = createSunburstTexture();
-    textures.push(burstTex);
+    const skinTex = createInstrumentSkinTexture(skin.id);
+    textures.push(skinTex);
     const bodyMat = new THREE.MeshStandardMaterial({
-      map: burstTex,
-      roughness: 0.22,
-      metalness: 0.24,
+      map: skinTex,
+      roughness: skin.roughness,
+      metalness: skin.metalness,
+      emissive: skin.emissiveHex,
+      emissiveIntensity: skin.emissiveIntensity,
     });
-    headstockMat = new THREE.MeshStandardMaterial({ color: 0x1c0a05, roughness: 0.32, metalness: 0.2 });
+    headstockMat = new THREE.MeshStandardMaterial({
+      color: useCustomSkin ? skin.darkHex : 0x1c0a05,
+      roughness: 0.3,
+      metalness: 0.32,
+    });
     bodyMesh = new THREE.Mesh(makeExtrudedBody(shape, 0.11, 0.024), bodyMat);
     group.add(bodyMesh);
 
-    const guardMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.38, metalness: 0.08 });
+    const guardMat = new THREE.MeshStandardMaterial({
+      color: useCustomSkin ? skin.secondaryHex : 0xfef3c7,
+      roughness: 0.34,
+      metalness: 0.14,
+    });
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.02), guardMat);
     guard.position.set(0.02, -0.16, 0.078);
     guard.rotation.z = 0.16;
@@ -733,9 +1129,10 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
   }
 
   // Dual Humbucker pickups + Tune-O-Matic bridge
-  const pickup1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.21, 0.04), modelId === 'les-paul-sunburst' ? chromeMat : darkMetal);
+  const pickupMat = modelId === 'les-paul-sunburst' || skin.id === 'royal-gold' ? chromeMat : darkMetal;
+  const pickup1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.21, 0.04), pickupMat);
   pickup1.position.set(0.08, 0, 0.075);
-  const pickup2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.21, 0.04), modelId === 'les-paul-sunburst' ? chromeMat : darkMetal);
+  const pickup2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.21, 0.04), pickupMat);
   pickup2.position.set(-0.09, 0, 0.075);
   const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.04), chromeMat);
   bridge.position.set(0.22, 0, 0.075);
@@ -781,18 +1178,44 @@ export function buildCustomGuitarMesh(modelId = 'les-paul-sunburst') {
 /**
  * Builds one of 3 distinct composite 3D Bass Guitar meshes.
  */
-export function buildCustomBassMesh(modelId = 'precision-blonde') {
+export function buildCustomBassMesh(modelId = 'precision-blonde', skinId = 'classic-sunburst') {
   const group = new THREE.Group();
-  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.18, metalness: 0.92 });
+  const textures = [];
+  const skin = getInstrumentSkinById(skinId);
+  const useCustomSkin = skin.id !== 'classic-sunburst';
+
+  const chromeMat = new THREE.MeshStandardMaterial({
+    color: skin.hardwareColor,
+    roughness: skin.id === 'midnight-stealth' ? 0.5 : 0.18,
+    metalness: 0.9,
+  });
   const darkMetal = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.32, metalness: 0.85 });
-  const mapleMat = new THREE.MeshStandardMaterial({ color: 0xe7c58a, roughness: 0.45, metalness: 0.06 });
+  const mapleMat = new THREE.MeshStandardMaterial({
+    color: skin.id === 'midnight-stealth' ? 0x18181b : 0xe7c58a,
+    roughness: 0.45,
+    metalness: 0.08,
+  });
   const rosewoodMat = new THREE.MeshStandardMaterial({ color: 0x261712, roughness: 0.62, metalness: 0.05 });
+
+  const makeSkinBassMat = (fallbackOpts) => {
+    if (!useCustomSkin && fallbackOpts) {
+      return new THREE.MeshStandardMaterial(fallbackOpts);
+    }
+    const skinTex = createInstrumentSkinTexture(skin.id);
+    textures.push(skinTex);
+    return new THREE.MeshStandardMaterial({
+      map: skinTex,
+      roughness: skin.roughness,
+      metalness: skin.metalness,
+      emissive: skin.emissiveHex,
+      emissiveIntensity: skin.emissiveIntensity,
+    });
+  };
 
   let headstockMat = mapleMat;
   let neckOffsetX = -0.34;
 
   if (modelId === 'axe-bass') {
-    // Double-blade chrome Battle Axe Bass!
     const bladeShape = new THREE.Shape();
     bladeShape.moveTo(-0.36, 0.09);
     bladeShape.quadraticCurveTo(0.05, 0.56, 0.56, 0.36);
@@ -801,11 +1224,11 @@ export function buildCustomBassMesh(modelId = 'precision-blonde') {
     bladeShape.closePath();
 
     const silverMat = new THREE.MeshStandardMaterial({
-      color: 0xdbeafe,
+      color: useCustomSkin ? skin.hardwareColor : 0xdbeafe,
       roughness: 0.16,
       metalness: 0.92,
     });
-    const coreMat = new THREE.MeshStandardMaterial({
+    const coreMat = makeSkinBassMat({
       color: 0x991b1b,
       roughness: 0.28,
       metalness: 0.45,
@@ -828,14 +1251,14 @@ export function buildCustomBassMesh(modelId = 'precision-blonde') {
     shape.quadraticCurveTo(-0.04, -0.32, -0.26, -0.22);
     shape.closePath();
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = makeSkinBassMat({
       color: 0x181826,
       roughness: 0.22,
       metalness: 0.52,
     });
     const neonMat = new THREE.MeshStandardMaterial({
-      color: 0xa855f7,
-      emissive: 0xa855f7,
+      color: useCustomSkin ? skin.accentHex : 0xa855f7,
+      emissive: useCustomSkin ? skin.accentHex : 0xa855f7,
       emissiveIntensity: 1.4,
       roughness: 0.2,
     });
@@ -849,7 +1272,6 @@ export function buildCustomBassMesh(modelId = 'precision-blonde') {
     group.add(body, ledStripTop, ledStripBot);
     neckOffsetX = -0.34;
   } else {
-    // Classic Precision Blonde Bass
     const shape = new THREE.Shape();
     shape.moveTo(-0.38, 0.06);
     shape.quadraticCurveTo(-0.34, 0.34, -0.06, 0.24);
@@ -858,17 +1280,17 @@ export function buildCustomBassMesh(modelId = 'precision-blonde') {
     shape.quadraticCurveTo(-0.1, -0.36, -0.32, -0.18);
     shape.closePath();
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = makeSkinBassMat({
       color: 0xeab308,
       roughness: 0.24,
       metalness: 0.18,
     });
     const guardMat = new THREE.MeshStandardMaterial({
-      color: 0x6b1d14,
+      color: useCustomSkin ? skin.darkHex : 0x6b1d14,
       roughness: 0.36,
-      metalness: 0.12,
+      metalness: 0.16,
     });
-    headstockMat = mapleMat;
+    headstockMat = useCustomSkin ? bodyMat : mapleMat;
 
     const body = new THREE.Mesh(makeExtrudedBody(shape, 0.11, 0.022), bodyMat);
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.025), guardMat);
@@ -892,7 +1314,7 @@ export function buildCustomBassMesh(modelId = 'precision-blonde') {
   neck.position.set(neckOffsetX - neckLen * 0.5, 0.01, -0.01);
   const board = new THREE.Mesh(
     new THREE.BoxGeometry(neckLen, 0.128, 0.022),
-    modelId === 'precision-blonde' ? mapleMat : rosewoodMat
+    modelId === 'precision-blonde' && !useCustomSkin ? mapleMat : rosewoodMat
   );
   board.position.set(neckOffsetX - neckLen * 0.5, 0.01, 0.032);
   group.add(neck, board);
@@ -911,56 +1333,90 @@ export function buildCustomBassMesh(modelId = 'precision-blonde') {
   return {
     group,
     dispose() {
-      disposeGroupResources(group);
+      disposeGroupResources(group, textures);
     },
   };
 }
 
 /**
- * Builds one of 3 distinct composite 3D Drum Kits:
- *  - pop-single-kick
- *  - metal-double-bass (twin kick drums, rack frame, extra floor tom & china cymbal!)
- *  - acrylic-led (translucent glowing cyan/violet acrylic shells with LED inner rings!)
+ * Builds one of 3 distinct composite 3D Drum Kits with active PBR skin finish & kick-drum head decal.
  */
-export function buildCustomDrumKitMesh(modelId = 'pop-single-kick', { forceDoubleKick = false } = {}) {
+export function buildCustomDrumKitMesh(
+  modelId = 'pop-single-kick',
+  { forceDoubleKick = false, skinId = 'classic-sunburst' } = {}
+) {
   const effectiveModel = forceDoubleKick && modelId === 'pop-single-kick' ? 'metal-double-bass' : modelId;
   const group = new THREE.Group();
   const textures = [];
+  const skin = getInstrumentSkinById(skinId);
+  const useCustomSkin = skin.id !== 'classic-sunburst';
 
   const isDouble = effectiveModel === 'metal-double-bass';
   const isAcrylic = effectiveModel === 'acrylic-led';
 
-  const shellMat = isAcrylic
-    ? new THREE.MeshStandardMaterial({
-        color: 0x22d3ee,
-        emissive: 0x06b6d4,
-        emissiveIntensity: 0.65,
-        roughness: 0.12,
-        metalness: 0.2,
-        transparent: true,
-        opacity: 0.68,
-      })
-    : isDouble
-      ? new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.22, metalness: 0.62 })
-      : new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.26, metalness: 0.42 });
+  let shellMat;
+  if (useCustomSkin) {
+    const skinTex = createInstrumentSkinTexture(skin.id);
+    textures.push(skinTex);
+    shellMat = new THREE.MeshStandardMaterial({
+      map: skinTex,
+      roughness: isAcrylic ? 0.14 : skin.roughness,
+      metalness: isAcrylic ? 0.35 : skin.metalness,
+      emissive: skin.emissiveHex,
+      emissiveIntensity: isAcrylic ? Math.max(0.55, skin.emissiveIntensity) : skin.emissiveIntensity,
+      transparent: isAcrylic,
+      opacity: isAcrylic ? 0.78 : 1.0,
+    });
+  } else {
+    shellMat = isAcrylic
+      ? new THREE.MeshStandardMaterial({
+          color: 0x22d3ee,
+          emissive: 0x06b6d4,
+          emissiveIntensity: 0.65,
+          roughness: 0.12,
+          metalness: 0.2,
+          transparent: true,
+          opacity: 0.68,
+        })
+      : isDouble
+        ? new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.22, metalness: 0.62 })
+        : new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.26, metalness: 0.42 });
+  }
+
+  const ringColor = useCustomSkin
+    ? skin.accentHex
+    : isAcrylic
+      ? 0xa855f7
+      : isDouble
+        ? 0xef4444
+        : 0xf59e0b;
 
   const ledRingMat = new THREE.MeshStandardMaterial({
-    color: isAcrylic ? 0xa855f7 : isDouble ? 0xef4444 : 0xf59e0b,
-    emissive: isAcrylic ? 0xa855f7 : isDouble ? 0xef4444 : 0xf59e0b,
-    emissiveIntensity: isAcrylic ? 1.85 : 0.85,
+    color: ringColor,
+    emissive: ringColor,
+    emissiveIntensity: isAcrylic ? 1.85 : 0.95,
     roughness: 0.2,
   });
 
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.9 });
+  const rimMat = new THREE.MeshStandardMaterial({
+    color: skin.hardwareColor,
+    roughness: skin.id === 'midnight-stealth' ? 0.5 : 0.2,
+    metalness: 0.9,
+  });
   const headMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.62, metalness: 0.05 });
-  const brassMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.22, metalness: 0.88 });
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: skin.id === 'frostbite-ice' ? 0xbae6fd : skin.id === 'sakura-pearl' ? 0xfda4af : 0xfbbf24,
+    roughness: 0.22,
+    metalness: 0.88,
+  });
 
   const drumheadTex = createDrumheadCanvasTexture(
-    isAcrylic ? '#22d3ee' : isDouble ? '#ef4444' : '#f59e0b',
-    isDouble ? 'METAL' : isAcrylic ? 'LED' : 'LIVE'
+    useCustomSkin ? skin.accentHex : isAcrylic ? '#22d3ee' : isDouble ? '#ef4444' : '#f59e0b',
+    useCustomSkin ? skin.drumSubLabel : isDouble ? 'METAL' : isAcrylic ? 'LED' : 'LIVE',
+    useCustomSkin ? skin.darkHex : '#0f1320'
   );
   textures.push(drumheadTex);
-  const frontKickMat = new THREE.MeshStandardMaterial({ map: drumheadTex, roughness: 0.5, metalness: 0.1 });
+  const frontKickMat = new THREE.MeshStandardMaterial({ map: drumheadTex, roughness: 0.48, metalness: 0.14 });
 
   // Kick drum(s)
   const kicks = [];
@@ -1109,16 +1565,42 @@ function createPianoKeysTexture() {
  *  - neon-double-synth: dual stacked neon arena synths on chrome X-stand
  *  - retro-keytar: slung synth-rock keytar (returns isKeytar: true so StageBand attaches to character torso)
  */
-export function buildCustomKeyboardMesh(modelId = 'concert-grand') {
+export function buildCustomKeyboardMesh(modelId = 'concert-grand', skinId = 'classic-sunburst') {
   const group = new THREE.Group();
   const textures = [];
+  const skin = getInstrumentSkinById(skinId);
+  const useCustomSkin = skin.id !== 'classic-sunburst';
+
   const keysTex = createPianoKeysTexture();
   textures.push(keysTex);
 
   const keysMat = new THREE.MeshStandardMaterial({ map: keysTex, roughness: 0.25, metalness: 0.08 });
-  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.9 });
-  const brassMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.24, metalness: 0.88 });
+  const chromeMat = new THREE.MeshStandardMaterial({
+    color: skin.hardwareColor,
+    roughness: skin.id === 'midnight-stealth' ? 0.5 : 0.2,
+    metalness: 0.9,
+  });
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: useCustomSkin ? skin.accentHex : 0xfacc15,
+    roughness: 0.24,
+    metalness: 0.88,
+  });
   let ledMat = null;
+
+  const makeSkinCaseMat = (fallbackOpts) => {
+    if (!useCustomSkin && fallbackOpts) {
+      return new THREE.MeshStandardMaterial(fallbackOpts);
+    }
+    const skinTex = createInstrumentSkinTexture(skin.id);
+    textures.push(skinTex);
+    return new THREE.MeshStandardMaterial({
+      map: skinTex,
+      roughness: skin.roughness,
+      metalness: skin.metalness,
+      emissive: skin.emissiveHex,
+      emissiveIntensity: skin.emissiveIntensity * 0.85,
+    });
+  };
 
   if (modelId === 'retro-keytar') {
     const bodyShape = new THREE.Shape();
@@ -1129,7 +1611,7 @@ export function buildCustomKeyboardMesh(modelId = 'concert-grand') {
     bodyShape.lineTo(-0.52, -0.14);
     bodyShape.closePath();
 
-    const bodyMat = new THREE.MeshStandardMaterial({
+    const bodyMat = makeSkinCaseMat({
       color: 0xe11d48,
       roughness: 0.2,
       metalness: 0.45,
@@ -1137,8 +1619,8 @@ export function buildCustomKeyboardMesh(modelId = 'concert-grand') {
       emissiveIntensity: 0.32,
     });
     ledMat = new THREE.MeshStandardMaterial({
-      color: 0x22d3ee,
-      emissive: 0x22d3ee,
+      color: useCustomSkin ? skin.accentHex : 0x22d3ee,
+      emissive: useCustomSkin ? skin.accentHex : 0x22d3ee,
       emissiveIntensity: 1.5,
       roughness: 0.2,
     });
@@ -1166,17 +1648,19 @@ export function buildCustomKeyboardMesh(modelId = 'concert-grand') {
   }
 
   if (modelId === 'neon-double-synth') {
-    const chassisMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.26, metalness: 0.65 });
-    const upperMat = new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.24, metalness: 0.55 });
+    const chassisMat = makeSkinCaseMat({ color: 0x111827, roughness: 0.26, metalness: 0.65 });
+    const upperMat = useCustomSkin
+      ? chassisMat
+      : new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.24, metalness: 0.55 });
     const pinkLed = new THREE.MeshStandardMaterial({
-      color: 0xec4899,
-      emissive: 0xec4899,
+      color: useCustomSkin ? skin.accentHex : 0xec4899,
+      emissive: useCustomSkin ? skin.accentHex : 0xec4899,
       emissiveIntensity: 1.7,
       roughness: 0.2,
     });
     const cyanLed = new THREE.MeshStandardMaterial({
-      color: 0x22d3ee,
-      emissive: 0x22d3ee,
+      color: useCustomSkin ? skin.secondaryHex : 0x22d3ee,
+      emissive: useCustomSkin ? skin.secondaryHex : 0x22d3ee,
       emissiveIntensity: 1.55,
       roughness: 0.2,
     });
@@ -1235,21 +1719,21 @@ export function buildCustomKeyboardMesh(modelId = 'concert-grand') {
     };
   }
 
-  // Default: Glossy Concert Grand Piano with curved tail, open propped lid & brass pedal lyre
-  const ebonyMat = new THREE.MeshStandardMaterial({
+  // Default: Glossy Concert Grand Piano with curved tail, open propped lid & active PBR finish
+  const ebonyMat = makeSkinCaseMat({
     color: 0x0b0d13,
     roughness: 0.12,
     metalness: 0.35,
   });
   const soundboardMat = new THREE.MeshStandardMaterial({
-    color: 0xb45309,
-    roughness: 0.4,
-    metalness: 0.55,
+    color: useCustomSkin ? skin.accentHex : 0xb45309,
+    roughness: 0.38,
+    metalness: 0.62,
   });
   ledMat = new THREE.MeshStandardMaterial({
-    color: 0xfacc15,
-    emissive: 0xfacc15,
-    emissiveIntensity: 0.9,
+    color: useCustomSkin ? skin.accentHex : 0xfacc15,
+    emissive: useCustomSkin ? skin.accentHex : 0xfacc15,
+    emissiveIntensity: 0.95,
     roughness: 0.2,
   });
 

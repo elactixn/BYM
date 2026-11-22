@@ -971,4 +971,153 @@ export class SoundEffects {
       includeVocalWhoop: grade === 'S' || grade === 'A',
     });
   }
+
+  /**
+   * Warm downward crowd boo + muffled stage thud & soft splat when an angry crowd projectile lands.
+   */
+  playCrowdBooAndThud(pan = 0) {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const now = ctx.currentTime;
+    const clampedPan = Math.max(-0.85, Math.min(0.85, Number(pan) || 0));
+
+    // 1. Muffled stage floor thud (lowpass triangle impact)
+    const thud = ctx.createOscillator();
+    const thudFilter = ctx.createBiquadFilter();
+    const thudGain = ctx.createGain();
+    thud.type = 'triangle';
+    thud.frequency.setValueAtTime(125, now);
+    thud.frequency.exponentialRampToValueAtTime(38, now + 0.14);
+    thudFilter.type = 'lowpass';
+    thudFilter.frequency.setValueAtTime(280, now);
+    thudGain.gain.setValueAtTime(0.001, now);
+    thudGain.gain.linearRampToValueAtTime(0.24, now + 0.01);
+    thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+    thud.connect(thudFilter);
+    thudFilter.connect(thudGain);
+    this.connectPanned(thudGain, clampedPan);
+    thud.start(now);
+    thud.stop(now + 0.19);
+
+    // 2. Soft wet squish / bounce burst from pinkCrowdBuffer
+    if (this.pinkCrowdBuffer) {
+      const squish = ctx.createBufferSource();
+      squish.buffer = this.pinkCrowdBuffer;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(780, now);
+      bp.frequency.exponentialRampToValueAtTime(290, now + 0.12);
+      bp.Q.value = 1.6;
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.001, now);
+      sg.gain.linearRampToValueAtTime(0.16, now + 0.012);
+      sg.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      squish.connect(bp);
+      bp.connect(sg);
+      this.connectPanned(sg, clampedPan);
+      squish.start(now, Math.random() * 1.5);
+      squish.stop(now + 0.16);
+    }
+
+    // 3. Low warm crowd "boooo" formant swell (no harsh white static)
+    const volScale = Math.max(0.25, Math.min(1, this.crowdVolume ?? 0.75));
+    this.scheduleWarmCrowdSwell({
+      startTime: now + 0.02,
+      attackSec: 0.1,
+      holdSec: 0.22,
+      releaseSec: 0.42,
+      peakGain: 0.15 * volScale,
+      formants: [310, 560, 880],
+      lowpassHz: 1150,
+      pan: clampedPan,
+      playbackRate: 0.84,
+      includeVocalWhoop: false,
+    });
+  }
+
+  /**
+   * Panggulo hazard bomb detonation: deep sub-bass drop + filtered dissonant crunch panned to lane.
+   */
+  playHazardDetonate(laneIndex = 2, laneCount = 5) {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const now = ctx.currentTime;
+    const pan = laneCount > 1 ? ((laneIndex / (laneCount - 1)) * 2 - 1) * 0.72 : 0;
+
+    // Sub-bass drop
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(160, now);
+    sub.frequency.exponentialRampToValueAtTime(32, now + 0.34);
+    subGain.gain.setValueAtTime(0.32, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    sub.connect(subGain);
+    this.connectPanned(subGain, pan);
+    sub.start(now);
+    sub.stop(now + 0.4);
+
+    // Dissonant tritone buzz crunch
+    [138.59, 196.0].forEach((freq) => {
+      const osc = ctx.createOscillator();
+      const lp = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.62, now + 0.26);
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(920, now);
+      lp.frequency.exponentialRampToValueAtTime(220, now + 0.26);
+      g.gain.setValueAtTime(0.11, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.connect(lp);
+      lp.connect(g);
+      this.connectPanned(g, pan);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    });
+
+    // Filtered low-mid explosion burst
+    if (this.pinkCrowdBuffer) {
+      const burst = ctx.createBufferSource();
+      burst.buffer = this.pinkCrowdBuffer;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(1400, now);
+      lp.frequency.exponentialRampToValueAtTime(240, now + 0.32);
+      const bg = ctx.createGain();
+      bg.gain.setValueAtTime(0.24, now);
+      bg.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+      burst.connect(lp);
+      lp.connect(bg);
+      this.connectPanned(bg, pan);
+      burst.start(now, Math.random() * 1.5);
+      burst.stop(now + 0.36);
+    }
+  }
+
+  /**
+   * Subtle crisp emerald chime when a player cleanly dodges a Panggulo hazard note.
+   */
+  playHazardDodged(laneIndex = 2, laneCount = 5) {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const now = ctx.currentTime;
+    const pan = laneCount > 1 ? ((laneIndex / (laneCount - 1)) * 2 - 1) * 0.65 : 0;
+
+    [880, 1318.5].forEach((hz, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      const t0 = now + idx * 0.035;
+      osc.frequency.setValueAtTime(hz, t0);
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.065, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+      osc.connect(g);
+      this.connectPanned(g, pan);
+      osc.start(t0);
+      osc.stop(t0 + 0.18);
+    });
+  }
 }

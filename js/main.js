@@ -52,6 +52,7 @@ import {
   DRUM_KIT_MODELS,
   KEYBOARD_MODELS,
   STAR_LOOKALIKES,
+  INSTRUMENT_SKINS,
   getBandLineupById,
   getHighwaySkinById,
   getGuitarModelById,
@@ -59,14 +60,21 @@ import {
   getDrumKitModelById,
   getKeyboardModelById,
   getStarLookById,
+  getInstrumentSkinById,
 } from './bandGearCatalog.js';
 
-const CHART_CACHE_VERSION = 'v10';
+const CHART_CACHE_VERSION = 'v11';
 const gameState = new GameState();
 const sfx = new SoundEffects();
 let stageBand = null;
 let idleBandRaf = null;
 let lastIdleBandMs = 0;
+
+// 60 FPS Adaptive Quality Guard (automatically softens GPU load if FPS dips < 45 for > 2s)
+let emaFps = 60;
+let lowFpsAccumSec = 0;
+let highFpsAccumSec = 0;
+let adaptiveLowPowerActive = false;
 
 // In-memory sub-second Web Worker FFT analysis cache keyed by track.id (0ms instrument/difficulty switches)
 const workerAnalysisCache = new Map();
@@ -342,7 +350,9 @@ function initStageBand() {
       drumKitModelId: gameState.drumKitModelId,
       keyboardModelId: gameState.keyboardModelId,
       starLookId: gameState.starLookId,
+      instrumentSkinId: gameState.instrumentSkinId,
       onFireworkBurst: (pan) => sfx.playFireworkBurst(pan),
+      onProjectileImpact: (pan) => sfx.playCrowdBooAndThud(pan),
     });
     stageBand.setBackstageFocus('setlist');
     window.addEventListener('resize', () => {
@@ -460,7 +470,7 @@ function syncBackstageCameraFocus() {
   } else if (activeLobbyTab === 'venues') {
     stageBand.setBackstageFocus('venues');
   } else if (activeLobbyTab === 'gear') {
-    stageBand.setBackstageFocus(activeGearCategory);
+    stageBand.setBackstageFocus(activeGearCategory === 'skins' ? 'guitar' : activeGearCategory);
   }
 }
 
@@ -703,8 +713,10 @@ function renderGigTicket() {
 
   if (ticketVenueStamp) ticketVenueStamp.textContent = venue.name;
   if (ticketGearStamp) {
+    const skin = getInstrumentSkinById(gameState.instrumentSkinId);
+    const skinSuffix = skin && skin.id !== 'classic-sunburst' ? ` · ${skin.shortName}` : '';
     const lookSuffix = starLook && starLook.id !== 'default-band' ? ` · ${starLook.shortName}` : '';
-    ticketGearStamp.textContent = `${lineup.shortName} · ${gearName}${lookSuffix}`;
+    ticketGearStamp.textContent = `${lineup.shortName} · ${gearName}${skinSuffix}${lookSuffix}`;
   }
 }
 
@@ -784,6 +796,12 @@ function renderGearDock() {
     activeId = gameState.keyboardModelId;
     onSelect = selectKeyboardModel;
     const cur = getKeyboardModelById(activeId);
+    if (gearActiveDesc) gearActiveDesc.textContent = cur.description;
+  } else if (activeGearCategory === 'skins') {
+    items = INSTRUMENT_SKINS;
+    activeId = gameState.instrumentSkinId;
+    onSelect = selectInstrumentSkin;
+    const cur = getInstrumentSkinById(activeId);
     if (gearActiveDesc) gearActiveDesc.textContent = cur.description;
   } else if (activeGearCategory === 'highway') {
     items = HIGHWAY_SKINS;
@@ -874,6 +892,13 @@ function selectDrumKitModel(id) {
 function selectKeyboardModel(id) {
   gameState.setKeyboardModelId(id);
   if (stageBand) stageBand.setKeyboardModel(gameState.keyboardModelId);
+  renderGearDock();
+  renderGigTicket();
+}
+
+function selectInstrumentSkin(id) {
+  gameState.setInstrumentSkinId(id);
+  if (stageBand) stageBand.setInstrumentSkin(gameState.instrumentSkinId);
   renderGearDock();
   renderGigTicket();
 }
@@ -1558,6 +1583,7 @@ function resetNotesFromTimestamp(startSec) {
     holding: false,
     holdCompleted: n.hitTimeSec < startSec - 0.05,
     missed: false,
+    dodged: false,
   }));
 }
 
@@ -1573,6 +1599,35 @@ function jumpToPracticeLoopStart() {
 
 function handleFrameTick(dt) {
   if (gameState.screen !== SCREENS.STAGE) return;
+
+  // Automatic 60 FPS Adaptive Quality Guard
+  const instFps = 1 / Math.max(dt, 0.001);
+  emaFps = emaFps * 0.9 + Math.min(120, instFps) * 0.1;
+  if (!adaptiveLowPowerActive) {
+    if (emaFps < 45) {
+      lowFpsAccumSec += dt;
+      if (lowFpsAccumSec >= 2.0) {
+        adaptiveLowPowerActive = true;
+        lowFpsAccumSec = 0;
+        highFpsAccumSec = 0;
+        if (stageBand) stageBand.setAdaptiveQualityMode(true);
+        rhythmCanvas.setLowParticleMode(true);
+      }
+    } else {
+      lowFpsAccumSec = Math.max(0, lowFpsAccumSec - dt * 0.5);
+    }
+  } else if (emaFps >= 55) {
+    highFpsAccumSec += dt;
+    if (highFpsAccumSec >= 4.0) {
+      adaptiveLowPowerActive = false;
+      highFpsAccumSec = 0;
+      lowFpsAccumSec = 0;
+      if (stageBand) stageBand.setAdaptiveQualityMode(false);
+      rhythmCanvas.setLowParticleMode(false);
+    }
+  } else {
+    highFpsAccumSec = 0;
+  }
 
   audioEngine.updateTelemetry();
 
@@ -1656,20 +1711,34 @@ function handleFrameTick(dt) {
   audioEngine.updateWhammy(whammyTarget, dt);
   rhythmCanvas.setWhammyVisual(whammyTarget);
 
-  // 4. Detect expired missed notes using active difficulty's timing window
+  // 4. Detect expired missed notes + auto-dodged "Panggulo" Hazard notes
   const windows = gameState.getTimingWindows();
   const missThresholdSec = windows.GOOD_MS / 1000;
   let anyMiss = false;
   for (let i = 0; i < activeNotes.length; i += 1) {
     const note = activeNotes[i];
-    if (note.hit || note.missed) continue;
+    if (note.hit || note.missed || note.dodged) continue;
 
     if (songTime - note.hitTimeSec > missThresholdSec) {
+      if (note.isHazard) {
+        note.dodged = true;
+        gameState.registerHazardDodged();
+        rhythmCanvas.triggerHazardDodgedVisual(note.lane);
+        sfx.playHazardDodged(note.lane, gameState.laneCount);
+        anyMiss = true; // refresh HUD score/hype immediately
+        continue;
+      }
+
       note.missed = true;
       anyMiss = true;
       const res = gameState.registerMiss();
       audioEngine.setInstrumentStemMuted(true);
-      if (stageBand) stageBand.setMemberMissed(gameState.instrument, true);
+      if (stageBand) {
+        stageBand.setMemberMissed(gameState.instrument, true);
+        if (res.crowdHype < 42 || res.consecutiveMisses >= 2) {
+          stageBand.triggerCrowdThrow({ targetRole: gameState.instrument, laneIndex: note.lane });
+        }
+      }
       if (res.stereoReset) audioEngine.setStereoWidthTier(0);
       rhythmCanvas.triggerMissVisual(res.brokeStreak);
       sfx.playWrongKeyMiss(note.lane, gameState.laneCount, gameState.instrument);
@@ -1770,7 +1839,7 @@ function handleLanePress(laneIndex) {
   let bestAbs = Infinity;
   for (let i = 0; i < activeNotes.length; i += 1) {
     const n = activeNotes[i];
-    if (n.hit || n.missed || n.lane !== laneIndex) continue;
+    if (n.hit || n.missed || n.dodged || n.lane !== laneIndex) continue;
     const diff = n.hitTimeSec - songTime;
     if (diff < -maxWindowSec) continue;
     if (diff > maxWindowSec) break;
@@ -1784,6 +1853,24 @@ function handleLanePress(laneIndex) {
   const colorObj = gameState.getLaneConfig().colors[laneIndex];
 
   if (candidate && bestAbs <= windows.GOOD_MS / 1000) {
+    if (candidate.isHazard) {
+      candidate.hit = true;
+      const hRes = gameState.registerHazardHit();
+      audioEngine.setInstrumentStemMuted(true);
+      if (stageBand) {
+        stageBand.setMemberMissed(gameState.instrument, true);
+        stageBand.triggerCrowdThrow({ targetRole: gameState.instrument, laneIndex, forced: true });
+      }
+      if (hRes.stereoReset) audioEngine.setStereoWidthTier(0);
+      sfx.playHazardDetonate(laneIndex, gameState.laneCount);
+      rhythmCanvas.triggerHazardDetonateVisual(laneIndex);
+      syncHudReadouts();
+      if (hRes.failedOut) {
+        handleTrackFinished();
+      }
+      return;
+    }
+
     const deltaMs = (candidate.hitTimeSec - songTime) * 1000;
     candidate.hit = true;
     if (candidate.sustainDuration > 0) {
@@ -1856,11 +1943,16 @@ function handleLanePress(laneIndex) {
   }
 
   if (songTime < -0.2) return;
-  if (candidate) candidate.missed = true;
+  if (candidate && !candidate.isHazard) candidate.missed = true;
 
   const missRes = gameState.registerMiss();
   audioEngine.setInstrumentStemMuted(true);
-  if (stageBand) stageBand.setMemberMissed(gameState.instrument, true);
+  if (stageBand) {
+    stageBand.setMemberMissed(gameState.instrument, true);
+    if (missRes.crowdHype < 42 || missRes.consecutiveMisses >= 2) {
+      stageBand.triggerCrowdThrow({ targetRole: gameState.instrument, laneIndex });
+    }
+  }
   if (missRes.stereoReset) audioEngine.setStereoWidthTier(0);
   sfx.playWrongKeyMiss(laneIndex, gameState.laneCount, gameState.instrument);
   rhythmCanvas.triggerMissVisual(missRes.brokeStreak);
@@ -2239,6 +2331,7 @@ function stepLobbySelection(delta) {
       bass: { list: BASS_MODELS, cur: gameState.bassModelId, fn: selectBassModel },
       drums: { list: DRUM_KIT_MODELS, cur: gameState.drumKitModelId, fn: selectDrumKitModel },
       piano: { list: KEYBOARD_MODELS, cur: gameState.keyboardModelId, fn: selectKeyboardModel },
+      skins: { list: INSTRUMENT_SKINS, cur: gameState.instrumentSkinId, fn: selectInstrumentSkin },
       highway: { list: HIGHWAY_SKINS, cur: gameState.highwaySkinId, fn: selectHighwaySkin },
     };
     const entry = map[activeGearCategory];
@@ -2289,7 +2382,7 @@ function setupKeyboardListeners() {
         if (activeLobbyTab !== 'gear') {
           switchLobbyTab('gear');
         } else {
-          const cats = ['band', 'stars', 'guitar', 'bass', 'drums', 'piano', 'highway'];
+          const cats = ['band', 'stars', 'guitar', 'bass', 'drums', 'piano', 'skins', 'highway'];
           const next = cats[(cats.indexOf(activeGearCategory) + 1) % cats.length];
           switchGearCategory(next);
         }

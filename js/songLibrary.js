@@ -16,6 +16,7 @@
 
 import { extractSongMetadata } from './songMetadata.js';
 import { normalizeSectionType } from './audioEngine.js';
+import { injectPangguloHazards } from './beatScheduler.js';
 
 const DB_NAME = 'EncoreStageLibraryDB';
 const DB_VERSION = 2;
@@ -1104,6 +1105,14 @@ export function buildPreauthoredBuiltinChart(track, { instrument = 'guitar', dif
       lastTime = timeSec;
     }
   }
+
+  injectPangguloHazards(notes, {
+    difficultyId,
+    laneCount,
+    sections,
+    beatGrid,
+    trackId: track.id,
+  });
 
   return {
     bpm: track.bpm,

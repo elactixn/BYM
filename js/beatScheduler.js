@@ -1937,6 +1937,13 @@ export async function analyzeAndBuildChart({
         difficultyConfig,
       });
       if (chChart && chChart.notes.length >= 10) {
+        injectPangguloHazards(chChart.notes, {
+          difficultyId: difficultyConfig?.id || 'medium',
+          laneCount,
+          sections: resolvedSections,
+          beatGrid: chChart.beatGrid,
+          trackId,
+        });
         onProgress(1, 'Clone Hero chart ready!');
         return {
           ...chChart,
@@ -1970,10 +1977,20 @@ export async function analyzeAndBuildChart({
           difficultyConfig,
         });
         if (midiChart) {
+          const finalBeatGrid = workerAnalysis.dynamicBeatGrid?.length
+            ? workerAnalysis.dynamicBeatGrid
+            : midiChart.beatGrid;
+          injectPangguloHazards(midiChart.notes, {
+            difficultyId: difficultyConfig?.id || 'medium',
+            laneCount,
+            sections: resolvedSections,
+            beatGrid: finalBeatGrid,
+            trackId,
+          });
           onProgress(1, 'MIDI chart ready!');
           return {
             ...midiChart,
-            beatGrid: workerAnalysis.dynamicBeatGrid?.length ? workerAnalysis.dynamicBeatGrid : midiChart.beatGrid,
+            beatGrid: finalBeatGrid,
             sections: resolvedSections,
             stemActivity: activity,
             workerAnalysis,
@@ -2056,14 +2073,151 @@ export async function analyzeAndBuildChart({
     }
   }
 
+  const finalSections = result.sections?.length ? result.sections : resolvedSections;
+  injectPangguloHazards(result.notes, {
+    difficultyId: difficultyConfig?.id || 'medium',
+    laneCount,
+    sections: finalSections,
+    beatGrid: result.beatGrid,
+    trackId,
+  });
+
   onProgress(1, 'Ready to take the stage!');
   return {
     ...result,
-    sections: result.sections?.length ? result.sections : resolvedSections,
+    sections: finalSections,
     stemActivity: activity,
     workerAnalysis,
-    chartSource: 'worker-dp-fft',
+    chartSource: workerAnalysis?.analysisEngine || 'worker-hpss-fft',
   };
+}
+
+/**
+ * Strategically injects "Panggulo" Hazard / Dodge Notes (`isHazard: true`) into Medium, Hard & Expert charts
+ * (strictly disabled on Easy!) during high-energy Chorus / Guitar Solo / peak moments.
+ * Hazards only spawn in guaranteed-clear neighboring lanes so players can cleanly dodge them!
+ */
+export function injectPangguloHazards(
+  notes,
+  { difficultyId = 'medium', laneCount = 4, sections = [], beatGrid = [], trackId = 'track' } = {}
+) {
+  if (!Array.isArray(notes) || notes.length < 18) return notes;
+  if (difficultyId === 'easy' || laneCount < 3) return notes;
+
+  // Deterministic pseudo-random seed from trackId so hazards feel handcrafted & repeatable per song
+  let seed = 2166136261;
+  const keyStr = `${trackId}:${difficultyId}:${laneCount}`;
+  for (let i = 0; i < keyStr.length; i += 1) {
+    seed ^= keyStr.charCodeAt(i);
+    seed = Math.imul(seed, 16777619);
+  }
+  const nextRand = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+
+  const spacingSec = difficultyId === 'expert' ? 4.4 : difficultyId === 'hard' ? 6.2 : 8.5;
+  const maxHazards = difficultyId === 'expert' ? 20 : difficultyId === 'hard' ? 13 : 8;
+  const firstNoteTime = notes[0].hitTimeSec;
+  const lastNoteTime = notes[notes.length - 1].hitTimeSec;
+  const span = Math.max(10, lastNoteTime - firstNoteTime);
+
+  // Build candidate off-beat / energetic timestamps
+  const candidates = [];
+  if (Array.isArray(beatGrid) && beatGrid.length >= 8) {
+    for (let i = 3; i < beatGrid.length - 2; i += 1) {
+      const b0 = beatGrid[i];
+      const b1 = beatGrid[i + 1];
+      const t0 = typeof b0 === 'number' ? b0 : b0?.timeSec;
+      const t1 = typeof b1 === 'number' ? b1 : b1?.timeSec;
+      if (!Number.isFinite(t0) || !Number.isFinite(t1)) continue;
+      const midOffBeat = (t0 + t1) * 0.5;
+      if (midOffBeat < firstNoteTime + 5.0 || midOffBeat > lastNoteTime - 3.0) continue;
+      const sec = getSongSectionAt(sections, midOffBeat);
+      const secType = sec?.type || '';
+      const isHotSection =
+        secType === 'CHORUS' ||
+        secType === 'GUITAR_SOLO' ||
+        secType === 'OUTRO' ||
+        (!secType && midOffBeat > firstNoteTime + span * 0.22 && midOffBeat < lastNoteTime - span * 0.12);
+      if (isHotSection) {
+        candidates.push(midOffBeat);
+      }
+    }
+  }
+
+  // Fallback candidate timestamps derived from note gaps if beatGrid was sparse
+  if (candidates.length < 4) {
+    for (let i = 4; i < notes.length - 4; i += 3) {
+      const t = notes[i].hitTimeSec;
+      if (t > firstNoteTime + 5.0 && t < lastNoteTime - 3.0) {
+        candidates.push(t);
+      }
+    }
+  }
+
+  const hazards = [];
+  let lastHazardTime = -99;
+
+  for (let c = 0; c < candidates.length && hazards.length < maxHazards; c += 1) {
+    const t = candidates[c];
+    if (t - lastHazardTime < spacingSec) continue;
+
+    // Inspect nearby normal notes to find lanes that are 100% clear (including sustains!)
+    const busyLanes = new Set();
+    let nearChord = false;
+    let nearbyNoteCount = 0;
+
+    for (let i = 0; i < notes.length; i += 1) {
+      const n = notes[i];
+      const nEnd = n.hitTimeSec + (n.sustainDuration || 0);
+      if (n.hitTimeSec > t + 0.42) break;
+      if (nEnd < t - 0.36) continue;
+      nearbyNoteCount += 1;
+      if (Math.abs(n.hitTimeSec - t) < 0.22 && n.isChord) nearChord = true;
+      if (n.hitTimeSec <= t + 0.34 && nEnd >= t - 0.3) {
+        busyLanes.add(n.lane);
+      }
+    }
+
+    if (nearChord || nearbyNoteCount === 0) continue;
+
+    // Prefer a free lane directly adjacent to an active lane so the dodge feels exciting & readable
+    const freeLanes = [];
+    for (let l = 0; l < laneCount; l += 1) {
+      if (!busyLanes.has(l)) freeLanes.push(l);
+    }
+    if (freeLanes.length === 0) continue;
+
+    const adjFree = freeLanes.filter((l) => busyLanes.has(l - 1) || busyLanes.has(l + 1));
+    const pool = adjFree.length > 0 ? adjFree : freeLanes;
+    const lane = pool[Math.floor(nextRand() * pool.length)];
+
+    hazards.push({
+      id: `${trackId}_haz_${hazards.length}`,
+      lane,
+      hitTimeSec: Number(t.toFixed(4)),
+      sustainDuration: 0,
+      isChord: false,
+      isFever: false,
+      isHazard: true,
+      pitchNorm: lane / Math.max(1, laneCount - 1),
+      drumPart: null,
+      hit: false,
+      holding: false,
+      holdCompleted: false,
+      missed: false,
+      dodged: false,
+    });
+    lastHazardTime = t;
+  }
+
+  if (hazards.length > 0) {
+    for (let i = 0; i < hazards.length; i += 1) notes.push(hazards[i]);
+    notes.sort((a, b) => a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
+  }
+
+  return notes;
 }
 
 export function cloneFreshNotes(notes) {
@@ -2073,5 +2227,6 @@ export function cloneFreshNotes(notes) {
     holding: false,
     holdCompleted: false,
     missed: false,
+    dodged: false,
   }));
 }
