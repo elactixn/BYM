@@ -24,12 +24,16 @@ export class SoundEffects {
   constructor() {
     this.ctx = null;
     this.muted = false;
-    this.crowdVolume = 0.72; // 0..1 controlled by Live Crowd Audio slider
+    this.crowdVolume = 0.72; // 0..1 controlled by Live Crowd Audio slider (scaled into 0.05 peak ceiling)
+    this.sfxVolume = 0.85; // 0..1 controlled by SFX Volume slider
     this.noiseBuffer = null; // Used strictly for short snare/pyro transients
     this.pinkCrowdBuffer = null; // Seamless stereo warm pink noise for realistic crowd vocals & claps
 
-    // Persistent multi-formant stadium crowd ambience graph
+    // Persistent multi-formant stadium crowd ambience graph + SFX bus
     this.crowdBus = null;
+    this.crowdWarmLp = null;
+    this.crowdWarmBp = null;
+    this.sfxBus = null;
     this.crowdNodes = null;
     this.crowdRunning = false;
     this.lastClapBeatIndex = -1;
@@ -113,8 +117,38 @@ export class SoundEffects {
 
     if (!this.crowdBus || this.crowdBus.context !== this.ctx) {
       this.crowdBus = this.ctx.createGain();
-      this.crowdBus.gain.value = this.muted ? 0 : this.crowdVolume;
-      this.crowdBus.connect(this.ctx.destination);
+      // Normalize crowd cheer ceiling strictly to 0.05 peak so it never overpowers the music track!
+      this.crowdBus.gain.value = this.muted ? 0 : this.crowdVolume * 0.05;
+
+      // Dedicated warm 1350Hz lowpass + 650Hz bandpass stadium-distance shaping stage
+      this.crowdWarmLp = this.ctx.createBiquadFilter();
+      this.crowdWarmLp.type = 'lowpass';
+      this.crowdWarmLp.frequency.value = 1350;
+      this.crowdWarmLp.Q.value = 0.65;
+
+      this.crowdWarmBp = this.ctx.createBiquadFilter();
+      this.crowdWarmBp.type = 'bandpass';
+      this.crowdWarmBp.frequency.value = 650;
+      this.crowdWarmBp.Q.value = 0.7;
+
+      const lpMix = this.ctx.createGain();
+      lpMix.gain.value = 0.68;
+      const bpMix = this.ctx.createGain();
+      bpMix.gain.value = 0.55;
+
+      this.crowdBus.connect(this.crowdWarmLp);
+      this.crowdWarmLp.connect(lpMix);
+      lpMix.connect(this.ctx.destination);
+
+      this.crowdWarmLp.connect(this.crowdWarmBp);
+      this.crowdWarmBp.connect(bpMix);
+      bpMix.connect(this.ctx.destination);
+    }
+
+    if (!this.sfxBus || this.sfxBus.context !== this.ctx) {
+      this.sfxBus = this.ctx.createGain();
+      this.sfxBus.gain.value = this.muted ? 0 : this.sfxVolume;
+      this.sfxBus.connect(this.ctx.destination);
     }
 
     return this.ctx;
@@ -126,15 +160,27 @@ export class SoundEffects {
 
   setMuted(muted) {
     this.muted = Boolean(muted);
-    if (this.crowdBus && this.ctx) {
-      this.crowdBus.gain.setTargetAtTime(this.muted ? 0 : this.crowdVolume, this.ctx.currentTime, 0.04);
+    if (this.ctx) {
+      if (this.crowdBus) {
+        this.crowdBus.gain.setTargetAtTime(this.muted ? 0 : this.crowdVolume * 0.05, this.ctx.currentTime, 0.12);
+      }
+      if (this.sfxBus) {
+        this.sfxBus.gain.setTargetAtTime(this.muted ? 0 : this.sfxVolume, this.ctx.currentTime, 0.04);
+      }
     }
   }
 
   setCrowdVolume(vol) {
     this.crowdVolume = Math.max(0, Math.min(1, Number(vol) || 0));
     if (this.crowdBus && this.ctx) {
-      this.crowdBus.gain.setTargetAtTime(this.muted ? 0 : this.crowdVolume, this.ctx.currentTime, 0.04);
+      this.crowdBus.gain.setTargetAtTime(this.muted ? 0 : this.crowdVolume * 0.05, this.ctx.currentTime, 0.15);
+    }
+  }
+
+  setSfxVolume(vol) {
+    this.sfxVolume = Math.max(0, Math.min(1, Number(vol) || 0));
+    if (this.sfxBus && this.ctx) {
+      this.sfxBus.gain.setTargetAtTime(this.muted ? 0 : this.sfxVolume, this.ctx.currentTime, 0.04);
     }
   }
 
@@ -145,7 +191,7 @@ export class SoundEffects {
   }
 
   connectPanned(node, pan, destination = null) {
-    const dest = destination || this.ctx.destination;
+    const dest = destination || this.sfxBus || this.ctx.destination;
     if (typeof this.ctx.createStereoPanner === 'function') {
       const panner = this.ctx.createStereoPanner();
       panner.pan.value = Math.max(-1, Math.min(1, pan));
@@ -154,6 +200,57 @@ export class SoundEffects {
     } else {
       node.connect(dest);
     }
+  }
+
+  /**
+   * Crisp 4-beat metronome click for the interactive "Tap to Calibrate" audio offset test.
+   */
+  playCalibrationMetronomeTick(isDownbeat = false) {
+    const ctx = this.ensureContext();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(isDownbeat ? 1180 : 860, now);
+    osc.frequency.exponentialRampToValueAtTime(isDownbeat ? 720 : 540, now + 0.045);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(isDownbeat ? 0.28 : 0.2, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.065);
+
+    osc.connect(gain);
+    gain.connect(this.sfxBus || ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.075);
+  }
+
+  /**
+   * Energetic celebratory guitar/synth/drum flourish hit during Big Rock Ending (BRE) freestyle!
+   */
+  playBreFreestyleHit(laneIndex = 0, laneCount = 5) {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const now = ctx.currentTime;
+    const baseHz = PENTATONIC_5[laneIndex % PENTATONIC_5.length] * 1.5;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(baseHz, now);
+    osc.frequency.exponentialRampToValueAtTime(baseHz * 1.12, now + 0.09);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2400;
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.14, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.11);
+
+    osc.connect(lp);
+    lp.connect(gain);
+    this.connectPanned(gain, this.laneToPan(laneIndex, laneCount));
+    osc.start(now);
+    osc.stop(now + 0.12);
   }
 
   /**
@@ -350,13 +447,14 @@ export class SoundEffects {
     }
 
     const norm = Math.max(0, Math.min(1, hype / 100));
-    const feverBoost = feverActive || isEncore ? 1.42 : 1.0;
+    const feverBoost = feverActive || isEncore ? 1.32 : 1.0;
 
-    lowGain.gain.setTargetAtTime((0.06 + norm * 0.13) * feverBoost, now, 0.18);
-    midGain.gain.setTargetAtTime((0.032 + norm * 0.115) * feverBoost, now, 0.18);
-    highGain.gain.setTargetAtTime((0.012 + Math.max(0, norm - 0.25) * 0.085) * feverBoost, now, 0.18);
-    fMid.frequency.setTargetAtTime(720 + norm * 320 + (feverActive ? 140 : 0), now, 0.22);
-    masterLp.frequency.setTargetAtTime(1750 + norm * 650 + (feverActive ? 250 : 0), now, 0.22);
+    // Gentle 0.8s smooth fade ramps keeping ambient crowd bed warm & subtle (~0.015 effective bed)
+    lowGain.gain.setTargetAtTime((0.14 + norm * 0.18) * feverBoost, now, 0.28);
+    midGain.gain.setTargetAtTime((0.08 + norm * 0.14) * feverBoost, now, 0.28);
+    highGain.gain.setTargetAtTime((0.02 + Math.max(0, norm - 0.3) * 0.08) * feverBoost, now, 0.28);
+    fMid.frequency.setTargetAtTime(620 + norm * 220 + (feverActive ? 90 : 0), now, 0.35);
+    masterLp.frequency.setTargetAtTime(1180 + norm * 220 + (feverActive ? 140 : 0), now, 0.35);
 
     // BPM-locked soft warm stadium clapping when hype >= 70% or during Fever / Encore!
     if ((hype >= 70 || feverActive || isEncore) && songTime > 0 && bpm >= 65) {
@@ -899,6 +997,56 @@ export class SoundEffects {
     src.stop(now + 0.5);
   }
 
+  playFireworkWhistle(pan = 0) {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const now = ctx.currentTime;
+
+    // 1. Low-pass mortar tube launch thump + black-powder pop
+    const thumpOsc = ctx.createOscillator();
+    const thumpGain = ctx.createGain();
+    thumpOsc.type = 'sine';
+    thumpOsc.frequency.setValueAtTime(108, now);
+    thumpOsc.frequency.exponentialRampToValueAtTime(36, now + 0.14);
+    thumpGain.gain.setValueAtTime(0.11, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    thumpOsc.connect(thumpGain);
+    this.connectPanned(thumpGain, pan);
+    thumpOsc.start(now);
+    thumpOsc.stop(now + 0.18);
+
+    const popSrc = ctx.createBufferSource();
+    popSrc.buffer = this.pinkCrowdBuffer;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(340, now);
+    lp.frequency.exponentialRampToValueAtTime(110, now + 0.12);
+    const popGain = ctx.createGain();
+    popGain.gain.setValueAtTime(0.08, now);
+    popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    popSrc.connect(lp);
+    lp.connect(popGain);
+    this.connectPanned(popGain, pan);
+    popSrc.start(now, Math.random() * 2.0);
+    popSrc.stop(now + 0.15);
+
+    // 2. Whistling pyrotechnic rocket ascent
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(480, now + 0.03);
+    osc.frequency.exponentialRampToValueAtTime(1580, now + 0.46);
+
+    g.gain.setValueAtTime(0.0005, now + 0.02);
+    g.gain.linearRampToValueAtTime(0.026, now + 0.09);
+    g.gain.exponentialRampToValueAtTime(0.0005, now + 0.48);
+
+    osc.connect(g);
+    this.connectPanned(g, pan);
+    osc.start(now + 0.02);
+    osc.stop(now + 0.5);
+  }
+
   playFireworkBurst(pan = 0) {
     if (this.muted) return;
     const ctx = this.ensureContext();
@@ -908,30 +1056,30 @@ export class SoundEffects {
     const thumpGain = ctx.createGain();
     thump.type = 'sine';
     thump.frequency.setValueAtTime(145, now);
-    thump.frequency.exponentialRampToValueAtTime(34, now + 0.22);
-    thumpGain.gain.setValueAtTime(0.18, now);
-    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+    thump.frequency.exponentialRampToValueAtTime(30, now + 0.28);
+    thumpGain.gain.setValueAtTime(0.2, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
     thump.connect(thumpGain);
     this.connectPanned(thumpGain, pan);
     thump.start(now);
-    thump.stop(now + 0.28);
+    thump.stop(now + 0.34);
 
     const crackle = ctx.createBufferSource();
     crackle.buffer = this.pinkCrowdBuffer;
     const hp = ctx.createBiquadFilter();
     hp.type = 'bandpass';
-    hp.frequency.setValueAtTime(2200, now);
-    hp.frequency.exponentialRampToValueAtTime(650, now + 0.55);
-    hp.Q.value = 0.7;
+    hp.frequency.setValueAtTime(2400, now);
+    hp.frequency.exponentialRampToValueAtTime(620, now + 0.68);
+    hp.Q.value = 0.68;
     const cg = ctx.createGain();
     cg.gain.setValueAtTime(0.001, now);
-    cg.gain.linearRampToValueAtTime(0.15, now + 0.018);
-    cg.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+    cg.gain.linearRampToValueAtTime(0.16, now + 0.018);
+    cg.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
     crackle.connect(hp);
     hp.connect(cg);
     this.connectPanned(cg, pan);
     crackle.start(now, Math.random() * 2.0);
-    crackle.stop(now + 0.65);
+    crackle.stop(now + 0.74);
   }
 
   playEncoreFanfare(grade = 'A') {

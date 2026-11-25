@@ -34,6 +34,14 @@ export const LIGHTING_MOODS = {
     strobeStrength: 0,
     ledBgTop: '#0d1030',
     ledAccent: '#818cf8',
+    skyTop: 0x040615,
+    skyMid: 0x0b1233,
+    skyHorizon: 0x16224a,
+    searchlightIntensity: 0.25,
+    searchlightSpeed: 0.35,
+    hazeShaftOpacity: 0.14,
+    ribbonScrollSpeed: 0.04,
+    crowdLightstickBoost: 0.72,
   },
   VERSE_GROOVE: {
     id: 'VERSE_GROOVE',
@@ -55,6 +63,14 @@ export const LIGHTING_MOODS = {
     strobeStrength: 0,
     ledBgTop: '#082230',
     ledAccent: '#22d3ee',
+    skyTop: 0x050919,
+    skyMid: 0x0e1d3b,
+    skyHorizon: 0x1f365c,
+    searchlightIntensity: 0.52,
+    searchlightSpeed: 0.58,
+    hazeShaftOpacity: 0.18,
+    ribbonScrollSpeed: 0.08,
+    crowdLightstickBoost: 0.94,
   },
   CHORUS_EXPLOSION: {
     id: 'CHORUS_EXPLOSION',
@@ -76,6 +92,14 @@ export const LIGHTING_MOODS = {
     strobeStrength: 0.18,
     ledBgTop: '#240b36',
     ledAccent: '#f472b6',
+    skyTop: 0x070a22,
+    skyMid: 0x1e1645,
+    skyHorizon: 0x3f1e56,
+    searchlightIntensity: 1.05,
+    searchlightSpeed: 1.12,
+    hazeShaftOpacity: 0.28,
+    ribbonScrollSpeed: 0.16,
+    crowdLightstickBoost: 1.35,
   },
   SOLO_SPOTLIGHT: {
     id: 'SOLO_SPOTLIGHT',
@@ -97,6 +121,14 @@ export const LIGHTING_MOODS = {
     strobeStrength: 0.12,
     ledBgTop: '#160d2c',
     ledAccent: '#fbbf24',
+    skyTop: 0x040717,
+    skyMid: 0x101336,
+    skyHorizon: 0x2b1f44,
+    searchlightIntensity: 0.72,
+    searchlightSpeed: 0.45,
+    hazeShaftOpacity: 0.3,
+    ribbonScrollSpeed: 0.1,
+    crowdLightstickBoost: 1.08,
   },
   FEVER_OVERDRIVE: {
     id: 'FEVER_OVERDRIVE',
@@ -118,11 +150,19 @@ export const LIGHTING_MOODS = {
     strobeStrength: 0.45,
     ledBgTop: '#2f1a03',
     ledAccent: '#facc15',
+    skyTop: 0x080716,
+    skyMid: 0x271936,
+    skyHorizon: 0x523115,
+    searchlightIntensity: 1.38,
+    searchlightSpeed: 1.48,
+    hazeShaftOpacity: 0.36,
+    ribbonScrollSpeed: 0.24,
+    crowdLightstickBoost: 1.55,
   },
   ENCORE_FINALE: {
     id: 'ENCORE_FINALE',
-    fogTint: 0x230812,
-    fogDensityMult: 0.85,
+    fogTint: 0x050816,
+    fogDensityMult: 0.38,
     hemiSky: 0xfde047,
     hemiGround: 0x450a18,
     hemiIntensity: 1.18,
@@ -139,6 +179,14 @@ export const LIGHTING_MOODS = {
     strobeStrength: 0.3,
     ledBgTop: '#330916',
     ledAccent: '#fbbf24',
+    skyTop: 0x02040e,
+    skyMid: 0x0a102b,
+    skyHorizon: 0x261433,
+    searchlightIntensity: 1.42,
+    searchlightSpeed: 1.28,
+    hazeShaftOpacity: 0.32,
+    ribbonScrollSpeed: 0.22,
+    crowdLightstickBoost: 1.6,
   },
 };
 
@@ -164,6 +212,9 @@ export class LightingProfileController {
     this.rimColor = new THREE.Color(0x06b6d4);
     this.bandRimColor = new THREE.Color(0x38bdf8);
     this.crowdGlow = new THREE.Color(0x38bdf8);
+    this.skyTopColor = new THREE.Color(0x040615);
+    this.skyMidColor = new THREE.Color(0x0b1233);
+    this.skyHorizonColor = new THREE.Color(0x16224a);
 
     this.fogDensityMult = 1.0;
     this.hemiIntensity = 0.82;
@@ -176,6 +227,12 @@ export class LightingProfileController {
     this.strobeStrength = 0;
     this.strobePhase = 0;
     this.strobeFlash = 0;
+    this.blinderPulse = 0;
+    this.searchlightIntensity = 0.35;
+    this.searchlightSpeed = 0.45;
+    this.hazeShaftOpacity = 0.16;
+    this.ribbonScrollSpeed = 0.06;
+    this.crowdLightstickBoost = 0.9;
 
     // Transition cooldowns so chorus drops, solos & outros trigger crisp pyro + band cues cleanly
     this.prevMoodId = 'INTRO_MOOD';
@@ -186,6 +243,16 @@ export class LightingProfileController {
     this._targetColor = new THREE.Color();
     this._venueColor = new THREE.Color();
     this._instColor = new THREE.Color();
+    this.multiplierColor = new THREE.Color(0x38bdf8);
+
+    // Live Pyromusical Firework Sky-Bloom & Stadium Reflection state (zero per-frame GC)
+    this.fireworkSkyColor = new THREE.Color(0xfacc15);
+    this.fireworkRimColor = new THREE.Color(0xfef08a);
+    this._fwColorScratch = new THREE.Color();
+    this._fwWhiteScratch = new THREE.Color(0xfffbeb);
+    this.fireworkFlashIntensity = 0;
+    this.fireworkSkyBloom = 0;
+    this.fireworkSubBassFlash = 0;
 
     // Reusable output state returned every frame (zero per-frame allocations)
     this._state = {
@@ -200,6 +267,19 @@ export class LightingProfileController {
       rimColor: this.rimColor,
       bandRimColor: this.bandRimColor,
       crowdGlow: this.crowdGlow,
+      skyTopColor: this.skyTopColor,
+      skyMidColor: this.skyMidColor,
+      skyHorizonColor: this.skyHorizonColor,
+      multiplierColor: this.multiplierColor,
+      fireworkSkyColor: this.fireworkSkyColor,
+      fireworkRimColor: this.fireworkRimColor,
+      fireworkFlashIntensity: 0,
+      fireworkSkyBloom: 0,
+      fireworkSubBassFlash: 0,
+      fireworkReflectionBoost: 0,
+      streakTier: 0,
+      laserFanActive: false,
+      hazeBoost: 0,
       fogDensityMult: 1.0,
       hemiMult: 1.0,
       keyMult: 1.0,
@@ -213,12 +293,21 @@ export class LightingProfileController {
       beamOpacityBoost: 0.04,
       strobeStrength: 0,
       strobeFlash: 0,
+      blinderPulse: 0,
+      searchlightIntensity: 0.35,
+      searchlightSpeed: 0.45,
+      hazeShaftOpacity: 0.16,
+      ribbonScrollSpeed: 0.06,
+      crowdLightstickBoost: 0.9,
       chorusDropTriggered: false,
       soloEntered: false,
       outroEntered: false,
       feverEntered: false,
       ledBgTop: '#0d1030',
       ledAccent: '#818cf8',
+      ambianceType: 'ROCK_ANTHEM',
+      isBallad: false,
+      isGrandEncore: false,
     };
   }
 
@@ -226,9 +315,9 @@ export class LightingProfileController {
    * Determines the current concert lighting mood directly from detected Song Section,
    * gameplay Fever/Encore state, and fallback audio energy when no sections exist.
    */
-  resolveMoodId({ playing, songTime, fever, encore, encoreFinaleActive, overallEnergy, combo, isWalkOn, currentSection }) {
+  resolveMoodId({ playing, songTime, fever, encore, encoreFinaleActive, isEncoreActive, overallEnergy, combo, isWalkOn, currentSection }) {
     if (isWalkOn) return 'INTRO_MOOD';
-    if (encoreFinaleActive || encore) {
+    if (encoreFinaleActive || isEncoreActive || encore) {
       return fever ? 'FEVER_OVERDRIVE' : 'ENCORE_FINALE';
     }
     if (fever) return 'FEVER_OVERDRIVE';
@@ -236,7 +325,7 @@ export class LightingProfileController {
 
     const secType = currentSection?.type;
     if (secType) {
-      if (secType === 'INTRO' || secType === 'BRIDGE') return 'INTRO_MOOD';
+      if (secType === 'INTRO' || secType === 'BRIDGE' || secType === 'BREAKDOWN') return 'INTRO_MOOD';
       if (secType === 'GUITAR_SOLO') return 'SOLO_SPOTLIGHT';
       if (secType === 'CHORUS') return 'CHORUS_EXPLOSION';
       if (secType === 'OUTRO') return overallEnergy > 0.34 ? 'ENCORE_FINALE' : 'INTRO_MOOD';
@@ -262,7 +351,9 @@ export class LightingProfileController {
     const bpm = Math.max(70, Math.min(200, opts.bpm || 120));
     const fever = Boolean(opts.fever ?? opts.feverActive);
     const encore = Boolean(opts.encore ?? opts.isEncore);
+    const isEncoreActive = Boolean(opts.isEncoreActive);
     const encoreFinaleActive = Boolean(opts.encoreFinaleActive);
+    const isGrandEncore = isEncoreActive || encoreFinaleActive;
     const overallEnergy = opts.overallEnergy || 0;
     const combo = opts.combo || 0;
     const instrument = opts.instrument || 'guitar';
@@ -270,6 +361,9 @@ export class LightingProfileController {
     const isWalkOn = Boolean(opts.isWalkOn);
     const stemDropped = Boolean(opts.stemDropped);
     const currentSection = opts.currentSection || null;
+    const trackMeta = opts.trackMeta || null;
+    const ambianceType = trackMeta?.ambianceType || 'ROCK_ANTHEM';
+    const isBallad = ambianceType === 'BALLAD_EMOTIONAL';
     const sectionType = currentSection?.type || (songTime < 2.2 ? 'INTRO' : 'VERSE');
     const sectionId = currentSection?.id || null;
 
@@ -282,6 +376,7 @@ export class LightingProfileController {
       fever,
       encore,
       encoreFinaleActive,
+      isEncoreActive,
       overallEnergy,
       combo,
       isWalkOn,
@@ -374,6 +469,19 @@ export class LightingProfileController {
     if (keepInstrumentHue) this._targetColor.lerp(this._instColor, 0.45);
     this.crowdGlow.lerp(this._targetColor, lerpRate);
 
+    // Atmospheric Sky Dome 3-stop palette blended subtly with the stadium's native night/twilight identity
+    const venueSkyHex = venueMeta?.skyColor ?? 0x050814;
+    this._venueColor.setHex(venueSkyHex);
+    this._targetColor.setHex(p.skyTop).lerp(this._venueColor, isGrandEncore ? 0.2 : 0.42);
+    this.skyTopColor.lerp(this._targetColor, lerpRate);
+
+    this._targetColor.setHex(p.skyMid).lerp(this._venueColor, isGrandEncore ? 0.18 : 0.48);
+    this.skyMidColor.lerp(this._targetColor, lerpRate);
+
+    this._venueColor.setHex(venueFogHex);
+    this._targetColor.setHex(p.skyHorizon).lerp(this._venueColor, isGrandEncore ? 0.28 : 0.55);
+    this.skyHorizonColor.lerp(this._targetColor, lerpRate);
+
     this.fogDensityMult = THREE.MathUtils.damp(this.fogDensityMult, p.fogDensityMult, 2.5, dt);
     this.hemiIntensity = THREE.MathUtils.damp(this.hemiIntensity, p.hemiIntensity, 2.8, dt);
     this.keyIntensityMult = THREE.MathUtils.damp(this.keyIntensityMult, p.keyIntensityMult, 2.8, dt);
@@ -393,35 +501,247 @@ export class LightingProfileController {
     this.beamSweepSpeed = THREE.MathUtils.damp(this.beamSweepSpeed, p.beamSweepSpeed, 2.6, dt);
     this.beamOpacityBoost = THREE.MathUtils.damp(this.beamOpacityBoost, p.beamOpacityBoost, 3.0, dt);
     this.strobeStrength = THREE.MathUtils.damp(this.strobeStrength, p.strobeStrength, 3.4, dt);
+    this.searchlightIntensity = THREE.MathUtils.damp(this.searchlightIntensity, p.searchlightIntensity, 2.8, dt);
+    this.searchlightSpeed = THREE.MathUtils.damp(this.searchlightSpeed, p.searchlightSpeed, 2.8, dt);
+    this.hazeShaftOpacity = THREE.MathUtils.damp(this.hazeShaftOpacity, p.hazeShaftOpacity, 2.8, dt);
+    this.ribbonScrollSpeed = THREE.MathUtils.damp(this.ribbonScrollSpeed, p.ribbonScrollSpeed, 2.5, dt);
+    this.crowdLightstickBoost = THREE.MathUtils.damp(this.crowdLightstickBoost, p.crowdLightstickBoost, 3.2, dt);
 
-    // Beat-synced strobe flash pulse for Chorus, Fever & Encore moments
+    // Ambiance-driven temperature & movement shaping (Ballads glow warm golden-indigo with gentle beams; Metal punches hard)
+    if (isBallad && moodId !== 'FEVER_OVERDRIVE' && moodId !== 'ENCORE_FINALE') {
+      this._targetColor.setHex(0xfbbf24); // warm golden spotlight
+      this.spotPrimary.lerp(this._targetColor, 0.35);
+      this._targetColor.setHex(0x6366f1); // deep indigo fill
+      this.spotSecondary.lerp(this._targetColor, 0.32);
+      this._targetColor.setHex(0xfde68a);
+      this.bandRimColor.lerp(this._targetColor, 0.28);
+    } else if (ambianceType === 'METAL_CHAOS' && moodId !== 'FEVER_OVERDRIVE') {
+      this._targetColor.setHex(0xef4444);
+      this.spotPrimary.lerp(this._targetColor, 0.32);
+      this._targetColor.setHex(0xf8fafc);
+      this.bandRimColor.lerp(this._targetColor, 0.25);
+    } else if (ambianceType === 'SYNTH_CYBER' && moodId !== 'FEVER_OVERDRIVE') {
+      this._targetColor.setHex(0x22d3ee);
+      this.spotPrimary.lerp(this._targetColor, 0.34);
+      this._targetColor.setHex(0xe879f9);
+      this.spotSecondary.lerp(this._targetColor, 0.34);
+    } else if (ambianceType === 'POP_UPBEAT' && moodId !== 'FEVER_OVERDRIVE') {
+      this._targetColor.setHex(0xf472b6);
+      this.spotPrimary.lerp(this._targetColor, 0.25);
+      this._targetColor.setHex(0x38bdf8);
+      this.spotSecondary.lerp(this._targetColor, 0.25);
+    }
+
+    const overlayMeta = opts.overlayMeta || null;
+    if (overlayMeta && overlayMeta.id !== 'STANDARD' && moodId !== 'FEVER_OVERDRIVE') {
+      const isFiesta = overlayMeta.id === 'FIESTA_PINOY';
+      const isHellfire = overlayMeta.id === 'APOCALYPSE_HELLFIRE';
+      const blendWeight = isHellfire ? 0.46 : isFiesta ? 0.42 : 0.34;
+      if (overlayMeta.accentHex != null) {
+        this._targetColor.setHex(overlayMeta.accentHex);
+        this.spotPrimary.lerp(this._targetColor, blendWeight);
+        this.crowdGlow.lerp(this._targetColor, blendWeight);
+      }
+      if (overlayMeta.secondaryHex != null) {
+        this._targetColor.setHex(overlayMeta.secondaryHex);
+        this.spotSecondary.lerp(this._targetColor, blendWeight);
+      }
+      if (overlayMeta.rimHex != null) {
+        this._targetColor.setHex(overlayMeta.rimHex);
+        this.rimColor.lerp(this._targetColor, blendWeight * 0.9);
+      }
+      if (isHellfire) {
+        this._targetColor.setHex(0x1f0806);
+        this.fogColor.lerp(this._targetColor, 0.32);
+        this._targetColor.setHex(0xffedd5);
+        this.bandRimColor.lerp(this._targetColor, 0.32);
+      } else if (isFiesta) {
+        this._targetColor.setHex(0xfef08a);
+        this.bandRimColor.lerp(this._targetColor, 0.25);
+      }
+    }
+
+    const ambianceSweepScale = isBallad ? 0.48 : ambianceType === 'METAL_CHAOS' ? 1.28 : 1.0;
+    const ambianceStrobeScale = isBallad ? 0.0 : ambianceType === 'METAL_CHAOS' ? 1.25 : 1.0;
+
+    // Beat-synced strobe flash pulse + warm tungsten audience blinders for Chorus Drops, Fever & Encore
+    const barPhase = Number.isFinite(opts.barPhase) ? opts.barPhase : ((songTime * (bpm / 60)) / 4) % 1;
+    const phraseProgress = Number.isFinite(opts.phraseProgress) ? opts.phraseProgress : ((songTime * (bpm / 60)) / 32) % 1;
+    const beatPhase = Number.isFinite(opts.beatPhase) ? opts.beatPhase : (songTime * (bpm / 60)) % 1;
+    const kickTransient = Number(opts.transientEnergy?.kick || 0);
+    const snareTransient = Number(opts.transientEnergy?.snare || 0);
+
     this.strobePhase += dt * (bpm / 60) * Math.PI * 4;
     const rawStrobe = Math.pow(Math.max(0, Math.sin(this.strobePhase)), 6);
-    this.strobeFlash = stemDropped ? 0 : rawStrobe * this.strobeStrength;
+    this.strobeFlash = stemDropped ? 0 : rawStrobe * this.strobeStrength * ambianceStrobeScale;
 
+    const downbeatHit = playing && barPhase < 0.08 ? 1 - barPhase / 0.08 : 0;
+    const bassHit = Math.max(opts.bassEnergy || 0, kickTransient);
+    const blinderTarget =
+      !playing || isWalkOn || stemDropped
+        ? 0
+        : chorusDropTriggered || feverEntered || outroEntered
+          ? 1.0
+          : isGrandEncore
+            ? 0.52 + Math.pow(Math.max(0, Math.sin(beatPhase * Math.PI * 2)), 4) * 0.45
+            : moodId === 'FEVER_OVERDRIVE' || (moodId === 'CHORUS_EXPLOSION' && (bassHit > 0.52 || downbeatHit > 0.55))
+              ? 0.28 + bassHit * 0.48 + downbeatHit * 0.35
+              : 0;
+    this.blinderPulse = THREE.MathUtils.damp(this.blinderPulse, blinderTarget, blinderTarget > this.blinderPulse ? 15 : 4.2, dt);
+
+    // Progressive Streak-Driven Stage Evolution: 25x (LED lock), 50x (laser fans + cold sparks + haze), 100x+ (Gold Overdrive)
+    const streakTier = combo >= 100 ? 3 : combo >= 50 ? 2 : combo >= 25 ? 1 : 0;
+    const multHex =
+      fever || streakTier >= 3
+        ? 0xfacc15
+        : combo >= 30
+          ? 0xa855f7
+          : combo >= 20
+            ? 0x38bdf8
+            : combo >= 10
+              ? 0x22c55e
+              : 0x38bdf8;
+    this.multiplierColor.setHex(multHex);
+    const beatPulse = playing ? Math.pow(Math.max(0, 1 - beatPhase * 2.2), 1.6) : 0;
+    const hazeBoost = streakTier >= 2 ? 0.28 + beatPulse * (streakTier >= 3 ? 0.4 : 0.24) : 0;
+
+    // Articulated Moving-Head Beam & Wash Sweep Choreography synced to barPhase & phraseProgress
+    const soloLockStrength = moodId === 'SOLO_SPOTLIGHT' ? 0.92 : moodId === 'INTRO_MOOD' ? 0.72 : 0.38;
+    const movingHeadSweep =
+      Math.sin(barPhase * Math.PI * 2) * (0.45 + this.beamSweepAmp * 0.12) +
+      Math.cos(phraseProgress * Math.PI * 4) * 0.28;
+    const movingHeadTiltOffset = Math.sin(phraseProgress * Math.PI * 2) * 0.26 + snareTransient * 0.14;
+    const pyroDownbeatAccent = Boolean(
+      playing &&
+        !isWalkOn &&
+        !stemDropped &&
+        downbeatHit > 0.78 &&
+        (streakTier >= 2 || fever || encore || isGrandEncore) &&
+        (bassHit > 0.44 || snareTransient > 0.42)
+    );
+
+    // Pyromusical Aerial Firework Volumetric Sky Bloom, Rim Shimmer & Salute Concussion Flash
+    const fwFlash = opts.fireworkFlash || null;
+    const targetFwInt = fwFlash ? Math.min(1.6, Math.max(0, fwFlash.intensity || 0)) : 0;
+    const targetFwBloom = fwFlash ? Math.min(1.25, Math.max(0, fwFlash.skyBloom || 0)) : 0;
+    const targetFwSub = fwFlash ? Math.min(1.2, Math.max(0, fwFlash.subBassFlash || 0)) : 0;
+    this.fireworkFlashIntensity = THREE.MathUtils.damp(
+      this.fireworkFlashIntensity,
+      targetFwInt,
+      targetFwInt > this.fireworkFlashIntensity ? 26 : 5.4,
+      dt
+    );
+    this.fireworkSkyBloom = THREE.MathUtils.damp(
+      this.fireworkSkyBloom,
+      targetFwBloom,
+      targetFwBloom > this.fireworkSkyBloom ? 18 : 3.4,
+      dt
+    );
+    this.fireworkSubBassFlash = THREE.MathUtils.damp(
+      this.fireworkSubBassFlash,
+      targetFwSub,
+      targetFwSub > this.fireworkSubBassFlash ? 34 : 9.0,
+      dt
+    );
+    if (fwFlash?.color && (targetFwInt > 0.01 || targetFwBloom > 0.01)) {
+      const colorMix = 1 - Math.exp(-(targetFwInt > 0.2 ? 18 : 7.5) * dt);
+      this.fireworkSkyColor.lerp(fwFlash.color, colorMix);
+      this._fwColorScratch.copy(fwFlash.color).lerp(this._fwWhiteScratch, 0.28 + this.fireworkSubBassFlash * 0.45);
+      this.fireworkRimColor.lerp(this._fwColorScratch, colorMix);
+    }
+
+    const fwSkyMix = Math.min(0.82, this.fireworkSkyBloom * 0.62);
+    const fwRimMix = Math.min(0.85, this.fireworkFlashIntensity * 0.48);
+    const fwSalute = this.fireworkSubBassFlash;
+    if (fwSkyMix > 0.004 || fwRimMix > 0.004 || fwSalute > 0.004) {
+      this.skyTopColor.lerp(this.fireworkSkyColor, Math.min(0.45, fwSkyMix * 0.34));
+      this.skyMidColor.lerp(this.fireworkSkyColor, Math.min(0.75, fwSkyMix * 0.78));
+      this.skyHorizonColor.lerp(this.fireworkRimColor, Math.min(0.68, fwSkyMix * 0.56));
+      this.fogColor.lerp(this.fireworkSkyColor, Math.min(0.42, fwSkyMix * 0.36));
+      this.hemiSky.lerp(this.fireworkRimColor, Math.min(0.65, fwRimMix * 0.72));
+      this.rimColor.lerp(this.fireworkRimColor, Math.min(0.72, fwRimMix * 0.85));
+      this.bandRimColor.lerp(this.fireworkRimColor, Math.min(0.62, fwRimMix * 0.68));
+      this.crowdGlow.lerp(this.fireworkSkyColor, Math.min(0.55, fwRimMix * 0.58));
+
+      if (fwSalute > 0.01) {
+        const saluteMix = Math.min(0.72, fwSalute * 0.58);
+        this.skyMidColor.lerp(this._fwWhiteScratch, saluteMix * 0.6);
+        this.hemiSky.lerp(this._fwWhiteScratch, saluteMix * 0.52);
+        this.bandRimColor.lerp(this._fwWhiteScratch, saluteMix * 0.65);
+      }
+    }
+
+    const fwReflectBoost = Math.min(1.5, this.fireworkFlashIntensity * 0.72 + this.fireworkSkyBloom * 0.45 + fwSalute * 0.55);
     const dropDim = stemDropped ? 0.72 : 1.0;
     const s = this._state;
     s.moodId = moodId;
     s.sectionType = sectionType;
-    s.fogDensityMult = this.fogDensityMult;
-    s.hemiMult = (this.hemiIntensity / 0.82) * dropDim;
+    s.ambianceType = ambianceType;
+    s.isBallad = isBallad;
+    s.isGrandEncore = isGrandEncore;
+    s.streakTier = streakTier;
+    s.multiplierColor = this.multiplierColor;
+    s.fireworkSkyColor = this.fireworkSkyColor;
+    s.fireworkRimColor = this.fireworkRimColor;
+    s.fireworkFlashIntensity = this.fireworkFlashIntensity;
+    s.fireworkSkyBloom = this.fireworkSkyBloom;
+    s.fireworkSubBassFlash = fwSalute;
+    s.fireworkReflectionBoost = fwReflectBoost;
+    s.laserFanActive = playing && !isWalkOn && (streakTier >= 2 || fever || encore || isGrandEncore);
+    s.hazeBoost = hazeBoost + this.fireworkSkyBloom * 0.22;
+    s.fogDensityMult = isGrandEncore ? 0.38 : this.fogDensityMult + hazeBoost * 0.32;
+    s.hemiMult = (this.hemiIntensity / 0.82 + this.fireworkFlashIntensity * 0.46 + fwSalute * 0.55) * dropDim;
     s.keyMult = this.keyIntensityMult * dropDim;
-    s.rimMult = (this.rimIntensity / 1.55) * dropDim;
-    s.bandRimIntensity = this.bandRimIntensity * dropDim + this.strobeFlash * 1.4;
-    s.crowdGlowMult = (0.72 + (this.rimIntensity / 2.2) * 0.65) * dropDim;
+    s.rimMult =
+      (this.rimIntensity / 1.55 +
+        (streakTier >= 3 ? 0.45 : streakTier >= 2 ? 0.22 : 0) +
+        this.fireworkFlashIntensity * 0.62 +
+        fwSalute * 0.65) *
+      dropDim;
+    s.bandRimIntensity =
+      (this.bandRimIntensity +
+        (streakTier >= 2 ? beatPulse * (streakTier >= 3 ? 1.15 : 0.6) : 0) +
+        this.fireworkFlashIntensity * 1.15 +
+        fwSalute * 1.65) *
+        dropDim +
+      this.strobeFlash * 1.4;
+    s.crowdGlowMult =
+      (0.72 +
+        (this.rimIntensity / 2.2) * 0.65 +
+        (streakTier >= 3 ? 0.28 : streakTier >= 1 ? 0.12 : 0) +
+        this.fireworkFlashIntensity * 0.45 +
+        fwSalute * 0.52) *
+      dropDim;
     s.spotIntensityMult = (0.8 + (this.keyIntensityMult - 0.6) * 0.68) * dropDim;
-    s.beamOpacityMult = (0.94 + this.beamOpacityBoost * 4.8) * dropDim;
-    s.beamSweepAmp = this.beamSweepAmp;
-    s.beamSweepSpeed = this.beamSweepSpeed;
+    s.beamOpacityMult = (0.94 + this.beamOpacityBoost * 4.8 + hazeBoost * 0.5) * dropDim;
+    s.beamSweepAmp = this.beamSweepAmp * ambianceSweepScale;
+    s.beamSweepSpeed = this.beamSweepSpeed * (isBallad ? 0.58 : 1.0);
     s.beamOpacityBoost = this.beamOpacityBoost;
-    s.strobeStrength = this.strobeStrength;
-    s.strobeFlash = this.strobeFlash;
+    s.strobeStrength = this.strobeStrength * ambianceStrobeScale;
+    s.strobeFlash = this.strobeFlash + fwSalute * 0.45;
+    s.blinderPulse = Math.min(1.25, this.blinderPulse + fwSalute * 0.58);
+    s.skyTopColor = this.skyTopColor;
+    s.skyMidColor = this.skyMidColor;
+    s.skyHorizonColor = this.skyHorizonColor;
+    s.searchlightIntensity = (this.searchlightIntensity + (streakTier >= 2 ? 0.25 : 0)) * dropDim;
+    s.searchlightSpeed = this.searchlightSpeed * (isBallad ? 0.55 : 1.0);
+    s.hazeShaftOpacity = (this.hazeShaftOpacity + hazeBoost * 0.14 + this.fireworkSkyBloom * 0.08) * dropDim;
+    s.ribbonScrollSpeed = this.ribbonScrollSpeed * (playing ? 1.0 : 0.35);
+    s.crowdLightstickBoost =
+      (this.crowdLightstickBoost * (streakTier >= 2 ? 1.15 : 1.0) + this.fireworkFlashIntensity * 0.38 + fwSalute * 0.35) *
+      dropDim;
+    s.barPhase = barPhase;
+    s.phraseProgress = phraseProgress;
+    s.soloLockStrength = soloLockStrength;
+    s.movingHeadSweep = movingHeadSweep * ambianceSweepScale;
+    s.movingHeadTiltOffset = movingHeadTiltOffset;
+    s.pyroDownbeatAccent = pyroDownbeatAccent;
     s.chorusDropTriggered = chorusDropTriggered;
     s.soloEntered = soloEntered;
     s.outroEntered = outroEntered;
     s.feverEntered = feverEntered;
-    s.ledBgTop = p.ledBgTop;
-    s.ledAccent = p.ledAccent;
+    s.ledBgTop = isBallad && moodId !== 'FEVER_OVERDRIVE' ? '#1e1635' : p.ledBgTop;
+    s.ledAccent = isBallad && moodId !== 'FEVER_OVERDRIVE' ? '#fbbf24' : p.ledAccent;
 
     return s;
   }

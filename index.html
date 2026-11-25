@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="./styles/concert.css" />
   </head>
   <body>
-    <div id="arena-root" class="arena-root stage-backstage" data-instrument="guitar" data-fever="false" data-encore="false">
+    <div id="arena-root" class="arena-root stage-backstage stage-main-menu" data-instrument="guitar" data-fever="false" data-encore="false">
       <!-- Concert Arena Atmosphere Backdrop -->
       <div class="arena-backdrop" aria-hidden="true">
         <div class="arena-photo"></div>
@@ -50,24 +50,26 @@
         <canvas id="stage-band-canvas"></canvas>
       </div>
 
-      <!-- Minimal Perimeter Live Stage HUD -->
+      <!-- Concert Broadcast Stage HUD: Top Ticker + Marshall-Amp Score (Bottom-Left) + Analog Rock Meter (Bottom-Right) -->
       <header class="stage-hud" aria-label="Live performance HUD">
-        <div class="hud-left-cluster">
-          <div>
-            <h2 id="hud-track-title" class="hud-track-title">—</h2>
-            <div id="hud-track-meta" class="hud-track-meta">—</div>
-            <div class="hud-progress-track" aria-hidden="true">
-              <div id="hud-progress-fill" class="hud-progress-fill"></div>
+        <!-- Top-Center Minimal Gig Ticker -->
+        <div class="hud-top-ticker">
+          <div class="hud-ticker-main">
+            <div class="hud-ticker-title-row">
+              <h2 id="hud-track-title" class="hud-track-title">—</h2>
+              <span id="hud-section-badge" class="hud-section-badge">STAGE INTRO</span>
+              <div id="hud-loop-readout" class="hud-loop-readout is-hidden">Loop Active</div>
             </div>
-            <div class="hud-time-row tabular">
-              <span id="hud-time-current">0:00</span>
-              <span id="hud-time-total">0:00</span>
+            <div id="hud-track-meta" class="hud-track-meta">—</div>
+            <div class="hud-ticker-progress-row">
+              <span id="hud-time-current" class="hud-time-val tabular">0:00</span>
+              <div class="hud-progress-track" aria-hidden="true">
+                <div id="hud-progress-fill" class="hud-progress-fill"></div>
+              </div>
+              <span id="hud-time-total" class="hud-time-val tabular">0:00</span>
             </div>
           </div>
 
-          <div id="hud-loop-readout" class="hud-loop-readout is-hidden">Loop Active</div>
-
-          <!-- Glowing Instrument Amp Status -->
           <div id="hud-amp-card" class="hud-amp-card">
             <div class="hud-amp-row">
               <span id="hud-amp-role" class="hud-amp-role">Lead Guitar</span>
@@ -77,13 +79,53 @@
               <div id="hud-amp-meter-fill" class="hud-amp-meter-fill"></div>
             </div>
           </div>
+
+          <div class="hud-actions">
+            <button id="btn-toggle-trainer" type="button" class="stage-btn" aria-pressed="false" title="Toggle Section Trainer & Practice Loop">
+              Trainer
+            </button>
+            <button id="btn-sfx-mute" type="button" class="stage-btn" aria-pressed="false">
+              SFX On
+            </button>
+            <button id="btn-pause-stage" type="button" class="stage-btn">
+              Practice / Pause
+            </button>
+            <button id="btn-backstage-hud" type="button" class="stage-btn stage-btn-ghost">
+              Backstage
+            </button>
+          </div>
         </div>
 
-        <div class="hud-right-cluster">
-          <div class="hud-metrics">
-            <div class="hud-stat hud-score-block">
-              <span class="hud-stat-label">Score</span>
-              <span id="hud-score" class="hud-stat-value">0</span>
+        <!-- Interactive Loop & Speed Section Trainer Bar (Compact Dock Below Ticker) -->
+        <div id="practice-section-trainer" class="practice-section-trainer is-hidden" aria-label="Section Trainer">
+          <div class="trainer-row-top">
+            <span class="trainer-label">SECTION TRAINER</span>
+            <div id="trainer-sections-strip" class="trainer-sections-strip" role="group" aria-label="Song sections"></div>
+          </div>
+          <div class="trainer-row-controls">
+            <div class="trainer-loop-controls">
+              <button id="btn-trainer-loop-a" type="button" class="trainer-chip">[A] Loop Start</button>
+              <button id="btn-trainer-loop-b" type="button" class="trainer-chip">[B] Loop End</button>
+              <button id="btn-trainer-loop-clear" type="button" class="trainer-chip trainer-chip-ghost">Clear</button>
+              <span id="trainer-loop-readout" class="trainer-loop-readout tabular">Loop: OFF</span>
+            </div>
+            <div class="trainer-speed-group" role="group" aria-label="Section Trainer speed">
+              <button type="button" class="trainer-speed-chip" data-trainer-speed="0.5" aria-pressed="false">50%</button>
+              <button type="button" class="trainer-speed-chip" data-trainer-speed="0.75" aria-pressed="false">75%</button>
+              <button type="button" class="trainer-speed-chip" data-trainer-speed="0.85" aria-pressed="false">85%</button>
+              <button type="button" class="trainer-speed-chip is-active" data-trainer-speed="1" aria-pressed="true">100%</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom-Left Diegetic Marshall-Amp Score & Multiplier Unit -->
+        <div class="hud-amp-score-unit" aria-label="Score and multiplier unit">
+          <div class="amp-brass-faceplate">
+            <div class="amp-score-top">
+              <div class="hud-stat hud-score-block">
+                <span class="hud-stat-label">SCORE</span>
+                <span id="hud-score" class="hud-stat-value">0</span>
+              </div>
               <div id="hud-star-rating" class="hud-star-rating" aria-label="Live star rating">
                 <div id="hud-stars-row" class="hud-stars-row" aria-hidden="true">
                   <span class="hud-star" data-star="1">★</span>
@@ -98,12 +140,19 @@
                 <span id="hud-star-label" class="hud-star-label is-hidden">GOLD STARS</span>
               </div>
             </div>
-            <div class="hud-stat">
-              <span class="hud-stat-label">Combo</span>
-              <span id="hud-combo" class="hud-stat-value">0</span>
-            </div>
-            <div class="hud-stat">
-              <span class="hud-stat-label">Multiplier</span>
+
+            <div class="amp-streak-strip">
+              <div class="amp-combo-readout">
+                <span class="hud-stat-label">STREAK</span>
+                <span id="hud-combo" class="hud-stat-value amp-combo-val">0</span>
+              </div>
+              <div id="hud-streak-bulbs" class="hud-streak-bulbs" aria-label="Multiplier streak bulbs">
+                <span class="streak-bulb is-lit" data-mult="1">1×</span>
+                <span class="streak-bulb" data-mult="2">2×</span>
+                <span class="streak-bulb" data-mult="3">3×</span>
+                <span class="streak-bulb" data-mult="4">4×</span>
+                <span class="streak-bulb is-fever-eight" data-mult="8">8×</span>
+              </div>
               <span
                 id="hud-multiplier"
                 class="hud-stat-value is-multiplier"
@@ -115,18 +164,9 @@
             </div>
           </div>
 
-          <div class="hud-gauges">
-            <div class="gauge-block">
-              <div class="gauge-head">
-                <span>Crowd Hype</span>
-                <span id="hud-hype-val" class="tabular">58%</span>
-              </div>
-              <div class="gauge-track">
-                <div id="hud-hype-fill" class="gauge-fill is-hype" data-state="steady"></div>
-              </div>
-            </div>
-
+          <div class="amp-grille-footer">
             <div class="fever-row">
+              <span id="hud-fever-bulb" class="hud-fever-bulb" aria-hidden="true" title="Fever Charge">⚡</span>
               <div class="gauge-track" aria-label="Fever charge">
                 <div id="hud-fever-fill" class="gauge-fill is-fever"></div>
               </div>
@@ -136,16 +176,77 @@
             </div>
             <div id="hud-whammy-tag" class="hud-whammy-tag is-hidden">WHAMMY VIBRATO +FEVER</div>
           </div>
+        </div>
 
-          <div class="hud-actions">
-            <button id="btn-sfx-mute" type="button" class="stage-btn" aria-pressed="false">
-              SFX On
+        <!-- Bottom-Right Analog Needle Rock Meter -->
+        <div class="hud-rock-meter-unit" aria-label="Crowd morale rock meter">
+          <div class="rock-meter-dial-wrap">
+            <svg class="rock-meter-svg" viewBox="0 0 180 105" aria-hidden="true">
+              <path d="M 18 90 A 72 72 0 0 1 56 26" fill="none" stroke="#ef4444" stroke-width="11" stroke-linecap="butt" />
+              <path d="M 60 24 A 72 72 0 0 1 120 24" fill="none" stroke="#facc15" stroke-width="11" stroke-linecap="butt" />
+              <path d="M 124 26 A 72 72 0 0 1 162 90" fill="none" stroke="#22c55e" stroke-width="11" stroke-linecap="butt" />
+              <path d="M 28 90 A 62 62 0 0 1 152 90" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1.5" />
+            </svg>
+            <div id="hud-rock-needle" class="rock-meter-needle" style="transform: rotate(12deg)"></div>
+            <div class="rock-meter-pivot"></div>
+            <div class="rock-meter-readout">
+              <span class="rock-meter-title">ROCK METER</span>
+              <span id="hud-hype-val" class="rock-meter-pct tabular">58%</span>
+            </div>
+          </div>
+          <div class="gauge-track rock-meter-slim-track" aria-hidden="true">
+            <div id="hud-hype-fill" class="gauge-fill is-hype" data-state="steady"></div>
+          </div>
+          <div id="hud-morale-shield-badge" class="hud-morale-shield-badge is-hidden">
+            <svg viewBox="0 0 20 20" width="13" height="13" fill="currentColor" aria-hidden="true">
+              <path d="M10 1.5L3 4.5v5.2c0 4.3 3 8.2 7 9.3 4-1.1 7-5 7-9.3V4.5l-7-3z" />
+            </svg>
+            <span>MORALE SHIELD ON</span>
+          </div>
+
+          <!-- Interactive Stage Pyrotechnics, Confetti & Crowd Hype Trigger Board -->
+          <div id="stage-fx-board" class="stage-fx-board" aria-label="Live Stage Pyrotechnics and Crowd FX triggers">
+            <button id="btn-fx-pyro" type="button" class="fx-board-btn" data-fx="pyro" title="Trigger Flame Columns & Cold-Sparks (Key 7)">
+              <kbd>7</kbd><span>PYRO</span>
             </button>
-            <button id="btn-pause-stage" type="button" class="stage-btn">
-              Practice / Pause
+            <button id="btn-fx-confetti" type="button" class="fx-board-btn" data-fx="confetti" title="Fire Stadium Confetti Cannons (Key 8)">
+              <kbd>8</kbd><span>CONFETTI</span>
             </button>
-            <button id="btn-backstage-hud" type="button" class="stage-btn stage-btn-ghost">
-              Backstage
+            <button id="btn-fx-cryo" type="button" class="fx-board-btn" data-fx="cryo" title="Blast CO2 Cryo Fog Jets (Key 9)">
+              <kbd>9</kbd><span>CRYO</span>
+            </button>
+            <button id="btn-fx-crowd" type="button" class="fx-board-btn" data-fx="crowd" title="Cycle Stadium Wave / Moshpit / Phone Lights / Heart Hands (Key 0)">
+              <kbd>0</kbd><span>CROWD</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Player 2 Compact Score & Fever HUD (Visible in 2P Co-Op / Pro Face-Off) -->
+        <div id="hud-p2-panel" class="hud-p2-panel is-hidden" aria-label="Player 2 live status">
+          <div class="hud-p2-head">
+            <span class="hud-p2-tag">PLAYER 2</span>
+            <span id="hud-p2-role" class="hud-p2-role">Bass</span>
+          </div>
+          <div class="hud-p2-metrics">
+            <div>
+              <span class="hud-p2-label">SCORE</span>
+              <span id="hud-p2-score" class="hud-p2-val tabular">0</span>
+            </div>
+            <div>
+              <span class="hud-p2-label">STREAK</span>
+              <span id="hud-p2-combo" class="hud-p2-val tabular">0</span>
+            </div>
+            <div>
+              <span class="hud-p2-label">MULT</span>
+              <span id="hud-p2-mult" class="hud-p2-val tabular">1×</span>
+            </div>
+          </div>
+          <div class="fever-row hud-p2-fever-row">
+            <div class="gauge-track" aria-label="Player 2 Fever charge">
+              <div id="hud-p2-fever-fill" class="gauge-fill is-fever"></div>
+            </div>
+            <button id="btn-p2-fever-trigger" type="button" class="fever-trigger-btn" disabled>
+              R-SHIFT · 0%
             </button>
           </div>
         </div>
@@ -157,12 +258,20 @@
           <canvas id="rhythm-canvas"></canvas>
         </section>
 
-        <nav
-          id="stage-pedals"
-          class="stage-pedals"
-          data-lanes="4"
-          aria-label="Spatial stage fret pedals"
-        ></nav>
+        <div id="stage-pedals-wrap" class="stage-pedals-wrap">
+          <nav
+            id="stage-pedals"
+            class="stage-pedals"
+            data-lanes="4"
+            aria-label="Player 1 spatial stage fret pedals"
+          ></nav>
+          <nav
+            id="stage-pedals-p2"
+            class="stage-pedals stage-pedals-p2 is-hidden"
+            data-lanes="4"
+            aria-label="Player 2 spatial stage fret pedals"
+          ></nav>
+        </div>
       </main>
 
       <!-- Classic Guitar Hero-Style Animated Song Title Marquee (Left Lower-Third) -->
@@ -180,10 +289,78 @@
         </div>
       </aside>
 
+      <!-- Sleek Floating Main Menu Over Live 3D Concert Stage -->
+      <section
+        id="main-menu-overlay"
+        class="main-menu-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="main-menu-title"
+      >
+        <div class="main-menu-dock">
+          <div class="main-menu-emblem">
+            <div class="main-menu-kicker">LIVE 3D ARENA RHYTHM ENGINE</div>
+            <h1 id="main-menu-title" class="main-menu-logo">STAGE HERO 3D</h1>
+            <div class="main-menu-edition">WORLD TOUR CONCERT EDITION</div>
+          </div>
+
+          <nav class="main-menu-stack" aria-label="Main menu">
+            <button id="btn-menu-quickplay" type="button" class="amp-stack-btn is-primary-cta">
+              <span class="amp-stack-inner">
+                <span class="amp-stack-index">01</span>
+                <span class="amp-stack-label">QUICKPLAY / SETLIST</span>
+                <span class="amp-stack-hint">World Tour &amp; Custom MP3/MIDI</span>
+              </span>
+            </button>
+
+            <button id="btn-menu-rockshop" type="button" class="amp-stack-btn">
+              <span class="amp-stack-inner">
+                <span class="amp-stack-index">02</span>
+                <span class="amp-stack-label">ROCK SHOP &amp; BAND LINEUP</span>
+                <span class="amp-stack-hint">27 Star Looks · Custom 3D Gear</span>
+              </span>
+            </button>
+
+            <button id="btn-menu-venues" type="button" class="amp-stack-btn">
+              <span class="amp-stack-inner">
+                <span class="amp-stack-index">03</span>
+                <span class="amp-stack-label">WORLD TOUR VENUES</span>
+                <span class="amp-stack-hint">10 Iconic Stadiums · 9 Overlays</span>
+              </span>
+            </button>
+
+            <button id="btn-menu-options" type="button" class="amp-stack-btn">
+              <span class="amp-stack-inner">
+                <span class="amp-stack-index">04</span>
+                <span class="amp-stack-label">OPTIONS &amp; CALIBRATION</span>
+                <span class="amp-stack-hint">Audio Sync · TV Camera · Shield</span>
+              </span>
+            </button>
+
+            <a
+              href="https://discord.gg/R9mqDh22K"
+              target="_blank"
+              rel="noopener"
+              class="amp-stack-btn is-discord-stack"
+            >
+              <span class="amp-stack-inner">
+                <span class="amp-stack-index">05</span>
+                <span class="amp-stack-label">COMMUNITY DISCORD</span>
+                <span class="amp-stack-hint">Charts · Tours · Live Jam</span>
+              </span>
+            </a>
+          </nav>
+
+          <p class="main-menu-footnote">
+            Press <kbd>ENTER</kbd> or <kbd>SPACE</kbd> to enter Backstage Setlist
+          </p>
+        </div>
+      </section>
+
       <!-- Authentic Console Rhythm-Game 3-Tab Backstage Lobby (Live 3D Arena Always Visible Behind) -->
       <section
         id="backstage-overlay"
-        class="console-lobby"
+        class="console-lobby is-hidden"
         data-active-tab="setlist"
         role="dialog"
         aria-modal="true"
@@ -197,6 +374,15 @@
               <h1 id="backstage-brand-title" class="brand-wordmark">ENCORE STAGE</h1>
             </div>
             <span class="brand-tour-tag">WORLD TOUR</span>
+          </div>
+
+          <div id="console-dedicated-header" class="console-dedicated-header is-hidden">
+            <button id="btn-dedicated-main-menu" type="button" class="console-back-btn">
+              ← MAIN MENU
+            </button>
+            <h2 id="console-dedicated-title" class="console-dedicated-title">
+              🎸 ROCK SHOP — ARTIST LOOKS &amp; CUSTOM GEAR
+            </h2>
           </div>
 
           <nav class="console-tabs" role="tablist" aria-label="Backstage sections">
@@ -261,6 +447,9 @@
             <button id="btn-open-calibration-backstage" type="button" class="console-chip-btn">
               <span>AUDIO &amp; SYNC</span>
               <span id="backstage-latency-val" class="console-chip-meta tabular">0 ms</span>
+            </button>
+            <button id="btn-main-menu-topbar" type="button" class="console-chip-btn">
+              <span>MAIN MENU</span>
             </button>
           </div>
         </header>
@@ -383,10 +572,29 @@
 
             <div class="ticket-perf-line" aria-hidden="true"></div>
 
+            <!-- Play Mode Toggle (1P Solo / 2P Band Co-Op / 2P Pro Face-Off) -->
+            <div class="ticket-control-group">
+              <div class="ticket-control-head">
+                <span class="ticket-control-label">CONCERT MODE</span>
+                <span id="ticket-mode-hint" class="ticket-control-hint">Solo Stage Performance</span>
+              </div>
+              <div class="ticket-mode-row" role="group" aria-label="Select 1P or 2P play mode">
+                <button type="button" class="ticket-mode-btn is-active" data-play-mode="solo" aria-pressed="true">
+                  1P SOLO
+                </button>
+                <button type="button" class="ticket-mode-btn" data-play-mode="coop" aria-pressed="false">
+                  2P BAND CO-OP
+                </button>
+                <button type="button" class="ticket-mode-btn" data-play-mode="faceoff" aria-pressed="false">
+                  2P PRO FACE-OFF
+                </button>
+              </div>
+            </div>
+
             <!-- Instrument Selector -->
             <div class="ticket-control-group">
               <div class="ticket-control-head">
-                <span class="ticket-control-label">STAGE ROLE</span>
+                <span id="ticket-role-label" class="ticket-control-label">STAGE ROLE</span>
                 <span id="ticket-instrument-caption" class="ticket-control-hint">Shred solos, melodies &amp; power chords</span>
               </div>
               <div class="ticket-instrument-row" role="group" aria-label="Choose playable instrument">
@@ -412,7 +620,7 @@
             <!-- Difficulty Selector (Easy 3-Bar / Medium 4-Bar / Hard 5-Bar / Expert 5-Bar+) -->
             <div class="ticket-control-group">
               <div class="ticket-control-head">
-                <span class="ticket-control-label">DIFFICULTY</span>
+                <span id="ticket-diff-label" class="ticket-control-label">DIFFICULTY</span>
                 <span id="ticket-keys-hint" class="ticket-control-hint tabular">Keys: D F G J</span>
               </div>
               <div class="ticket-diff-row" role="group" aria-label="Select difficulty">
@@ -435,14 +643,46 @@
               </div>
             </div>
 
-            <!-- Practice Speed Selector (50% / 75% / 100%) -->
+            <!-- Player 2 Couch Co-Op / Face-Off Rig Setup (Visible in 2P Modes) -->
+            <div id="p2-config-row" class="p2-config-row is-hidden" aria-label="Player 2 setup">
+              <div class="ticket-control-head">
+                <span class="ticket-control-label">PLAYER 2 RIG</span>
+                <span id="ticket-p2-keys-hint" class="ticket-control-hint tabular">Keys: H J K L</span>
+              </div>
+              <div class="p2-selectors-grid">
+                <div class="p2-mini-group" role="group" aria-label="Player 2 role">
+                  <button type="button" class="p2-mini-btn" data-p2-instrument="guitar" aria-pressed="false">Guitar</button>
+                  <button type="button" class="p2-mini-btn is-active" data-p2-instrument="bass" aria-pressed="true">Bass</button>
+                  <button type="button" class="p2-mini-btn" data-p2-instrument="drums" aria-pressed="false">Drums</button>
+                  <button type="button" class="p2-mini-btn" data-p2-instrument="piano" aria-pressed="false">Piano</button>
+                </div>
+                <div class="p2-mini-group" role="group" aria-label="Player 2 difficulty">
+                  <button type="button" class="p2-mini-btn" data-p2-difficulty="easy" aria-pressed="false">Easy</button>
+                  <button type="button" class="p2-mini-btn is-active" data-p2-difficulty="medium" aria-pressed="true">Med</button>
+                  <button type="button" class="p2-mini-btn" data-p2-difficulty="hard" aria-pressed="false">Hard</button>
+                  <button type="button" class="p2-mini-btn" data-p2-difficulty="expert" aria-pressed="false">Exp</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Practice Speed Selector (50% / 75% / 85% / 100%) -->
             <div class="ticket-speed-row">
               <span class="ticket-control-label">PRACTICE SPEED</span>
               <div class="ticket-speed-group" role="group" aria-label="Select practice speed">
                 <button type="button" class="speed-chip" data-lobby-speed="0.5" aria-pressed="false">50%</button>
                 <button type="button" class="speed-chip" data-lobby-speed="0.75" aria-pressed="false">75%</button>
+                <button type="button" class="speed-chip" data-lobby-speed="0.85" aria-pressed="false">85%</button>
                 <button type="button" class="speed-chip is-active" data-lobby-speed="1" aria-pressed="true">100%</button>
               </div>
+            </div>
+
+            <!-- No Wrong Key / Morale Shield Toggle -->
+            <div class="morale-shield-row">
+              <label class="morale-shield-label" for="morale-shield-toggle">
+                <input id="morale-shield-toggle" type="checkbox" />
+                <span>NO WRONG KEY · MORALE SHIELD</span>
+              </label>
+              <span class="morale-shield-hint">No hype loss on misses</span>
             </div>
 
             <!-- Active Venue & Rig Micro-Stamp -->
@@ -503,23 +743,29 @@
           </div>
         </div>
 
-        <!-- TAB 3: VENUES (Sleek Bottom Tour-Poster Carousel Over Live 3D Stadium) -->
+        <!-- TAB 3: VENUES (Real-Life Stadiums + Independent Stage Theme / Event Overlay) -->
         <div id="panel-venues" class="lobby-panel lobby-panel-dock is-hidden" role="tabpanel" aria-labelledby="tab-venues">
           <div class="console-dock">
             <div class="dock-header">
               <div class="venue-active-banner">
-                <span id="venue-active-type" class="venue-type-stamp">INDOOR DOME</span>
+                <span id="venue-active-type" class="venue-type-stamp">MEGA DOME</span>
                 <h2 id="venue-active-name" class="venue-active-title">Philippine Arena</h2>
-                <span id="venue-active-city" class="venue-active-city">Bocaue, Bulacan</span>
+                <span id="venue-active-city" class="venue-active-city">Bulacan, PH</span>
+                <span id="venue-active-overlay-tag" class="venue-overlay-stamp">STANDARD TOUR RIG</span>
               </div>
               <p id="venue-active-desc" class="dock-desc">
-                Sweeping radial steel dome trusses, massive lightstick bowls, and dual mega-LED screens.
+                World-record radial steel dome trusses, 360° lightstick bowls, exterior lenticular shell &amp; Manila horizon.
               </p>
+            </div>
+
+            <div class="venue-overlay-bar">
+              <span class="venue-overlay-label">STAGE THEME / EVENT OVERLAY</span>
+              <div id="venue-overlay-grid" class="venue-overlay-strip" role="group" aria-label="Select stage theme overlay"></div>
             </div>
 
             <div class="venue-carousel-wrap">
               <button id="btn-venue-prev" type="button" class="carousel-arrow" aria-label="Previous venue">‹</button>
-              <div id="venue-selector-grid" class="venue-poster-strip" role="group" aria-label="Choose concert venue"></div>
+              <div id="venue-selector-grid" class="venue-poster-strip" role="group" aria-label="Choose real-life concert stadium"></div>
               <button id="btn-venue-next" type="button" class="carousel-arrow" aria-label="Next venue">›</button>
             </div>
           </div>
@@ -595,13 +841,14 @@
               <div class="segmented-group" role="group" aria-label="Playback speed">
                 <button type="button" class="seg-btn" data-playback-rate="0.5" aria-pressed="false">50%</button>
                 <button type="button" class="seg-btn" data-playback-rate="0.75" aria-pressed="false">75%</button>
+                <button type="button" class="seg-btn" data-playback-rate="0.85" aria-pressed="false">85%</button>
                 <button type="button" class="seg-btn is-active" data-playback-rate="1" aria-pressed="true">100%</button>
                 <button type="button" class="seg-btn" data-playback-rate="1.1" aria-pressed="false">110%</button>
               </div>
             </div>
           </div>
 
-          <!-- Dedicated Stadium Crowd Volume & Test Cheer -->
+          <!-- Dedicated Stadium Crowd & Stage SFX Volume -->
           <div class="calibration-box">
             <div class="cal-header">
               <label for="crowd-volume-slider" class="cal-label">Stadium Crowd Volume</label>
@@ -619,27 +866,48 @@
               />
               <button id="btn-test-crowd" type="button" class="stage-btn">Test Crowd Cheer</button>
             </div>
+            <div class="cal-header" style="margin-top: 10px;">
+              <label for="sfx-volume-slider" class="cal-label">Stage SFX Volume</label>
+              <span id="sfx-volume-readout" class="cal-readout tabular">85%</span>
+            </div>
+            <div class="cal-slider-row">
+              <input
+                id="sfx-volume-slider"
+                type="range"
+                class="cal-slider"
+                min="0"
+                max="100"
+                step="5"
+                value="85"
+              />
+            </div>
             <p class="cal-help">
-              Live stadium crowd cheers react to streaks, Fever Mode, and Encore moments.
+              Normalized stadium crowd bed and crisp stage SFX react to streaks, Fever Mode, and Encore moments.
             </p>
           </div>
 
           <!-- Concert Camera Director -->
           <div class="calibration-box">
-            <div class="cal-header">
+            <div class="cal-header cal-header-wrap">
               <span class="cal-label">Concert Camera Director</span>
-              <div class="segmented-group" role="group" aria-label="Dynamic camera choreography">
-                <button type="button" class="seg-btn is-active" data-camera-mode="on" aria-pressed="true">On</button>
+              <div class="segmented-group camera-director-group" role="group" aria-label="Dynamic camera choreography">
+                <button type="button" class="seg-btn is-active" data-camera-mode="on" aria-pressed="true">Auto TV</button>
+                <button type="button" class="seg-btn" data-camera-mode="pit-steadicam" aria-pressed="false">Pit Steadicam</button>
+                <button type="button" class="seg-btn" data-camera-mode="crowd-pov" aria-pressed="false">Crowd POV</button>
+                <button type="button" class="seg-btn" data-camera-mode="pit-surf" aria-pressed="false">Pit Surf</button>
+                <button type="button" class="seg-btn" data-camera-mode="hero-closeup" aria-pressed="false">Hero Close-Up</button>
+                <button type="button" class="seg-btn" data-camera-mode="stadium-crane" aria-pressed="false">Stadium Crane</button>
+                <button type="button" class="seg-btn" data-camera-mode="aerial-drone" aria-pressed="false">Aerial Drone</button>
                 <button type="button" class="seg-btn" data-camera-mode="subtle" aria-pressed="false">Subtle</button>
                 <button type="button" class="seg-btn" data-camera-mode="locked" aria-pressed="false">Locked</button>
               </div>
             </div>
             <p class="cal-help">
-              Beat-synced camera cuts, musician close-ups, Fever crane orbits, and reverse crowd views.
+              Live TV director cuts across Pit Steadicam, Crowd POV, Pit Surf, Upper-Bowl Sweeps, Reverse Stage, and Aerial Drone rigs.
             </p>
           </div>
 
-          <!-- Audio/Visual Calibration -->
+          <!-- Audio/Visual Calibration + 4-Beat Tap-to-Calibrate -->
           <div class="calibration-box">
             <div class="cal-header">
               <label for="latency-slider" class="cal-label">Audio / Visual Sync Offset</label>
@@ -659,8 +927,28 @@
               <button id="btn-latency-plus" type="button" class="stage-btn">+5ms</button>
               <button id="btn-latency-reset" type="button" class="stage-btn stage-btn-ghost">Reset</button>
             </div>
+            <div class="cal-slider-row" style="margin-top: 8px; justify-content: space-between;">
+              <button id="btn-tap-calibrate" type="button" class="stage-btn stage-btn-primary">
+                4-Beat Tap to Calibrate
+              </button>
+              <span id="tap-calibrate-status" class="cal-readout tabular">Tap Space / D on 4 beats</span>
+            </div>
             <p class="cal-help">
               Use positive (+) values if wireless headphones feel slightly delayed. Saved automatically.
+            </p>
+          </div>
+
+          <!-- No Wrong Key / Morale Shield Protection -->
+          <div class="calibration-box">
+            <div class="cal-header">
+              <label class="loop-toggle-label" for="pause-morale-shield-toggle">
+                <input id="pause-morale-shield-toggle" type="checkbox" />
+                <span>No Wrong Key (Morale Shield)</span>
+              </label>
+              <span id="morale-shield-readout" class="cal-readout">OFF · Classic 5% Floor</span>
+            </div>
+            <p class="cal-help">
+              When active, missed notes and stray fret taps never drop Crowd Morale or mute your live instrument stem.
             </p>
           </div>
 
@@ -711,7 +999,7 @@
         </div>
       </section>
 
-      <!-- Single-Song Encore Results Overlay -->
+      <!-- Post-Gig Concert Magazine Cover & Setlist Receipt Summary Card -->
       <section
         id="results-overlay"
         class="overlay-shell is-hidden"
@@ -719,7 +1007,15 @@
         aria-modal="true"
         aria-labelledby="results-modal-title"
       >
-        <div class="modal-panel">
+        <div class="modal-panel results-magazine-panel">
+          <div class="magazine-masthead">
+            <span class="magazine-edition">STAGE HERO LIVE · WORLD TOUR SPECIAL EDITION</span>
+            <div class="magazine-badges-row">
+              <span id="results-fc-badge" class="magazine-crown-badge is-hidden">FC · FULL COMBO CROWN</span>
+              <span id="results-gold-badge" class="magazine-gold-badge is-hidden">★ 5 GOLD STARS</span>
+            </div>
+          </div>
+
           <div class="modal-header">
             <h2 id="results-modal-title" class="modal-title">Encore Results</h2>
             <p id="results-track-title" class="modal-subtitle">—</p>
@@ -734,8 +1030,9 @@
               <div class="results-sub-metrics tabular">
                 <span id="results-accuracy">100.0%</span>
                 <span class="meta-sep" aria-hidden="true">·</span>
-                <span>Max Combo <strong id="results-max-combo">0</strong></span>
+                <span>Peak Streak <strong id="results-max-combo">0</strong></span>
               </div>
+              <div id="results-timing-bias" class="results-timing-bias tabular">Avg Offset: ±0 ms (On Beat)</div>
             </div>
           </div>
 
@@ -745,12 +1042,12 @@
               <span id="results-perfect" class="breakdown-value is-perfect">0</span>
             </div>
             <div class="breakdown-cell">
-              <span class="breakdown-label">Early</span>
-              <span id="results-early" class="breakdown-value is-early">0</span>
+              <span class="breakdown-label">Great</span>
+              <span id="results-great" class="breakdown-value is-great">0</span>
             </div>
             <div class="breakdown-cell">
-              <span class="breakdown-label">Late</span>
-              <span id="results-late" class="breakdown-value is-late">0</span>
+              <span class="breakdown-label">Good</span>
+              <span id="results-good" class="breakdown-value is-good">0</span>
             </div>
             <div class="breakdown-cell">
               <span class="breakdown-label">Miss</span>
@@ -758,9 +1055,19 @@
             </div>
           </div>
 
+          <!-- 2P Band Co-Op Synergy or Pro Face-Off Winner Comparison -->
+          <div id="results-2p-comparison" class="results-2p-comparison is-hidden" aria-label="Two player breakdown"></div>
+
+          <blockquote id="results-banter-quote" class="results-banter-quote">
+            "Sold-out roar! Even the security guards were air-guitaring by the encore."
+          </blockquote>
+
           <div class="results-actions-stack">
             <button id="btn-encore-speedup" type="button" class="stage-btn stage-btn-encore is-hidden">
               Play Encore Speed-Up (110% Tempo · +15% Score)
+            </button>
+            <button id="btn-save-poster" type="button" class="stage-btn stage-btn-poster">
+              📸 Save Gig Poster PNG
             </button>
             <button id="btn-next-song-results" type="button" class="stage-btn stage-btn-next">
               ⏭ Next Song

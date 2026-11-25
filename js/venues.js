@@ -1,136 +1,35 @@
 /**
  * venues.js
- * 10 Real-World 3D Concert Venue Environments for Three.js:
- *   1. Philippine Arena (Bulacan, PH)
- *   2. SM Mall of Asia Arena (Pasay, PH)
- *   3. Smart Araneta Coliseum (Quezon City, PH)
- *   4. UP Sunken Garden (Quezon City, PH)
- *   5. Intramuros Open Grounds (Manila, PH)
- *   6. Tokyo Dome (Tokyo, Japan)
- *   7. Wembley Stadium (London, UK)
- *   8. Red Rocks Amphitheatre (Colorado, USA)
- *   9. Madison Square Garden (New York, USA)
- *  10. Coachella Main Stage (California, USA)
+ * 10 Full-Scale 360° Real-Life Iconic Concert Stadiums + Independent Stage Theme / Event Overlay Engine:
+ *   Selector A (10 Iconic Real-Life Stadiums):
+ *     - Philippine Arena (Bulacan)
+ *     - SM Mall of Asia Arena (Pasay / Manila Bay)
+ *     - Wembley Stadium (London)
+ *     - Madison Square Garden (New York)
+ *     - Tokyo Dome (Tokyo)
+ *     - Red Rocks Amphitheatre (Colorado)
+ *     - Maracanã Stadium (Rio de Janeiro)
+ *     - Sydney Harbour Open-Air Stage (Sydney)
+ *     - Stade de France (Paris)
+ *     - Seoul Olympic Stadium (Seoul)
+ *   Selector B (9 Composable Stage Theme / Event Overlays):
+ *     - STANDARD, CHRISTMAS, HALLOWEEN, SAKURA, CYBER_NEON, ROYAL_OPERA, TROPICAL_SUMMER, FIESTA_PINOY, APOCALYPSE_HELLFIRE
  *
- * Every venue builds distinct 3D stadium architecture, sky/roof dome, lighting palette,
- * seating/terrain perimeters, and crowd atmosphere with zero external textures.
+ * 100% client-side pure JavaScript / Three.js:
+ *   - Dynamic procedural atmospheric ShaderMaterial sky dome (r = 780u, cloud drift + twinkling stars)
+ *   - 3-tier stepped elliptical seating bowls with concrete stair aisles, safety railings,
+ *     glowing glass VIP luxury suites, recessed lit vomitories, 360° scrolling LED ribbon boards,
+ *     perimeter catwalk trusses, delay speaker clusters, sky-tracker searchlights & 2,000+ instanced spectators
+ *   - Smooth radially parting retractable dome roofs for Grand Encore aerial fireworks
+ *   - Rich architectural landmark cityscapes & waterfronts for all 10 venues
+ *   - Unobstructed central stage deck (x: [-14, 14], z: [-11, 5]) & T-catwalk (z: [5, 11.4])
+ *   - Full GPU resource tracking & disposal
  */
 
 import * as THREE from 'three';
+import { getVenuePalette, getStageOverlayPalette } from './bandGearCatalog.js';
 
 export const VENUES = [
-  /* ===================== 6 EXTRAVAGANT 3D STAGE THEMES ===================== */
-  {
-    id: 'christmas-wonderland',
-    name: '🎄 Christmas Wonderland',
-    location: 'North Pole Ice Arena',
-    type: 'Holiday Spectacular',
-    supportsAerialFireworks: true,
-    skyColor: 0x071329,
-    fogColor: 0x0c1f3d,
-    fogDensity: 0.013,
-    hemiSky: 0xbae6fd,
-    hemiGround: 0x1e293b,
-    keyColor: 0xfef3c7,
-    keyIntensity: 0.86,
-    accentHex: 0x38bdf8,
-    laserColors: [0x38bdf8, 0xfacc15, 0xef4444, 0x4ade80],
-    fireworksCeilingY: 17.5,
-    description: 'Giant illuminated 3D Christmas tree, candy-cane trusses, wrapped stage gifts, fairy lights & falling snow.',
-  },
-  {
-    id: 'halloween-cathedral',
-    name: '🎃 Haunted Cathedral',
-    location: 'Midnight Gothic Abbey',
-    type: 'Spooky Spectacle',
-    supportsAerialFireworks: true,
-    skyColor: 0x0d0618,
-    fogColor: 0x1a0b2e,
-    fogDensity: 0.016,
-    hemiSky: 0xa855f7,
-    hemiGround: 0x142611,
-    keyColor: 0xfdba74,
-    keyIntensity: 0.74,
-    accentHex: 0xa855f7,
-    laserColors: [0xa855f7, 0x4ade80, 0xf97316, 0xe879f9],
-    fireworksCeilingY: 16.5,
-    description: 'Gothic stone arches, towering organ pipes, glowing jack-o-lanterns, floating candle lanterns & cauldron mist.',
-  },
-  {
-    id: 'sakura-festival',
-    name: '🌸 Cherry Blossom Festival',
-    location: 'Kyoto Sakura Shrine',
-    type: 'Spring Matsuri',
-    supportsAerialFireworks: true,
-    skyColor: 0x180c24,
-    fogColor: 0x261233,
-    fogDensity: 0.012,
-    hemiSky: 0xf9a8d4,
-    hemiGround: 0x1f1426,
-    keyColor: 0xfde68a,
-    keyIntensity: 0.82,
-    accentHex: 0xf472b6,
-    laserColors: [0xf472b6, 0xfef08a, 0xfb7185, 0x38bdf8],
-    fireworksCeilingY: 17.5,
-    description: 'Crimson Torii gate framing the stage, blooming sakura trees, glowing paper lanterns & drifting pink petals.',
-  },
-  {
-    id: 'cyber-tokyo',
-    name: '🌃 Cyber Neon Tokyo',
-    location: 'Shibuya Skydeck 2099',
-    type: 'Cyberpunk Rooftop',
-    supportsAerialFireworks: true,
-    skyColor: 0x050312,
-    fogColor: 0x0c0624,
-    fogDensity: 0.014,
-    hemiSky: 0x22d3ee,
-    hemiGround: 0x2a0836,
-    keyColor: 0xf0abfc,
-    keyIntensity: 0.82,
-    accentHex: 0x22d3ee,
-    laserColors: [0x22d3ee, 0xec4899, 0xa855f7, 0xfacc15],
-    fireworksCeilingY: 18.0,
-    description: 'Holographic kanji billboards, towering neon skyscrapers, laser-grid floor & falling neon sparks.',
-  },
-  {
-    id: 'royal-opera',
-    name: '👑 Royal Gold Opera',
-    location: 'Grand Palais Impérial',
-    type: 'Gilded Gala',
-    supportsAerialFireworks: false,
-    continuousIndoorFountains: true,
-    skyColor: 0x17060a,
-    fogColor: 0x22080f,
-    fogDensity: 0.015,
-    hemiSky: 0xfde047,
-    hemiGround: 0x330a14,
-    keyColor: 0xfef3c7,
-    keyIntensity: 0.86,
-    accentHex: 0xfacc15,
-    laserColors: [0xfacc15, 0xf43f5e, 0xfef08a, 0xfb923c],
-    fireworksCeilingY: 14.5,
-    description: 'Crimson velvet curtains, golden crystal chandeliers, marble columns & continuous golden spark fountains.',
-  },
-  {
-    id: 'tropical-beach',
-    name: '🌴 Tropical Beach Fest',
-    location: 'Boracay Sunset Cove',
-    type: 'Sunset Paradise',
-    supportsAerialFireworks: true,
-    skyColor: 0x1d0f2b,
-    fogColor: 0x2b162a,
-    fogDensity: 0.011,
-    hemiSky: 0xfb923c,
-    hemiGround: 0x2e1f14,
-    keyColor: 0xfde68a,
-    keyIntensity: 0.88,
-    accentHex: 0xf97316,
-    laserColors: [0xf97316, 0xfacc15, 0x22d3ee, 0xf472b6],
-    fireworksCeilingY: 18.0,
-    description: 'Flickering tiki torches, colorful surfboards, tropical palms & shimmering golden-hour sunset ocean.',
-  },
-
-  /* ===================== 10 CLASSIC REAL-WORLD VENUES ===================== */
   {
     id: 'philippine-arena',
     name: 'Philippine Arena',
@@ -138,106 +37,34 @@ export const VENUES = [
     type: 'Mega Dome',
     supportsAerialFireworks: true,
     skyColor: 0x050814,
-    fogColor: 0x060a18,
-    fogDensity: 0.015,
+    fogColor: 0x070d1e,
+    fogDensity: 0.0021,
     hemiSky: 0x7dd3fc,
     hemiGround: 0x0f172a,
     keyColor: 0xe0f2fe,
-    keyIntensity: 0.72,
+    keyIntensity: 0.8,
     accentHex: 0x38bdf8,
     laserColors: [0x38bdf8, 0xf43f5e, 0xfacc15, 0xa855f7],
-    fireworksCeilingY: 16.5,
-    description: 'Sweeping radial steel dome trusses, massive lightstick bowls, and dual mega-LED screens.',
+    fireworksCeilingY: 24.0,
+    description: 'World-record radial steel dome trusses, 360° lightstick bowls, NLEX light trails & Metro Manila horizon.',
   },
   {
     id: 'moa-arena',
     name: 'SM Mall of Asia Arena',
     location: 'Pasay, PH',
-    type: 'Indoor Arena',
-    supportsAerialFireworks: false,
+    type: 'Bayfront Arena',
+    supportsAerialFireworks: true,
     skyColor: 0x040916,
-    fogColor: 0x050c1d,
-    fogDensity: 0.02,
+    fogColor: 0x061026,
+    fogDensity: 0.0023,
     hemiSky: 0x38bdf8,
     hemiGround: 0x0c1428,
     keyColor: 0xbae6fd,
-    keyIntensity: 0.75,
+    keyIntensity: 0.82,
     accentHex: 0x06b6d4,
     laserColors: [0x06b6d4, 0x3b82f6, 0x22d3ee, 0xe0f2fe],
-    fireworksCeilingY: 13.0,
-    description: 'Sleek blue-and-cyan eye-shaped indoor arena with wrap-around LED ribbon boards.',
-  },
-  {
-    id: 'araneta-coliseum',
-    name: 'Smart Araneta Coliseum',
-    location: 'Quezon City, PH',
-    type: 'Historic Dome',
-    supportsAerialFireworks: false,
-    skyColor: 0x100906,
-    fogColor: 0x130b07,
-    fogDensity: 0.02,
-    hemiSky: 0xfde68a,
-    hemiGround: 0x1c120c,
-    keyColor: 0xfef3c7,
-    keyIntensity: 0.78,
-    accentHex: 0xf59e0b,
-    laserColors: [0xf59e0b, 0xfbbf24, 0xf97316, 0xfef08a],
-    fireworksCeilingY: 13.5,
-    description: 'Iconic Big Dome ribbed ceiling architecture with warm amber/gold heritage lighting.',
-  },
-  {
-    id: 'up-sunken-garden',
-    name: 'UP Sunken Garden',
-    location: 'Quezon City, PH',
-    type: 'Open-Air Festival',
-    supportsAerialFireworks: true,
-    skyColor: 0x0c1026,
-    fogColor: 0x101630,
-    fogDensity: 0.013,
-    hemiSky: 0x818cf8,
-    hemiGround: 0x112416,
-    keyColor: 0xfde68a,
-    keyIntensity: 0.72,
-    accentHex: 0x4ade80,
-    laserColors: [0x4ade80, 0xfacc15, 0x38bdf8, 0xf472b6],
-    fireworksCeilingY: 17.0,
-    description: 'Twilight college music festival field framed by acacia trees, string lights, and starry dusk sky.',
-  },
-  {
-    id: 'intramuros',
-    name: 'Intramuros Open Grounds',
-    location: 'Manila, PH',
-    type: 'Heritage Open-Air',
-    supportsAerialFireworks: true,
-    skyColor: 0x090814,
-    fogColor: 0x120e18,
-    fogDensity: 0.014,
-    hemiSky: 0xfdba74,
-    hemiGround: 0x1c1614,
-    keyColor: 0xfed7aa,
-    keyIntensity: 0.76,
-    accentHex: 0xfb923c,
-    laserColors: [0xfb923c, 0xfacc15, 0xf43f5e, 0x38bdf8],
-    fireworksCeilingY: 17.5,
-    description: 'Spanish-era stone wall battlements and warm heritage uplighting under a night sky.',
-  },
-  {
-    id: 'tokyo-dome',
-    name: 'Tokyo Dome',
-    location: 'Tokyo, Japan',
-    type: 'Air-Dome',
-    supportsAerialFireworks: true,
-    skyColor: 0x080c1c,
-    fogColor: 0x0a1024,
-    fogDensity: 0.015,
-    hemiSky: 0xc4b5fd,
-    hemiGround: 0x0f172a,
-    keyColor: 0xf8fafc,
-    keyIntensity: 0.8,
-    accentHex: 0xc084fc,
-    laserColors: [0xe879f9, 0x38bdf8, 0x22d3ee, 0xf43f5e],
-    fireworksCeilingY: 16.5,
-    description: 'Pressurized white diamond membrane roof grid, synchronized rainbow penlights, and sci-fi lasers.',
+    fireworksCeilingY: 22.0,
+    description: 'Retractable eye-shaped arena roof, wrap-around cyan LED ribbons, Manila Bay waves & rotating MOA Eye wheel.',
   },
   {
     id: 'wembley',
@@ -246,16 +73,52 @@ export const VENUES = [
     type: 'Open Stadium',
     supportsAerialFireworks: true,
     skyColor: 0x050814,
-    fogColor: 0x070d1e,
-    fogDensity: 0.012,
+    fogColor: 0x080f24,
+    fogDensity: 0.0019,
     hemiSky: 0x93c5fd,
     hemiGround: 0x0f172a,
     keyColor: 0xe0f2fe,
-    keyIntensity: 0.74,
+    keyIntensity: 0.8,
     accentHex: 0xef4444,
     laserColors: [0xef4444, 0x38bdf8, 0xf8fafc, 0xfacc15],
-    fireworksCeilingY: 18.0,
-    description: 'Open-night stadium crowned by the towering illuminated Wembley Arch and massive stands.',
+    fireworksCeilingY: 25.0,
+    description: '360° multi-tier London stadium crowned by the illuminated Wembley Arch, Olympic Way & Shard skyline.',
+  },
+  {
+    id: 'madison-square-garden',
+    name: 'Madison Square Garden',
+    location: 'New York, USA',
+    type: 'Iconic Arena',
+    supportsAerialFireworks: true,
+    skyColor: 0x070814,
+    fogColor: 0x0d0c1c,
+    fogDensity: 0.0024,
+    hemiSky: 0xa5b4fc,
+    hemiGround: 0x12101d,
+    keyColor: 0xf1f5f9,
+    keyIntensity: 0.8,
+    accentHex: 0x6366f1,
+    laserColors: [0x818cf8, 0xf43f5e, 0x38bdf8, 0xfacc15],
+    fireworksCeilingY: 22.0,
+    description: 'Retractable cable-net arena roof, circular Penn Plaza drum, Times Square glow & Empire State skyline.',
+  },
+  {
+    id: 'tokyo-dome',
+    name: 'Tokyo Dome',
+    location: 'Tokyo, Japan',
+    type: 'Air-Dome',
+    supportsAerialFireworks: true,
+    skyColor: 0x070b1a,
+    fogColor: 0x0a1128,
+    fogDensity: 0.0022,
+    hemiSky: 0xc4b5fd,
+    hemiGround: 0x0f172a,
+    keyColor: 0xf8fafc,
+    keyIntensity: 0.84,
+    accentHex: 0xc084fc,
+    laserColors: [0xe879f9, 0x38bdf8, 0x22d3ee, 0xf43f5e],
+    fireworksCeilingY: 23.0,
+    description: 'Retractable Big Egg quilted dome, Thunder Dolphin coaster lights, Big-O wheel & Tokyo Skytree skyline.',
   },
   {
     id: 'red-rocks',
@@ -263,100 +126,261 @@ export const VENUES = [
     location: 'Colorado, USA',
     type: 'Canyon Open-Air',
     supportsAerialFireworks: true,
-    skyColor: 0x080614,
-    fogColor: 0x120a18,
-    fogDensity: 0.013,
+    skyColor: 0x070614,
+    fogColor: 0x140b1c,
+    fogDensity: 0.0018,
     hemiSky: 0xfb923c,
     hemiGround: 0x26120e,
     keyColor: 0xffedd5,
-    keyIntensity: 0.76,
+    keyIntensity: 0.84,
     accentHex: 0xea580c,
     laserColors: [0xf97316, 0xfacc15, 0xf43f5e, 0x38bdf8],
-    fireworksCeilingY: 17.5,
-    description: 'Towering red sandstone rock monoliths flanking the stage under a deep desert night sky.',
+    fireworksCeilingY: 25.0,
+    description: 'Stratified Creation Rock & Ship Rock sandstone monoliths, pine canyon ridges & distant Denver plains glow.',
   },
   {
-    id: 'madison-square-garden',
-    name: 'Madison Square Garden',
-    location: 'New York, USA',
-    type: 'Iconic Arena',
-    supportsAerialFireworks: false,
-    skyColor: 0x080812,
-    fogColor: 0x0c0b18,
-    fogDensity: 0.02,
-    hemiSky: 0xa5b4fc,
-    hemiGround: 0x12101d,
-    keyColor: 0xf1f5f9,
-    keyIntensity: 0.74,
-    accentHex: 0x6366f1,
-    laserColors: [0x818cf8, 0xf43f5e, 0x38bdf8, 0xfacc15],
-    fireworksCeilingY: 13.0,
-    description: 'Circular ceiling truss rig, classic arena haze, and dramatic vertical spotlight shafts.',
-  },
-  {
-    id: 'coachella',
-    name: 'Coachella Main Stage',
-    location: 'California, USA',
-    type: 'Desert Festival',
+    id: 'maracana',
+    name: 'Maracanã Stadium',
+    location: 'Rio de Janeiro, Brazil',
+    type: 'Carnival Bowl',
     supportsAerialFireworks: true,
-    skyColor: 0x160b24,
-    fogColor: 0x23102e,
-    fogDensity: 0.012,
-    hemiSky: 0xf472b6,
-    hemiGround: 0x29151c,
-    keyColor: 0xfde68a,
-    keyIntensity: 0.78,
-    accentHex: 0xf472b6,
-    laserColors: [0xf472b6, 0xfb923c, 0xfacc15, 0x22d3ee],
-    fireworksCeilingY: 18.0,
-    description: 'Ultra-wide desert festival stage with palm silhouettes, sunset-to-night sky, and giant speaker arrays.',
+    skyColor: 0x040b18,
+    fogColor: 0x07172a,
+    fogDensity: 0.0019,
+    hemiSky: 0xfacc15,
+    hemiGround: 0x064e3b,
+    keyColor: 0xfef9c3,
+    keyIntensity: 0.86,
+    accentHex: 0x22c55e,
+    laserColors: [0x22c55e, 0xfacc15, 0x38bdf8, 0x4ade80],
+    fireworksCeilingY: 26.0,
+    description: 'Tensioned white ring canopy over a lush green & gold stadium rimmed by Christ the Redeemer & Guanabara Bay.',
+  },
+  {
+    id: 'sydney-harbour',
+    name: 'Sydney Harbour Stage',
+    location: 'Sydney, Australia',
+    type: 'Harbourfront',
+    supportsAerialFireworks: true,
+    skyColor: 0x04091a,
+    fogColor: 0x081630,
+    fogDensity: 0.0018,
+    hemiSky: 0x38bdf8,
+    hemiGround: 0x0c192c,
+    keyColor: 0xe0f2fe,
+    keyIntensity: 0.85,
+    accentHex: 0x38bdf8,
+    laserColors: [0x38bdf8, 0xfacc15, 0xf472b6, 0xffffff],
+    fireworksCeilingY: 26.5,
+    description: 'Waterfront amphitheatre overlooking animated harbour waves, illuminated Opera shells & Sydney Harbour Bridge.',
+  },
+  {
+    id: 'stade-de-france',
+    name: 'Stade de France',
+    location: 'Paris, France',
+    type: 'Floating Canopy',
+    supportsAerialFireworks: true,
+    skyColor: 0x050716,
+    fogColor: 0x0a1026,
+    fogDensity: 0.0019,
+    hemiSky: 0x60a5fa,
+    hemiGround: 0x111827,
+    keyColor: 0xf1f5f9,
+    keyIntensity: 0.84,
+    accentHex: 0x3b82f6,
+    laserColors: [0x3b82f6, 0xffffff, 0xef4444, 0xfacc15],
+    fireworksCeilingY: 25.0,
+    description: 'Elliptical suspended Paris canopy halo on stay-cable masts, tricolor fasciae & sparkling Eiffel Tower horizon.',
+  },
+  {
+    id: 'seoul-olympic',
+    name: 'Seoul Olympic Stadium',
+    location: 'Seoul, South Korea',
+    type: 'Porcelain Bowl',
+    supportsAerialFireworks: true,
+    skyColor: 0x060718,
+    fogColor: 0x0f122b,
+    fogDensity: 0.002,
+    hemiSky: 0xc084fc,
+    hemiGround: 0x111827,
+    keyColor: 0xf8fafc,
+    keyIntensity: 0.85,
+    accentHex: 0xec4899,
+    laserColors: [0xec4899, 0x22d3ee, 0xc084fc, 0xfacc15],
+    fireworksCeilingY: 25.5,
+    description: 'Sweeping Joseon-porcelain curved canopy, Olympic cauldron flame, Han River bridge & Lotte World Tower.',
   },
 ];
 
-export function getVenueById(venueId) {
-  return VENUES.find((v) => v.id === venueId) || VENUES[0];
-}
+export const STAGE_OVERLAYS = [
+  {
+    id: 'STANDARD',
+    name: 'Standard Tour Rig',
+    shortName: 'Standard',
+    badge: 'WORLD TOUR',
+    accentCss: '#38bdf8',
+    accentHex: 0x38bdf8,
+    secondaryHex: 0xfacc15,
+    rimHex: null,
+    laserColors: null,
+    continuousIndoorFountains: false,
+    description: 'Pure stadium architecture and chrome pro-touring festival truss rig.',
+  },
+  {
+    id: 'CHRISTMAS',
+    name: 'Christmas Wonderland',
+    shortName: 'Christmas',
+    badge: 'HOLIDAY OVERLAY',
+    accentCss: '#38bdf8',
+    accentHex: 0x38bdf8,
+    secondaryHex: 0xfacc15,
+    rimHex: 0xef4444,
+    laserColors: [0x38bdf8, 0xfacc15, 0xef4444, 0x4ade80],
+    continuousIndoorFountains: false,
+    description: 'Giant 3D lit Christmas tree, candy-cane perimeter trusses, gift stacks & falling snow.',
+  },
+  {
+    id: 'HALLOWEEN',
+    name: 'Haunted Cathedral',
+    shortName: 'Halloween',
+    badge: 'SPOOKY OVERLAY',
+    accentCss: '#a855f7',
+    accentHex: 0xa855f7,
+    secondaryHex: 0xf97316,
+    rimHex: 0x4ade80,
+    laserColors: [0xa855f7, 0x4ade80, 0xf97316, 0xe879f9],
+    continuousIndoorFountains: false,
+    description: 'Harvest moon, gothic wing spires, jack-o’-lanterns, toxic cauldrons & floating candles.',
+  },
+  {
+    id: 'SAKURA',
+    name: 'Sakura Blossom',
+    shortName: 'Sakura',
+    badge: 'MATSURI OVERLAY',
+    accentCss: '#f472b6',
+    accentHex: 0xf472b6,
+    secondaryHex: 0xfef08a,
+    rimHex: 0xfb7185,
+    laserColors: [0xf472b6, 0xfef08a, 0xfb7185, 0x38bdf8],
+    continuousIndoorFountains: false,
+    description: 'Crimson Torii side shrines, glowing festival lanterns, blossom trees & drifting sakura petals.',
+  },
+  {
+    id: 'CYBER_NEON',
+    name: 'Cyber Neon 2099',
+    shortName: 'Cyber Neon',
+    badge: 'FUTURE OVERLAY',
+    accentCss: '#22d3ee',
+    accentHex: 0x22d3ee,
+    secondaryHex: 0xec4899,
+    rimHex: 0xa855f7,
+    laserColors: [0x22d3ee, 0xec4899, 0xa855f7, 0xfacc15],
+    continuousIndoorFountains: false,
+    description: 'Holographic kanji billboards, cyan laser-grid floor ring & falling neon digital rain.',
+  },
+  {
+    id: 'ROYAL_OPERA',
+    name: 'Royal Gold Opera',
+    shortName: 'Royal Opera',
+    badge: 'GALA OVERLAY',
+    accentCss: '#facc15',
+    accentHex: 0xfacc15,
+    secondaryHex: 0xf43f5e,
+    rimHex: 0xfef08a,
+    laserColors: [0xfacc15, 0xf43f5e, 0xfef08a, 0xfb923c],
+    continuousIndoorFountains: true,
+    description: 'Crimson velvet proscenium drapes, marble columns, spinning crystal chandeliers & golden gala fountains.',
+  },
+  {
+    id: 'TROPICAL_SUMMER',
+    name: 'Tropical Summer Fest',
+    shortName: 'Tropical Fest',
+    badge: 'BEACH OVERLAY',
+    accentCss: '#f97316',
+    accentHex: 0xf97316,
+    secondaryHex: 0x22d3ee,
+    rimHex: 0xfacc15,
+    laserColors: [0xf97316, 0xfacc15, 0x22d3ee, 0xf472b6],
+    continuousIndoorFountains: false,
+    description: 'Swaying coastal palms, surfboards, flickering bamboo tiki torches & sunset ember warmth.',
+  },
+  {
+    id: 'FIESTA_PINOY',
+    name: 'Fiesta Pinoy Plaza',
+    shortName: 'Fiesta Pinoy',
+    badge: 'FIESTA OVERLAY',
+    accentCss: '#facc15',
+    accentHex: 0xfacc15,
+    secondaryHex: 0xec4899,
+    rimHex: 0x3b82f6,
+    laserColors: [0xfacc15, 0xec4899, 0x3b82f6, 0x22c55e],
+    continuousIndoorFountains: false,
+    description: 'Glowing capiz star parol lanterns on wing trusses & festive multicolor overhead banderitas.',
+  },
+  {
+    id: 'APOCALYPSE_HELLFIRE',
+    name: 'Apocalypse Hellfire',
+    shortName: 'Hellfire',
+    badge: 'INFERNO OVERLAY',
+    accentCss: '#ef4444',
+    accentHex: 0xef4444,
+    secondaryHex: 0xf97316,
+    rimHex: 0xfb923c,
+    laserColors: [0xef4444, 0xf97316, 0xfacc15, 0xdc2626],
+    continuousIndoorFountains: true,
+    description: 'Jagged obsidian wing monoliths, glowing molten floor fissures & rising volcanic embers.',
+  },
+];
 
-/**
- * Generates a procedural sky dome CanvasTexture (starry night, twilight dusk, or desert sunset).
- */
-function createSkyDomeTexture(topHex, midHex, horizonHex, addStars = true) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
+const LEGACY_VENUE_CHOICE_MAP = {
+  'christmas-wonderland': { venueId: 'philippine-arena', overlayId: 'CHRISTMAS' },
+  'halloween-cathedral': { venueId: 'wembley', overlayId: 'HALLOWEEN' },
+  'sakura-festival': { venueId: 'tokyo-dome', overlayId: 'SAKURA' },
+  'cyber-tokyo': { venueId: 'tokyo-dome', overlayId: 'CYBER_NEON' },
+  'royal-opera': { venueId: 'madison-square-garden', overlayId: 'ROYAL_OPERA' },
+  'tropical-beach': { venueId: 'moa-arena', overlayId: 'TROPICAL_SUMMER' },
+  araneta: { venueId: 'philippine-arena', overlayId: 'STANDARD' },
+  'araneta-coliseum': { venueId: 'philippine-arena', overlayId: 'STANDARD' },
+  'up-sunken-garden': { venueId: 'red-rocks', overlayId: 'STANDARD' },
+  intramuros: { venueId: 'wembley', overlayId: 'STANDARD' },
+  coachella: { venueId: 'red-rocks', overlayId: 'TROPICAL_SUMMER' },
+};
 
-  const grad = ctx.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0.0, topHex);
-  grad.addColorStop(0.55, midHex);
-  grad.addColorStop(0.84, horizonHex);
-  grad.addColorStop(1.0, '#05060b');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 512, 256);
-
-  if (addStars) {
-    for (let i = 0; i < 240; i += 1) {
-      const x = (Math.sin(i * 12.9898) * 43758.5453) % 1;
-      const y = (Math.sin(i * 78.233) * 19341.23) % 1;
-      const sx = Math.abs(x) * 512;
-      const sy = Math.abs(y) * 155;
-      const r = (i % 7 === 0) ? 1.8 : 1.0;
-      const a = 0.35 + (i % 5) * 0.14;
-      ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(2)})`;
-      ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
+export function resolveLegacyVenueChoice(rawVenueId, explicitOverlayId = null) {
+  const legacy = LEGACY_VENUE_CHOICE_MAP[rawVenueId];
+  if (legacy) {
+    return {
+      venueId: legacy.venueId,
+      overlayId: explicitOverlayId || legacy.overlayId,
+    };
   }
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return {
+    venueId: VENUES.some((v) => v.id === rawVenueId) ? rawVenueId : VENUES[0].id,
+    overlayId: STAGE_OVERLAYS.some((o) => o.id === explicitOverlayId) ? explicitOverlayId : 'STANDARD',
+  };
 }
 
-/**
- * Generates a procedural LED Mega-Screen Concert Visual texture.
- */
+export function getVenueById(venueId) {
+  const resolved = LEGACY_VENUE_CHOICE_MAP[venueId]?.venueId || venueId;
+  return VENUES.find((v) => v.id === resolved) || VENUES[0];
+}
+
+export function getStageOverlayById(overlayId) {
+  return STAGE_OVERLAYS.find((o) => o.id === overlayId) || STAGE_OVERLAYS[0];
+}
+
+// Pre-allocated scratch helpers shared across bowl & city animations (zero GC!)
+const _bowlDummy = new THREE.Object3D();
+const _bowlColor = new THREE.Color();
+const _bowlWaveColor = new THREE.Color(0xfde047);
+const _bowlPhoneColor = new THREE.Color(0xfffbeb);
+const _bowlChorusAltColor = new THREE.Color(0x38bdf8);
+const _tmpSkyColor = new THREE.Color();
+
+/* ============================================================================
+   PROCEDURAL CANVAS PBR TEXTURE GENERATORS (100% PURE JS / ZERO NETWORK)
+   ============================================================================ */
+
 function createLedScreenTexture(title, accentHex, secondaryHex) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -370,14 +394,13 @@ function createLedScreenTexture(title, accentHex, secondaryHex) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 512, 256);
 
-  // Equalizer wave bars
   for (let i = 0; i < 32; i += 1) {
     const h = 36 + Math.abs(Math.sin(i * 0.45)) * 130;
     ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.22)' : secondaryHex;
     ctx.fillRect(14 + i * 15.2, 236 - h, 10, h);
   }
 
-  ctx.fillStyle = 'rgba(4, 7, 15, 0.55)';
+  ctx.fillStyle = 'rgba(4, 7, 15, 0.62)';
   ctx.fillRect(0, 82, 512, 92);
 
   ctx.fillStyle = '#ffffff';
@@ -388,16 +411,149 @@ function createLedScreenTexture(title, accentHex, secondaryHex) {
 
   ctx.fillStyle = '#fde047';
   ctx.font = 'bold 18px Oswald, sans-serif';
-  ctx.fillText('LIVE WORLD TOUR', 256, 154);
+  ctx.fillText('WORLD TOUR CONCERT EDITION', 256, 154);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-/**
- * Generates a subtle procedural stone block texture for Intramuros battlements.
- */
+function createLedRibbonTexture(title, accentHex = '#38bdf8', secondaryHex = '#facc15') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+
+  const grad = ctx.createLinearGradient(0, 0, 1024, 0);
+  grad.addColorStop(0, '#050816');
+  grad.addColorStop(0.22, accentHex);
+  grad.addColorStop(0.5, '#090d1f');
+  grad.addColorStop(0.76, secondaryHex);
+  grad.addColorStop(1, '#050816');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1024, 128);
+
+  // Diagonal kinetic chevron bars + spectrum equalizer ticks
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  for (let x = -64; x < 1080; x += 48) {
+    ctx.beginPath();
+    ctx.moveTo(x, 128);
+    ctx.lineTo(x + 28, 0);
+    ctx.lineTo(x + 42, 0);
+    ctx.lineTo(x + 14, 128);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  for (let i = 0; i < 64; i += 1) {
+    const eqH = 18 + Math.abs(Math.sin(i * 0.52)) * 58;
+    ctx.fillStyle = i % 3 === 0 ? '#ffffff' : i % 2 === 0 ? accentHex : secondaryHex;
+    ctx.fillRect(i * 16 + 3, 122 - eqH, 9, eqH);
+  }
+
+  ctx.fillStyle = 'rgba(3, 6, 16, 0.72)';
+  ctx.fillRect(0, 32, 1024, 62);
+
+  ctx.strokeStyle = accentHex;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, 32);
+  ctx.lineTo(1024, 32);
+  ctx.moveTo(0, 94);
+  ctx.lineTo(1024, 94);
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 34px Oswald, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`★ ${title.toUpperCase()} ★ WORLD TOUR LIVE ★`, 512, 64);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(6, 1);
+  return tex;
+}
+
+function createGlassSuiteTexture(accentHex = '#fbbf24') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#070d1b';
+  ctx.fillRect(0, 0, 512, 128);
+
+  const suiteCount = 8;
+  const w = 512 / suiteCount;
+  for (let s = 0; s < suiteCount; s += 1) {
+    const gx = s * w;
+    const warmLit = s % 3 !== 1;
+    const glowGrad = ctx.createLinearGradient(gx, 14, gx, 114);
+    glowGrad.addColorStop(0, warmLit ? accentHex : '#38bdf8');
+    glowGrad.addColorStop(0.55, warmLit ? 'rgba(253, 224, 71, 0.42)' : 'rgba(56, 189, 248, 0.28)');
+    glowGrad.addColorStop(1, '#091124');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(gx + 5, 16, w - 10, 96);
+
+    // Subtle interior suite ceiling track + people silhouettes
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.58)';
+    ctx.fillRect(gx + 16, 72, 12, 40);
+    ctx.fillRect(gx + 34, 76, 10, 36);
+
+    // Steel window mullion
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(gx, 0, 6, 128);
+  }
+
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(0, 0, 512, 12);
+  ctx.fillRect(0, 116, 512, 12);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(8, 1);
+  return tex;
+}
+
+function createSandstoneTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  const strata = ['#6b2717', '#8c351e', '#a94826', '#722c1a', '#531d12', '#9e4122', '#7a2f1a', '#b6542b'];
+  let y = 0;
+  let idx = 0;
+  while (y < 256) {
+    const h = 10 + ((idx * 13) % 18);
+    ctx.fillStyle = strata[idx % strata.length];
+    ctx.fillRect(0, y, 256, h + 2);
+    // Wavy sedimentary vein
+    ctx.fillStyle = 'rgba(30, 10, 6, 0.26)';
+    ctx.fillRect(0, y + h - 2, 256, 3);
+    y += h;
+    idx += 1;
+  }
+  for (let i = 0; i < 450; i += 1) {
+    const x = (i * 73) % 256;
+    const yy = (i * 137) % 256;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 200, 160, 0.08)' : 'rgba(20, 6, 4, 0.14)';
+    ctx.fillRect(x, yy, 12 + (i % 24), 2);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 3);
+  return tex;
+}
+
 function createStoneTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -426,9 +582,6 @@ function createStoneTexture() {
   return tex;
 }
 
-/**
- * Generates a festive red-and-white diagonal candy-cane stripe texture for Christmas trusses.
- */
 function createCandyCaneTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
@@ -452,9 +605,6 @@ function createCandyCaneTexture() {
   return tex;
 }
 
-/**
- * Generates a glowing cyberpunk holographic kanji billboard texture for Cyber Neon Tokyo.
- */
 function createKanjiBillboardTexture(mainText, subText, accentHex = '#22d3ee', bgHex = '#110624') {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -468,7 +618,6 @@ function createKanjiBillboardTexture(mainText, subText, accentHex = '#22d3ee', b
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 256, 512);
 
-  // Neon outer frame & scanlines
   ctx.strokeStyle = accentHex;
   ctx.lineWidth = 10;
   ctx.strokeRect(10, 10, 236, 492);
@@ -477,15 +626,13 @@ function createKanjiBillboardTexture(mainText, subText, accentHex = '#22d3ee', b
     ctx.fillRect(16, y, 224, 2);
   }
 
-  // Vertical glowing Japanese characters
   ctx.fillStyle = accentHex;
   ctx.shadowColor = accentHex;
   ctx.shadowBlur = 18;
   ctx.font = 'bold 74px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const chars = Array.from(mainText);
-  chars.forEach((ch, idx) => {
+  Array.from(mainText).forEach((ch, idx) => {
     ctx.fillText(ch, 128, 92 + idx * 96);
   });
 
@@ -499,9 +646,6 @@ function createKanjiBillboardTexture(mainText, subText, accentHex = '#22d3ee', b
   return tex;
 }
 
-/**
- * Generates a neon perspective laser grid texture for Cyber Tokyo rooftop floor.
- */
 function createNeonGridTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -525,164 +669,929 @@ function createNeonGridTexture() {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(14, 14);
+  tex.repeat.set(32, 32);
   return tex;
 }
 
+function createSkyscraperWindowTexture(accentHex = '#38bdf8', warmBias = false) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#070b17';
+  ctx.fillRect(0, 0, 128, 256);
+  for (let y = 8; y < 250; y += 10) {
+    const floorLitBand = ((y * 7) % 19) > 3;
+    for (let x = 6; x < 122; x += 12) {
+      const lit = floorLitBand && ((x * 17 + y * 31) % 11) > 4;
+      if (!lit) continue;
+      ctx.fillStyle =
+        (x + y) % 9 === 0
+          ? accentHex
+          : warmBias || (x * y) % 4 === 0
+            ? '#fde68a'
+            : '#bae6fd';
+      ctx.globalAlpha = 0.48 + ((x + y) % 4) * 0.13;
+      ctx.fillRect(x, y, 7, 5);
+    }
+  }
+  ctx.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/* ============================================================================
+   ATMOSPHERIC SHADER SKY DOME + EXTENDED HORIZON GROUND + ANIMATED OCEAN
+   ============================================================================ */
+
 /**
- * Helper to create instanced tiered stadium seating bowls with glowing crowd lightsticks.
+ * Full-Scale Procedural Shader Sky Dome (radius 780u inside camera.far = 900).
+ * Renders dynamic zenith-mid-horizon atmospheric gradient, drifting FBM night clouds,
+ * twinkling upper-hemisphere stars, and Grand Encore sky reveal without external assets.
+ */
+function addSkyDome(group, disposables, topHex, midHex, horizonHex, addStars = true, dynamicElements = null) {
+  const topColor = new THREE.Color(topHex);
+  const midColor = new THREE.Color(midHex);
+  const horizonColor = new THREE.Color(horizonHex);
+
+  const geo = new THREE.SphereGeometry(780, 36, 24);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      uTopColor: { value: topColor.clone() },
+      uMidColor: { value: midColor.clone() },
+      uHorizonColor: { value: horizonColor.clone() },
+      uTime: { value: 0 },
+      uStarIntensity: { value: addStars ? 1.0 : 0.18 },
+      uGrandEncoreMix: { value: 0 },
+    },
+    vertexShader: `
+      varying vec3 vWorldDir;
+      void main() {
+        vWorldDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uTopColor;
+      uniform vec3 uMidColor;
+      uniform vec3 uHorizonColor;
+      uniform float uTime;
+      uniform float uStarIntensity;
+      uniform float uGrandEncoreMix;
+      varying vec3 vWorldDir;
+
+      float hash21(vec2 p) {
+        p = fract(p * vec2(234.34, 435.345));
+        p += dot(p, p + 34.23);
+        return fract(p.x * p.y);
+      }
+
+      float noise2(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        float a = hash21(i);
+        float b = hash21(i + vec2(1.0, 0.0));
+        float c = hash21(i + vec2(0.0, 1.0));
+        float d = hash21(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+      }
+
+      float fbm(vec2 p) {
+        float v = 0.0;
+        float a = 0.5;
+        for (int i = 0; i < 4; i++) {
+          v += a * noise2(p);
+          p = p * 2.03 + vec2(17.1, 31.7);
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      void main() {
+        vec3 d = normalize(vWorldDir);
+        float h = clamp(d.y, 0.0, 1.0);
+
+        // 3-stop twilight/night sky gradient blended smoothly to horizon
+        vec3 sky = mix(uHorizonColor, uMidColor, smoothstep(0.0, 0.28, h));
+        sky = mix(sky, uTopColor, smoothstep(0.24, 0.85, h));
+
+        // Subtle high-altitude drifting stadium clouds lit from below by arena glow
+        float az = atan(d.z, d.x);
+        vec2 cloudUv = vec2(az * 1.9 + uTime * 0.012, h * 5.2 - uTime * 0.004);
+        float cloud = fbm(cloudUv * 2.4);
+        float cloudMask = smoothstep(0.48, 0.82, cloud) * smoothstep(0.04, 0.25, h) * smoothstep(0.88, 0.25, h);
+        vec3 cloudColor = mix(uMidColor * 1.35, uHorizonColor * 1.45, 1.0 - h);
+        sky = mix(sky, cloudColor, cloudMask * 0.42);
+
+        // Sharp twinkling starfield across upper dome hemisphere
+        if (h > 0.06 && uStarIntensity > 0.01) {
+          vec2 starGrid = vec2(az * 42.0, asin(clamp(d.y, -1.0, 1.0)) * 42.0);
+          vec2 cell = floor(starGrid);
+          vec2 local = fract(starGrid) - 0.5;
+          float rnd = hash21(cell);
+          if (rnd > 0.915) {
+            float dist = length(local);
+            float twinkle = 0.65 + 0.35 * sin(uTime * (2.2 + rnd * 4.0) + rnd * 62.8);
+            float starCore = smoothstep(0.16, 0.015, dist) * twinkle * smoothstep(0.06, 0.28, h);
+            float grandBoost = 1.0 + uGrandEncoreMix * 0.95;
+            vec3 starHue = mix(vec3(0.85, 0.93, 1.0), vec3(1.0, 0.94, 0.78), fract(rnd * 13.7));
+            sky += starHue * starCore * uStarIntensity * grandBoost * (1.0 - cloudMask * 0.7);
+          }
+        }
+
+        // Horizon atmospheric haze glow band
+        float horizonGlow = pow(1.0 - smoothstep(0.0, 0.22, abs(d.y)), 2.2);
+        sky += uHorizonColor * horizonGlow * 0.25;
+
+        gl_FragColor = vec4(sky, 1.0);
+      }
+    `,
+  });
+  // Attach dummy .color property so legacy skyMat.color reads never throw
+  mat.color = new THREE.Color(0xffffff);
+
+  disposables.geometries.push(geo);
+  disposables.materials.push(mat);
+  const dome = new THREE.Mesh(geo, mat);
+  dome.position.y = 8;
+  group.add(dome);
+  if (dynamicElements) {
+    dynamicElements.skyDome = dome;
+    dynamicElements.skyMat = mat;
+  } else {
+    group.userData.skyDome = dome;
+    group.userData.skyMat = mat;
+  }
+  return dome;
+}
+
+/**
+ * Extended Horizon Ground Plane (radius 740u, at y = -2.26m matching stadium base).
+ */
+function addOutdoorGround(group, disposables, groundColor = 0x0d1b12) {
+  const geo = new THREE.CircleGeometry(740, 64);
+  geo.rotateX(-Math.PI * 0.5);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#888888';
+  ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 640; i += 1) {
+    const x = (i * 53) % 128;
+    const y = (i * 97) % 128;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.22)';
+    ctx.fillRect(x, y, 2, 2);
+  }
+  const gritTex = new THREE.CanvasTexture(canvas);
+  gritTex.colorSpace = THREE.NoColorSpace;
+  gritTex.wrapS = THREE.RepeatWrapping;
+  gritTex.wrapT = THREE.RepeatWrapping;
+  gritTex.repeat.set(180, 180);
+  disposables.textures.push(gritTex);
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: groundColor,
+    roughness: 0.92,
+    roughnessMap: gritTex,
+    bumpMap: gritTex,
+    bumpScale: 0.045,
+    metalness: 0.05,
+  });
+  disposables.geometries.push(geo);
+  disposables.materials.push(mat);
+  const ground = new THREE.Mesh(geo, mat);
+  ground.position.y = -2.26;
+  group.add(ground);
+  return ground;
+}
+
+/**
+ * Animated GLSL Wave Ocean via onBeforeCompile (zero per-frame JS vertex loops!).
+ */
+function createAnimatedOcean(group, disposables, {
+  width = 580,
+  depth = 340,
+  x = 0,
+  y = -2.08,
+  z = -210,
+  color = 0x0e7490,
+  emissive = 0x075985,
+  emissiveIntensity = 0.3,
+}) {
+  const uniforms = {
+    uTime: { value: 0 },
+  };
+  const geo = new THREE.PlaneGeometry(width, depth, 72, 48);
+  geo.rotateX(-Math.PI * 0.5);
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    emissive,
+    emissiveIntensity,
+    roughness: 0.14,
+    metalness: 0.72,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = uniforms.uTime;
+    shader.vertexShader = `
+      uniform float uTime;
+      varying float vWaveCrest;
+    ` + shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `
+      #include <begin_vertex>
+      float w1 = sin(transformed.x * 0.16 + uTime * 1.9) * cos(transformed.z * 0.2 + uTime * 1.4);
+      float w2 = sin((transformed.x + transformed.z) * 0.32 - uTime * 2.5) * 0.45;
+      float disp = (w1 + w2) * 0.44;
+      transformed.y += disp;
+      vWaveCrest = disp;
+      `
+    );
+    shader.fragmentShader = `
+      varying float vWaveCrest;
+    ` + shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `
+      #include <emissivemap_fragment>
+      float crestGlow = smoothstep(0.14, 0.56, vWaveCrest);
+      totalEmissiveRadiance += vec3(0.28, 0.54, 0.68) * crestGlow * 0.58;
+      `
+    );
+  };
+  mat.customProgramCacheKey = () => 'concert-ocean-waves-v2';
+
+  disposables.geometries.push(geo);
+  disposables.materials.push(mat);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  group.add(mesh);
+  return { mesh, mat, uniforms };
+}
+
+/**
+ * Instanced Glowing City Skyline Ring around stadium/arena horizons (radius ~140..310).
+ */
+function addDistantCitySkyline(group, disposables, {
+  count = 96,
+  minRadius = 140,
+  maxRadius = 290,
+  minHeight = 24,
+  maxHeight = 86,
+  accentHex = 0x38bdf8,
+  baseColor = 0x0b1020,
+  skipRearOceanArc = false,
+  warmBias = false,
+} = {}) {
+  const winTex = createSkyscraperWindowTexture(`#${new THREE.Color(accentHex).getHexString()}`, warmBias);
+  winTex.repeat.set(2, 4);
+  disposables.textures.push(winTex);
+
+  const bldgGeo = new THREE.BoxGeometry(1, 1, 1);
+  const bldgMat = new THREE.MeshStandardMaterial({
+    color: baseColor,
+    map: winTex,
+    emissive: accentHex,
+    emissiveMap: winTex,
+    emissiveIntensity: 0.82,
+    roughness: 0.5,
+    metalness: 0.42,
+  });
+  disposables.geometries.push(bldgGeo);
+  disposables.materials.push(bldgMat);
+
+  const towers = new THREE.InstancedMesh(bldgGeo, bldgMat, count);
+  towers.frustumCulled = false;
+
+  const beaconGeo = new THREE.BoxGeometry(1.04, 0.08, 1.04);
+  const beaconMat = new THREE.MeshBasicMaterial({ color: accentHex });
+  disposables.geometries.push(beaconGeo);
+  disposables.materials.push(beaconMat);
+  const beacons = new THREE.InstancedMesh(beaconGeo, beaconMat, count);
+  beacons.frustumCulled = false;
+
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < count; i += 1) {
+    let ang = (i / count) * Math.PI * 2 + Math.sin(i * 3.1) * 0.04;
+    if (skipRearOceanArc) {
+      const normA = Math.atan2(Math.sin(ang), Math.cos(ang));
+      if (normA < -Math.PI * 0.16 && normA > -Math.PI * 0.84) {
+        ang = Math.PI * 0.14 + (i / count) * Math.PI * 0.88;
+      }
+    }
+    const r = minRadius + ((i * 37) % 100) / 100 * (maxRadius - minRadius);
+    const h = minHeight + ((i * 53) % 100) / 100 * (maxHeight - minHeight);
+    const w = 7.5 + ((i * 19) % 7) * 1.45;
+    const d = 7.5 + ((i * 23) % 7) * 1.35;
+    const x = Math.cos(ang) * r;
+    const z = Math.sin(ang) * r;
+
+    dummy.position.set(x, h * 0.5 - 2.3, z);
+    dummy.rotation.set(0, -ang, 0);
+    dummy.scale.set(w, h, d);
+    dummy.updateMatrix();
+    towers.setMatrixAt(i, dummy.matrix);
+
+    dummy.position.set(x, h - 2.35, z);
+    dummy.scale.set(w * 0.98, 6.2, d * 0.98);
+    dummy.updateMatrix();
+    beacons.setMatrixAt(i, dummy.matrix);
+  }
+  towers.instanceMatrix.needsUpdate = true;
+  beacons.instanceMatrix.needsUpdate = true;
+  group.add(towers, beacons);
+  return { towers, beacons };
+}
+
+/**
+ * Instanced Night Landscape Trees (palms or deciduous/pines) along stadium avenues/plazas.
+ */
+function addInstancedFoliageRing(group, disposables, {
+  count = 42,
+  minRadius = 72,
+  maxRadius = 128,
+  centerZ = 5.0,
+  canopyColor = 0x14532d,
+  isPine = false,
+  skipRearArc = false,
+} = {}) {
+  const trunkGeo = new THREE.CylinderGeometry(0.28, 0.44, 4.4, 6);
+  const crownGeo = isPine ? new THREE.ConeGeometry(2.4, 7.6, 7) : new THREE.DodecahedronGeometry(2.4, 0);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3f2718, roughness: 0.9 });
+  const crownMat = new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.85, flatShading: true });
+  disposables.geometries.push(trunkGeo, crownGeo);
+  disposables.materials.push(trunkMat, crownMat);
+
+  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
+  const crowns = new THREE.InstancedMesh(crownGeo, crownMat, count);
+  const d = new THREE.Object3D();
+
+  for (let i = 0; i < count; i += 1) {
+    let ang = (i / count) * Math.PI * 2 + (i % 3) * 0.05;
+    if (skipRearArc) {
+      const na = Math.atan2(Math.sin(ang), Math.cos(ang));
+      if (na < -Math.PI * 0.16 && na > -Math.PI * 0.84) {
+        ang += Math.PI;
+      }
+    }
+    const r = minRadius + ((i * 41) % 100) / 100 * (maxRadius - minRadius);
+    const sc = 0.8 + ((i * 17) % 5) * 0.16;
+    const x = Math.cos(ang) * r;
+    const z = centerZ + Math.sin(ang) * r;
+
+    d.position.set(x, -2.2 + 2.2 * sc, z);
+    d.rotation.set(0, ang, 0);
+    d.scale.setScalar(sc);
+    d.updateMatrix();
+    trunks.setMatrixAt(i, d.matrix);
+
+    d.position.set(x, -2.2 + (isPine ? 5.6 : 4.8) * sc, z);
+    d.scale.set(sc * 1.05, sc * (isPine ? 1.15 : 0.86), sc * 1.05);
+    d.updateMatrix();
+    crowns.setMatrixAt(i, d.matrix);
+  }
+  trunks.instanceMatrix.needsUpdate = true;
+  crowns.instanceMatrix.needsUpdate = true;
+  group.add(trunks, crowns);
+}
+
+/**
+ * Exterior Perimeter Sky-Tracker Searchlights shooting soft volumetric cones high into the night sky.
+ */
+function addPerimeterSearchlights(group, disposables, dynamicElements, {
+  radius = 64,
+  centerZ = 5.0,
+  count = 6,
+  colors = [0x38bdf8, 0xfacc15, 0xf472b6],
+} = {}) {
+  const housingGeo = new THREE.CylinderGeometry(0.65, 0.85, 1.6, 10);
+  const housingMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
+  const beamGeo = new THREE.CylinderGeometry(0.42, 4.6, 128, 16, 1, true);
+  beamGeo.translate(0, 64, 0);
+  disposables.geometries.push(housingGeo, beamGeo);
+  disposables.materials.push(housingMat);
+
+  const pivots = [];
+  for (let i = 0; i < count; i += 1) {
+    const ang = (i / count) * Math.PI * 2 + 0.45;
+    const px = Math.cos(ang) * radius;
+    const pz = centerZ + Math.sin(ang) * radius;
+    const hex = colors[i % colors.length];
+
+    const pod = new THREE.Group();
+    pod.position.set(px, -1.5, pz);
+    const housing = new THREE.Mesh(housingGeo, housingMat);
+    pod.add(housing);
+
+    const pivot = new THREE.Group();
+    const beamMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: new THREE.Color(hex) },
+        uIntensity: { value: 0.22 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormalView;
+        varying vec3 vViewPos;
+        void main() {
+          vUv = uv;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vViewPos = -mvPosition.xyz;
+          vNormalView = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uIntensity;
+        varying vec2 vUv;
+        varying vec3 vNormalView;
+        varying vec3 vViewPos;
+        void main() {
+          vec3 vDir = normalize(vViewPos);
+          float fresnel = pow(abs(dot(normalize(vNormalView), vDir)), 1.6);
+          float axial = smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.15, vUv.y);
+          float alpha = fresnel * axial * uIntensity * 0.22;
+          gl_FragColor = vec4(uColor, clamp(alpha, 0.0, 0.35));
+        }
+      `,
+    });
+    disposables.materials.push(beamMat);
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    pivot.add(beam);
+    pod.add(pivot);
+    group.add(pod);
+    pivots.push({ pivot, beamMat, baseAng: ang, phase: i * 1.15 });
+  }
+
+  if (dynamicElements) {
+    dynamicElements.searchlights = pivots;
+  }
+  return pivots;
+}
+
+/* ============================================================================
+   MONUMENTAL 3-TIERED 360° STADIUM SEATING BOWL + VIP SUITES + LED RIBBONS
+   ============================================================================ */
+
+/**
+ * True 360° Elliptical Multi-Tier Stadium Bowl:
+ *  - Stepped concrete seating terraces + radial concrete stair aisles + brushed steel guard railings
+ *  - Dual 360° animated scrolling LED Ribbon Scoreboards
+ *  - Glowing Glass-Fronted VIP Luxury Suites / Skyboxes with mullions
+ *  - Recessed lit Vomitory / Concourse Exit Tunnels
+ *  - Overhead perimeter catwalk lighting trusses & delay speaker clusters
+ *  - 1,600–2,200 instanced seated spectators & dynamic wristbands/lightsticks/smartphones
+ * Sized strictly outside the 28m x 16m stage deck (x: [-14, 14], z: [-11, 5])
+ * and central T-catwalk (z: [5, 11.4]).
  */
 function addStadiumSeatingBowl(group, disposables, {
-  radiusX = 24,
-  radiusZ = 20,
+  venueName = 'WORLD ARENA',
+  radiusX = 35,
+  radiusZ = 32,
+  centerZ = 4.5,
   tiers = 3,
   lightstickPalette = [0x38bdf8, 0xf8fafc, 0xfacc15],
-  arcStart = Math.PI * 0.08,
-  arcEnd = Math.PI * 0.92,
-  includeBackTiers = false,
   seatColor = 0x111726,
+  fasciaColor = 0x38bdf8,
+  secondaryColor = 0xfacc15,
+  exteriorWall = true,
+  floodlightTowers = true,
+  perimeterCatwalk = true,
+  dynamicElements = null,
 }) {
   const tierMat = new THREE.MeshStandardMaterial({
     color: seatColor,
     roughness: 0.78,
-    metalness: 0.14,
+    metalness: 0.16,
+    side: THREE.DoubleSide,
   });
-  disposables.materials.push(tierMat);
+  const concreteMat = new THREE.MeshStandardMaterial({
+    color: 0x1a2234,
+    roughness: 0.88,
+    metalness: 0.12,
+    side: THREE.DoubleSide,
+  });
+  const railSteelMat = new THREE.MeshStandardMaterial({
+    color: 0x94a3b8,
+    roughness: 0.28,
+    metalness: 0.86,
+  });
+  const fasciaHexStr = `#${new THREE.Color(fasciaColor).getHexString()}`;
+  const secHexStr = `#${new THREE.Color(secondaryColor).getHexString()}`;
+  const ribbonTex = createLedRibbonTexture(venueName, fasciaHexStr, secHexStr);
+  disposables.textures.push(ribbonTex);
 
-  // Tiered balcony decks wrapping left, right, and rear-sides
-  const sides = includeBackTiers ? [-1, 1, 0] : [-1, 1];
+  const ribbonMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    map: ribbonTex,
+    emissive: 0xffffff,
+    emissiveMap: ribbonTex,
+    emissiveIntensity: 1.45,
+    roughness: 0.25,
+    metalness: 0.15,
+    side: THREE.BackSide,
+  });
+  const suiteGlassTex = createGlassSuiteTexture(secHexStr);
+  disposables.textures.push(suiteGlassTex);
+  const suiteGlassMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    map: suiteGlassTex,
+    emissive: 0xffffff,
+    emissiveMap: suiteGlassTex,
+    emissiveIntensity: 0.85,
+    roughness: 0.14,
+    metalness: 0.55,
+    side: THREE.BackSide,
+  });
+  const concourseMat = new THREE.MeshStandardMaterial({
+    color: 0x0b1120,
+    roughness: 0.86,
+    metalness: 0.14,
+    side: THREE.DoubleSide,
+  });
+  disposables.materials.push(tierMat, concreteMat, railSteelMat, ribbonMat, suiteGlassMat, concourseMat);
+  if (dynamicElements) {
+    dynamicElements.pulseMaterials.push(ribbonMat);
+    dynamicElements.scrollingRibbons.push(ribbonTex);
+  }
+
+  const ratioZ = radiusZ / Math.max(1, radiusX);
+
+  // 1. Multi-Tier Stepped Seating Bowls + Safety Railings + Concourse Decks + 360° LED Ribbon Scoreboards
   for (let t = 0; t < tiers; t += 1) {
-    const y = 1.4 + t * 3.1;
-    const rx = radiusX + t * 2.8;
-    const rz = radiusZ + t * 2.4;
+    const tierStep = 5.4;
+    const innerR = radiusX + t * tierStep;
+    const outerR = innerR + 4.8;
+    const baseY = 0.6 + t * 4.4;
 
-    if (sides.includes(-1)) {
-      const leftStand = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.1, rz * 1.4), tierMat);
-      leftStand.position.set(-rx * 0.72, y, 0.5);
-      leftStand.rotation.y = 0.22;
-      disposables.geometries.push(leftStand.geometry);
-      group.add(leftStand);
+    // 3 concrete riser steps per tier for unmistakable architectural depth
+    for (let st = 0; st < 3; st += 1) {
+      const rIn = innerR + st * 1.55;
+      const rOut = rIn + 1.62;
+      const stY = baseY + st * 1.25;
+      const wallGeo = new THREE.CylinderGeometry(rOut, rIn, 1.32, 60, 1, true);
+      const wall = new THREE.Mesh(wallGeo, st === 0 ? concreteMat : tierMat);
+      wall.scale.set(1, 1, ratioZ);
+      wall.position.set(0, stY + 0.66, centerZ);
+      disposables.geometries.push(wallGeo);
+      group.add(wall);
     }
-    if (sides.includes(1)) {
-      const rightStand = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.1, rz * 1.4), tierMat);
-      rightStand.position.set(rx * 0.72, y, 0.5);
-      rightStand.rotation.y = -0.22;
-      disposables.geometries.push(rightStand.geometry);
-      group.add(rightStand);
-    }
-    if (includeBackTiers) {
-      const backCurve = new THREE.Mesh(
-        new THREE.CylinderGeometry(rx * 0.85, rx * 0.88, 1.1, 24, 1, true, Math.PI * 0.78, Math.PI * 0.44),
-        tierMat
-      );
-      backCurve.material.side = THREE.DoubleSide;
-      backCurve.position.set(0, y + 1.0, -4.0);
-      disposables.geometries.push(backCurve.geometry);
-      group.add(backCurve);
+
+    // Upper tier concourse walkway ring
+    const deckGeo = new THREE.RingGeometry(innerR, outerR + 0.65, 60);
+    deckGeo.rotateX(-Math.PI * 0.5);
+    const deck = new THREE.Mesh(deckGeo, concourseMat);
+    deck.scale.set(1, 1, ratioZ);
+    deck.position.set(0, baseY + 3.82, centerZ);
+    disposables.geometries.push(deckGeo);
+    group.add(deck);
+
+    // Metallic safety guard railing along tier lip
+    const railGeo = new THREE.TorusGeometry(innerR - 0.15, 0.08, 6, 64);
+    railGeo.rotateX(Math.PI * 0.5);
+    const rail = new THREE.Mesh(railGeo, railSteelMat);
+    rail.scale.set(1, 1, ratioZ);
+    rail.position.set(0, baseY + 0.65, centerZ);
+    disposables.geometries.push(railGeo);
+    group.add(rail);
+
+    // Illuminated 360° Animated LED Ribbon Scoreboards wrapping Mezzanine & Upper Tiers
+    if (t >= 1 || tiers <= 2) {
+      const ribbonGeo = new THREE.CylinderGeometry(innerR - 0.1, innerR - 0.1, 1.05, 64, 1, true);
+      const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+      ribbon.scale.set(1, 1, ratioZ);
+      ribbon.position.set(0, baseY - 0.12, centerZ);
+      disposables.geometries.push(ribbonGeo);
+      group.add(ribbon);
     }
   }
 
-  // Packed distant crowd lightsticks in the upper bowls (InstancedMesh)
-  const count = tiers * 84;
-  const dotGeo = new THREE.SphereGeometry(0.11, 6, 6);
-  const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  disposables.geometries.push(dotGeo);
-  disposables.materials.push(dotMat);
+  // 2. Glowing Glass-Fronted VIP Luxury Suites / Skyboxes band between Lower Bowl & Upper Deck
+  const suiteR = radiusX + 4.95;
+  const suiteY = 4.65;
+  const suiteWallGeo = new THREE.CylinderGeometry(suiteR + 0.3, suiteR + 0.3, 2.25, 64, 1, true);
+  const suiteWall = new THREE.Mesh(suiteWallGeo, suiteGlassMat);
+  suiteWall.scale.set(1, 1, ratioZ);
+  suiteWall.position.set(0, suiteY, centerZ);
+  disposables.geometries.push(suiteWallGeo);
+  group.add(suiteWall);
 
+  // Instanced structural steel mullions separating VIP skybox bays
+  const mullionCount = 32;
+  const mullionGeo = new THREE.BoxGeometry(0.26, 2.4, 0.55);
+  disposables.geometries.push(mullionGeo);
+  const mullions = new THREE.InstancedMesh(mullionGeo, railSteelMat, mullionCount);
+  for (let m = 0; m < mullionCount; m += 1) {
+    const ang = (m / mullionCount) * Math.PI * 2;
+    const mx = Math.cos(ang) * suiteR;
+    const mz = centerZ + Math.sin(ang) * suiteR * ratioZ;
+    _bowlDummy.position.set(mx, suiteY, mz);
+    _bowlDummy.rotation.set(0, -ang + Math.PI * 0.5, 0);
+    _bowlDummy.scale.set(1, 1, 1);
+    _bowlDummy.updateMatrix();
+    mullions.setMatrixAt(m, _bowlDummy.matrix);
+  }
+  mullions.instanceMatrix.needsUpdate = true;
+  group.add(mullions);
+
+  // 3. 16 Radial Concrete Stair Aisles with glowing amber aisle lights
+  const aisleCount = 16;
+  const aisleGeo = new THREE.BoxGeometry(1.15, 0.35, (tiers - 0.1) * 5.2);
+  const aisleMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85, metalness: 0.1 });
+  const stepLightGeo = new THREE.BoxGeometry(0.14, 0.08, (tiers - 0.1) * 5.0);
+  const stepLightMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
+  disposables.geometries.push(aisleGeo, stepLightGeo);
+  disposables.materials.push(aisleMat, stepLightMat);
+  const aisles = new THREE.InstancedMesh(aisleGeo, aisleMat, aisleCount);
+  const stepLights = new THREE.InstancedMesh(stepLightGeo, stepLightMat, aisleCount);
+  const midBowlR = radiusX + tiers * 2.4;
+  const midBowlY = 1.6 + tiers * 1.9;
+  for (let a = 0; a < aisleCount; a += 1) {
+    const ang = (a / aisleCount) * Math.PI * 2 + Math.PI / 16;
+    const ax = Math.cos(ang) * midBowlR;
+    const az = centerZ + Math.sin(ang) * midBowlR * ratioZ;
+    _bowlDummy.position.set(ax, midBowlY, az);
+    _bowlDummy.rotation.set(0, -ang + Math.PI * 0.5, 0);
+    _bowlDummy.rotateX(-0.62);
+    _bowlDummy.scale.set(1, 1, 1);
+    _bowlDummy.updateMatrix();
+    aisles.setMatrixAt(a, _bowlDummy.matrix);
+    _bowlDummy.position.set(ax, midBowlY + 0.18, az);
+    _bowlDummy.updateMatrix();
+    stepLights.setMatrixAt(a, _bowlDummy.matrix);
+  }
+  aisles.instanceMatrix.needsUpdate = true;
+  stepLights.instanceMatrix.needsUpdate = true;
+  group.add(aisles, stepLights);
+
+  // 4. Exterior Stadium Facade Wall + 16 Recessed Lit Vomitory Concourse Tunnels
+  const outerShellR = radiusX + tiers * 5.4 + 2.2;
+  if (exteriorWall) {
+    const shellH = 5.4 + tiers * 4.4;
+    const shellGeo = new THREE.CylinderGeometry(outerShellR, outerShellR + 1.8, shellH, 60, 1, true);
+    const shell = new THREE.Mesh(shellGeo, concourseMat);
+    shell.scale.set(1, 1, ratioZ);
+    shell.position.set(0, shellH * 0.5 - 2.2, centerZ);
+    disposables.geometries.push(shellGeo);
+    group.add(shell);
+  }
+
+  const vomCount = 16;
+  const vomFrameGeo = new THREE.BoxGeometry(2.8, 2.7, 1.7);
+  const vomGlowGeo = new THREE.BoxGeometry(2.1, 2.1, 0.35);
+  const vomMat = new THREE.MeshStandardMaterial({ color: 0x050811, roughness: 0.8 });
+  const vomGlowMat = new THREE.MeshBasicMaterial({ color: 0xfde68a });
+  const exitStripGeo = new THREE.BoxGeometry(1.5, 0.18, 0.25);
+  const exitStripMat = new THREE.MeshBasicMaterial({ color: 0x34d399 });
+  disposables.geometries.push(vomFrameGeo, vomGlowGeo, exitStripGeo);
+  disposables.materials.push(vomMat, vomGlowMat, exitStripMat);
+
+  const voms = new THREE.InstancedMesh(vomFrameGeo, vomMat, vomCount);
+  const vomGlows = new THREE.InstancedMesh(vomGlowGeo, vomGlowMat, vomCount);
+  const vomExits = new THREE.InstancedMesh(exitStripGeo, exitStripMat, vomCount);
+  for (let v = 0; v < vomCount; v += 1) {
+    const ang = (v / vomCount) * Math.PI * 2;
+    const vx = Math.cos(ang) * (radiusX + 2.3);
+    const vz = centerZ + Math.sin(ang) * (radiusX + 2.3) * ratioZ;
+    const rotY = -ang + Math.PI * 0.5;
+    _bowlDummy.position.set(vx, 1.95, vz);
+    _bowlDummy.rotation.set(0, rotY, 0);
+    _bowlDummy.scale.set(1, 1, 1);
+    _bowlDummy.updateMatrix();
+    voms.setMatrixAt(v, _bowlDummy.matrix);
+
+    const gx = Math.cos(ang) * (radiusX + 2.95);
+    const gz = centerZ + Math.sin(ang) * (radiusX + 2.95) * ratioZ;
+    _bowlDummy.position.set(gx, 1.95, gz);
+    _bowlDummy.updateMatrix();
+    vomGlows.setMatrixAt(v, _bowlDummy.matrix);
+
+    const ex = Math.cos(ang) * (radiusX + 1.55);
+    const ez = centerZ + Math.sin(ang) * (radiusX + 1.55) * ratioZ;
+    _bowlDummy.position.set(ex, 3.12, ez);
+    _bowlDummy.updateMatrix();
+    vomExits.setMatrixAt(v, _bowlDummy.matrix);
+  }
+  voms.instanceMatrix.needsUpdate = true;
+  vomGlows.instanceMatrix.needsUpdate = true;
+  vomExits.instanceMatrix.needsUpdate = true;
+  group.add(voms, vomGlows, vomExits);
+
+  // 5. Overhead Perimeter Catwalk Truss Ring + Suspended Delay Speaker Clusters + Vent Ducts (kept clear of center oculus)
+  const topBowlY = 1.6 + tiers * 4.4;
+  if (perimeterCatwalk) {
+    const catwalkR = radiusX + tiers * 4.1;
+    const catwalkGeo = new THREE.TorusGeometry(catwalkR, 0.52, 6, 56);
+    catwalkGeo.rotateX(Math.PI * 0.5);
+    const catwalkMesh = new THREE.Mesh(catwalkGeo, railSteelMat);
+    catwalkMesh.scale.set(1, 1, ratioZ);
+    catwalkMesh.position.set(0, topBowlY + 3.2, centerZ);
+    disposables.geometries.push(catwalkGeo);
+    group.add(catwalkMesh);
+
+    // 8 Suspended Delay Speaker & Floodlight Clusters hanging around upper bowl rim
+    const delayCount = 8;
+    const delayGeo = new THREE.BoxGeometry(1.9, 2.4, 1.2);
+    const delayMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.55, metalness: 0.65 });
+    const delayFaceGeo = new THREE.BoxGeometry(1.6, 1.9, 0.14);
+    disposables.geometries.push(delayGeo, delayFaceGeo);
+    disposables.materials.push(delayMat);
+    const delayBoxes = new THREE.InstancedMesh(delayGeo, delayMat, delayCount);
+    const delayFaces = new THREE.InstancedMesh(delayFaceGeo, ribbonMat, delayCount);
+    for (let d = 0; d < delayCount; d += 1) {
+      const ang = (d / delayCount) * Math.PI * 2 + 0.25;
+      const dx = Math.cos(ang) * (catwalkR - 2.6);
+      const dz = centerZ + Math.sin(ang) * (catwalkR - 2.6) * ratioZ;
+      _bowlDummy.position.set(dx, topBowlY + 1.8, dz);
+      _bowlDummy.rotation.set(0.28, -ang + Math.PI * 0.5, 0);
+      _bowlDummy.scale.set(1, 1, 1);
+      _bowlDummy.updateMatrix();
+      delayBoxes.setMatrixAt(d, _bowlDummy.matrix);
+      _bowlDummy.position.set(dx - Math.cos(ang) * 0.62, topBowlY + 1.75, dz - Math.sin(ang) * 0.62);
+      _bowlDummy.updateMatrix();
+      delayFaces.setMatrixAt(d, _bowlDummy.matrix);
+    }
+    delayBoxes.instanceMatrix.needsUpdate = true;
+    delayFaces.instanceMatrix.needsUpdate = true;
+    group.add(delayBoxes, delayFaces);
+  }
+
+  // 6. 8 Stadium Perimeter Floodlight Towers (outside exterior wall, ~42u tall)
+  if (floodlightTowers) {
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.42, metalness: 0.85 });
+    const bulbBankMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+    disposables.materials.push(steelMat, bulbBankMat);
+    const towerPoleGeo = new THREE.CylinderGeometry(0.48, 0.82, 42, 8);
+    const towerHeadGeo = new THREE.BoxGeometry(6.8, 3.1, 1.15);
+    const bankGeo = new THREE.PlaneGeometry(6.0, 2.5);
+    disposables.geometries.push(towerPoleGeo, towerHeadGeo, bankGeo);
+
+    for (let f = 0; f < 8; f += 1) {
+      const ang = (f / 8) * Math.PI * 2 + 0.22;
+      const fx = Math.cos(ang) * (outerShellR + 5.8);
+      const fz = centerZ + Math.sin(ang) * (outerShellR + 5.8) * ratioZ;
+      const tower = new THREE.Group();
+      tower.position.set(fx, -2.2, fz);
+      tower.lookAt(0, 14, centerZ);
+
+      const pole = new THREE.Mesh(towerPoleGeo, steelMat);
+      pole.position.y = 21;
+      const head = new THREE.Mesh(towerHeadGeo, steelMat);
+      head.position.set(0, 42.2, 0.45);
+      head.rotation.x = 0.44;
+      const bank = new THREE.Mesh(bankGeo, bulbBankMat);
+      bank.position.set(0, 42.0, 1.08);
+      bank.rotation.x = 0.44;
+      tower.add(pole, head, bank);
+      group.add(tower);
+    }
+  }
+
+  // 7. 1,620–2,160 Instanced Bowl Spectators (torso/heads) + Animated Glowing Lightsticks/Wristbands
+  const perTierCount = 540;
+  const count = tiers * perTierCount;
+  const specGeo = new THREE.BoxGeometry(0.46, 0.72, 0.34);
+  const specMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.78, metalness: 0.08 });
+  const dotGeo = new THREE.SphereGeometry(0.165, 6, 6);
+  const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  disposables.geometries.push(specGeo, dotGeo);
+  disposables.materials.push(specMat, dotMat);
+
+  const bowlSpectators = new THREE.InstancedMesh(specGeo, specMat, count);
   const bowlLights = new THREE.InstancedMesh(dotGeo, dotMat, count);
-  const dummy = new THREE.Object3D();
-  const color = new THREE.Color();
+  bowlSpectators.frustumCulled = false;
+  bowlLights.frustumCulled = false;
+
+  const bowlMeta = [];
+  const seatPalette = [0x1d4ed8, 0xbe123c, 0x0f766e, 0x6d28d9, 0x334155, 0xd97706, 0x475569, 0x0284c7];
 
   for (let i = 0; i < count; i += 1) {
     const tierIdx = i % tiers;
-    const frac = Math.floor(i / tiers) / Math.max(1, Math.floor(count / tiers) - 1);
-    const side = i % 2 === 0 ? -1 : 1;
-    const angle = arcStart + frac * (arcEnd - arcStart);
+    const slotInTier = Math.floor(i / tiers);
+    const subRow = slotInTier % 3;
+    const angSlot = Math.floor(slotInTier / 3);
+    const colsPerRow = Math.max(1, Math.floor(perTierCount / 3));
+    const ang = (angSlot / colsPerRow) * Math.PI * 2 + tierIdx * 0.11 + subRow * 0.017;
+    const r = radiusX + tierIdx * 5.4 + 0.8 + subRow * 1.52;
+    const x = Math.cos(ang) * r;
+    const z = centerZ + Math.sin(ang) * r * ratioZ;
+    const baseY = 1.15 + tierIdx * 4.4 + subRow * 1.25;
+    const baseHex = lightstickPalette[i % lightstickPalette.length];
 
-    const rx = (radiusX - 1.2) + tierIdx * 2.7;
-    const rz = radiusZ + tierIdx * 2.2;
-    const x = side * (rx * 0.68 + Math.sin(angle) * 2.2);
-    const z = -10 + frac * 18;
-    const y = 2.2 + tierIdx * 3.1 + (Math.sin(i * 4.7) * 0.35);
+    bowlMeta.push({
+      x,
+      y: baseY,
+      z,
+      ang,
+      tierIdx,
+      baseHex,
+      phase: (i * 0.37) % (Math.PI * 2),
+      scale: 0.86 + (i % 4) * 0.11,
+    });
 
-    dummy.position.set(x, y, z);
-    dummy.scale.setScalar(0.8 + (i % 4) * 0.18);
-    dummy.updateMatrix();
-    bowlLights.setMatrixAt(i, dummy.matrix);
+    _bowlDummy.position.set(x, baseY, z);
+    _bowlDummy.rotation.set(0, -ang + Math.PI * 0.5, 0);
+    _bowlDummy.scale.setScalar(1);
+    _bowlDummy.updateMatrix();
+    bowlSpectators.setMatrixAt(i, _bowlDummy.matrix);
+    _bowlColor.setHex(seatPalette[i % seatPalette.length]);
+    bowlSpectators.setColorAt(i, _bowlColor);
 
-    const hex = lightstickPalette[i % lightstickPalette.length];
-    color.setHex(hex);
-    bowlLights.setColorAt(i, color);
+    _bowlDummy.position.set(x, baseY + 0.74, z);
+    _bowlDummy.scale.setScalar(bowlMeta[i].scale);
+    _bowlDummy.updateMatrix();
+    bowlLights.setMatrixAt(i, _bowlDummy.matrix);
+    _bowlColor.setHex(baseHex);
+    bowlLights.setColorAt(i, _bowlColor);
   }
+  bowlSpectators.instanceMatrix.needsUpdate = true;
+  if (bowlSpectators.instanceColor) bowlSpectators.instanceColor.needsUpdate = true;
   bowlLights.instanceMatrix.needsUpdate = true;
   if (bowlLights.instanceColor) bowlLights.instanceColor.needsUpdate = true;
-  bowlLights.frustumCulled = false;
-  group.add(bowlLights);
+  group.add(bowlSpectators, bowlLights);
+
+  if (dynamicElements) {
+    _bowlChorusAltColor.setHex(secondaryColor);
+    dynamicElements.updateBowl = (
+      t,
+      waveFrontX = -999,
+      waveActive = false,
+      balladActive = false,
+      beatPhase = 0,
+      barPhase = 0,
+      isChorusOrFever = false,
+      lightstickBoost = 1.0,
+      isPhoneLights = false
+    ) => {
+      const beatPulse = Math.pow(Math.max(0, 1 - beatPhase * 1.9), 1.6);
+      const chorusPulse = isChorusOrFever ? 0.25 + beatPulse * 0.42 : beatPulse * 0.18;
+      const barSweptAng = barPhase * Math.PI * 2;
+
+      for (let i = 0; i < count; i += 1) {
+        const m = bowlMeta[i];
+        const tierShimmer = 0.92 + 0.14 * Math.sin(t * 3.2 + m.phase + m.tierIdx * 0.9);
+        let lift = Math.sin(t * 2.8 + m.phase) * 0.09 + chorusPulse * 0.36;
+        let sc = m.scale * tierShimmer * (0.94 + chorusPulse * 0.28) * Math.min(1.55, Math.max(0.75, lightstickBoost));
+
+        if (waveActive) {
+          const wavePulse = Math.exp(-Math.pow((m.x - waveFrontX) / 5.4, 2));
+          lift += wavePulse * 1.55;
+          _bowlColor.setHex(m.baseHex).lerp(_bowlWaveColor, Math.min(1, wavePulse * 1.3));
+          sc *= 1 + wavePulse * 0.85;
+        } else if (isPhoneLights || balladActive) {
+          lift = Math.sin(t * 2.1 + m.ang) * 0.22;
+          _bowlColor.copy(_bowlPhoneColor);
+          const twinkle = isPhoneLights ? 1.32 + Math.sin(t * 4.2 + m.phase * 2.1) * 0.2 : 1.2 + Math.sin(t * 3.1 + m.phase) * 0.14;
+          sc = m.scale * twinkle * Math.min(1.25, Math.max(0.95, lightstickBoost));
+        } else if (isChorusOrFever) {
+          const sweepMix = 0.5 + 0.5 * Math.sin(m.ang * 2.0 - barSweptAng);
+          _bowlColor.setHex(m.baseHex).lerp(_bowlChorusAltColor, sweepMix * 0.55);
+        } else {
+          _bowlColor.setHex(m.baseHex);
+        }
+
+        _bowlDummy.position.set(m.x, m.y + 0.74 + lift, m.z);
+        _bowlDummy.rotation.set(0, 0, 0);
+        _bowlDummy.scale.setScalar(sc);
+        _bowlDummy.updateMatrix();
+        bowlLights.setMatrixAt(i, _bowlDummy.matrix);
+        bowlLights.setColorAt(i, _bowlColor);
+      }
+      bowlLights.instanceMatrix.needsUpdate = true;
+      if (bowlLights.instanceColor) bowlLights.instanceColor.needsUpdate = true;
+    };
+  }
 
   return bowlLights;
 }
 
 /**
- * Helper to create a procedural open-air sky dome sphere.
+ * Composable Stage Theme / Event Overlay layered cleanly onto perimeter trusses,
+ * outer wings (|x| > 15), balcony ribbons, and stadium sky/air of ANY real-life stadium.
  */
-function addSkyDome(group, disposables, topHex, midHex, horizonHex, addStars = true) {
-  const tex = createSkyDomeTexture(topHex, midHex, horizonHex, addStars);
-  const geo = new THREE.SphereGeometry(54, 24, 16);
-  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false });
-  disposables.textures.push(tex);
-  disposables.geometries.push(geo);
-  disposables.materials.push(mat);
-  const dome = new THREE.Mesh(geo, mat);
-  dome.position.y = 4;
-  group.add(dome);
-}
-
-/**
- * Helper to add extended outdoor ground plane so open-air venues have a natural horizon perimeter.
- */
-function addOutdoorGround(group, disposables, groundColor = 0x0d1b12) {
-  const geo = new THREE.CircleGeometry(56, 36);
-  geo.rotateX(-Math.PI * 0.5);
-  const mat = new THREE.MeshStandardMaterial({
-    color: groundColor,
-    roughness: 0.94,
-    metalness: 0.04,
-  });
-  disposables.geometries.push(geo);
-  disposables.materials.push(mat);
-  const ground = new THREE.Mesh(geo, mat);
-  ground.position.y = -1.22;
-  group.add(ground);
-}
-
-/**
- * Builds the complete 3D architectural environment for the chosen real-world concert venue.
- * @param {string} venueId
- */
-export function buildVenueEnvironment(venueId) {
-  const meta = getVenueById(venueId);
-  const group = new THREE.Group();
-  const disposables = { geometries: [], materials: [], textures: [] };
-  const dynamicElements = {
-    pulseMaterials: [],
-    rotatingRings: [],
-    bowlLights: null,
-    update: null,
-  };
-
+function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
+  const overlayMeta = getStageOverlayById(overlayId);
   const trackGeo = (g) => { disposables.geometries.push(g); return g; };
   const trackMat = (m) => { disposables.materials.push(m); return m; };
-  const trackTex = (t) => { disposables.textures.push(t); return t; };
 
-  switch (meta.id) {
-    /* ======================================================================
-       EXTRAVAGANT 3D STAGE THEME 1: 🎄 CHRISTMAS WINTER WONDERLAND
-       ====================================================================== */
-    case 'christmas-wonderland': {
-      addSkyDome(group, disposables, '#040a1d', '#0d2247', '#1e3a5f', true);
-      addOutdoorGround(group, disposables, 0xdbeafe);
+  if (overlayMeta.id === 'STANDARD') {
+    return null;
+  }
 
-      // Snow-covered mounds & glowing ice floor apron around stage
+  switch (overlayMeta.id) {
+    case 'CHRISTMAS': {
       const snowMat = trackMat(new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.78, metalness: 0.08 }));
       const pineMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x0f5132, roughness: 0.8, metalness: 0.06 }));
       const trunkMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 }));
@@ -694,49 +1603,45 @@ export function buildVenueEnvironment(venueId) {
       }));
       dynamicElements.pulseMaterials.push(goldGlow);
 
-      // Giant illuminated 3D Christmas Tree towering behind the stage!
+      // Giant illuminated 3D Christmas Tree soaring behind the rear stage wall (z = -15.6)
       const treeGroup = new THREE.Group();
-      treeGroup.position.set(0, -0.5, -10.2);
-      const trunk = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.65, 0.95, 2.8, 10)), trunkMat);
-      trunk.position.y = 1.4;
+      treeGroup.position.set(0, -2.2, -15.6);
+      const trunk = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.75, 1.1, 3.6, 10)), trunkMat);
+      trunk.position.y = 1.8;
       treeGroup.add(trunk);
 
       const tiers = [
-        { y: 4.2, r: 4.8, h: 4.6 },
-        { y: 7.2, r: 3.85, h: 4.1 },
-        { y: 9.8, r: 2.9, h: 3.6 },
-        { y: 12.1, r: 1.95, h: 3.1 },
-        { y: 14.0, r: 1.1, h: 2.4 },
+        { y: 5.2, r: 5.2, h: 4.8 },
+        { y: 8.4, r: 4.1, h: 4.2 },
+        { y: 11.2, r: 3.1, h: 3.7 },
+        { y: 13.7, r: 2.1, h: 3.2 },
+        { y: 15.8, r: 1.2, h: 2.5 },
       ];
       tiers.forEach((t) => {
         const cone = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(t.r, t.h, 14)), pineMat);
         cone.position.y = t.y;
-        treeGroup.add(cone);
-        // Snowy rim accents
-        const snowTrim = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(t.r * 0.92, 0.12, 6, 20)), snowMat);
+        const snowTrim = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(t.r * 0.92, 0.13, 6, 20)), snowMat);
         snowTrim.rotation.x = Math.PI * 0.5;
         snowTrim.position.y = t.y - t.h * 0.44;
-        treeGroup.add(snowTrim);
+        treeGroup.add(cone, snowTrim);
       });
 
-      // Glowing 3D Star Topper crowning the tree
-      const starTop = new THREE.Mesh(trackGeo(new THREE.OctahedronGeometry(0.85, 0)), goldGlow);
-      starTop.position.set(0, 15.65, 0);
+      const starTop = new THREE.Mesh(trackGeo(new THREE.OctahedronGeometry(0.95, 0)), goldGlow);
+      starTop.position.set(0, 17.6, 0);
       treeGroup.add(starTop);
       dynamicElements.rotatingRings.push(starTop);
 
-      // Glowing ornaments spiraling around the giant Christmas Tree (InstancedMesh)
       const ornColors = [0xef4444, 0xfacc15, 0x38bdf8, 0xf472b6, 0x4ade80];
-      const ornCount = 68;
-      const ornGeo = trackGeo(new THREE.SphereGeometry(0.19, 8, 8));
+      const ornCount = 72;
+      const ornGeo = trackGeo(new THREE.SphereGeometry(0.21, 8, 8));
       const ornMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xffffff }));
       const ornaments = new THREE.InstancedMesh(ornGeo, ornMat, ornCount);
       const ornDummy = new THREE.Object3D();
       const ornCol = new THREE.Color();
       for (let i = 0; i < ornCount; i += 1) {
         const frac = i / ornCount;
-        const y = 2.6 + frac * 11.4;
-        const radius = (1 - frac * 0.84) * 4.45;
+        const y = 3.6 + frac * 12.2;
+        const radius = (1 - frac * 0.84) * 4.85;
         const ang = frac * Math.PI * 14;
         ornDummy.position.set(Math.cos(ang) * radius, y, Math.sin(ang) * radius);
         ornDummy.updateMatrix();
@@ -749,96 +1654,60 @@ export function buildVenueEnvironment(venueId) {
       treeGroup.add(ornaments);
       group.add(treeGroup);
 
-      // Candy-cane striped stage truss pillars framing stage left & right
-      const candyTex = trackTex(createCandyCaneTexture());
+      const candyTex = createCandyCaneTexture();
+      disposables.textures.push(candyTex);
       const candyMat = trackMat(new THREE.MeshStandardMaterial({ map: candyTex, roughness: 0.35, metalness: 0.12 }));
-      [-8.8, 8.8].forEach((px) => {
-        const pillar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.42, 0.46, 10.2, 14)), candyMat);
-        pillar.position.set(px, 4.3, -4.6);
-        const cap = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.54, 12, 10)), goldGlow);
-        cap.position.set(px, 9.5, -4.6);
+      [-15.4, 15.4].forEach((px) => {
+        const pillar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.46, 0.52, 13.8, 14)), candyMat);
+        pillar.position.set(px, 4.7, -4.8);
+        const cap = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.62, 12, 10)), goldGlow);
+        cap.position.set(px, 11.8, -4.8);
         group.add(pillar, cap);
       });
 
-      // Giant wrapped Christmas gift boxes with golden bows on stage wings
-      const giftSpecs = [
-        { x: -7.2, z: -2.4, w: 1.5, h: 1.35, d: 1.4, col: 0xdc2626, rib: 0xfacc15, ry: 0.25 },
-        { x: -5.8, z: -3.2, w: 1.05, h: 0.95, d: 1.05, col: 0x0284c7, rib: 0xf8fafc, ry: -0.35 },
-        { x: 7.2, z: -2.4, w: 1.55, h: 1.4, d: 1.45, col: 0x16a34a, rib: 0xfacc15, ry: -0.22 },
-        { x: 5.9, z: -3.1, w: 1.0, h: 1.15, d: 1.0, col: 0xec4899, rib: 0xfef08a, ry: 0.4 },
-      ];
-      giftSpecs.forEach((gs) => {
+      [
+        { x: -16.4, z: 0.4, w: 1.8, h: 1.6, d: 1.7, col: 0xdc2626, rib: 0xfacc15, ry: 0.25 },
+        { x: -15.8, z: -2.6, w: 1.3, h: 1.2, d: 1.3, col: 0x0284c7, rib: 0xf8fafc, ry: -0.35 },
+        { x: 16.4, z: 0.4, w: 1.85, h: 1.65, d: 1.75, col: 0x16a34a, rib: 0xfacc15, ry: -0.22 },
+        { x: 15.8, z: -2.6, w: 1.25, h: 1.35, d: 1.25, col: 0xec4899, rib: 0xfef08a, ry: 0.4 },
+      ].forEach((gs) => {
         const boxGroup = new THREE.Group();
         const bMat = trackMat(new THREE.MeshStandardMaterial({ color: gs.col, roughness: 0.36, metalness: 0.16 }));
         const rMat = trackMat(new THREE.MeshStandardMaterial({ color: gs.rib, roughness: 0.26, metalness: 0.65 }));
         const box = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(gs.w, gs.h, gs.d)), bMat);
         box.position.y = gs.h * 0.5;
-        const rib1 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(gs.w + 0.04, gs.h + 0.04, 0.2)), rMat);
+        const rib1 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(gs.w + 0.04, gs.h + 0.04, 0.22)), rMat);
         rib1.position.y = gs.h * 0.5;
-        const rib2 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.2, gs.h + 0.04, gs.d + 0.04)), rMat);
+        const rib2 = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.22, gs.h + 0.04, gs.d + 0.04)), rMat);
         rib2.position.y = gs.h * 0.5;
-        const bowL = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.22, 0.06, 6, 12)), rMat);
-        bowL.position.set(-0.18, gs.h + 0.14, 0);
-        bowL.rotation.y = 0.5;
-        const bowR = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.22, 0.06, 6, 12)), rMat);
-        bowR.position.set(0.18, gs.h + 0.14, 0);
-        bowR.rotation.y = -0.5;
-        boxGroup.add(box, rib1, rib2, bowL, bowR);
-        boxGroup.position.set(gs.x, 0.0, gs.z);
+        boxGroup.add(box, rib1, rib2);
+        boxGroup.position.set(gs.x, -2.2, gs.z);
         boxGroup.rotation.y = gs.ry;
         group.add(boxGroup);
       });
 
-      // Warm hanging fairy-light catenary garlands arching across the arena
-      const bulbGeo = trackGeo(new THREE.SphereGeometry(0.12, 6, 6));
-      const bulbMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfef08a }));
-      const bulbPts = [];
-      [[-14, -5.5, 14, -5.5, 9.6], [-15, 2.0, 15, 2.0, 8.5]].forEach(([x1, z1, x2, z2, h]) => {
-        const curve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(x1, h, z1),
-          new THREE.Vector3(0, h - 2.4, z1),
-          new THREE.Vector3(x2, h, z2),
-        ]);
-        for (let b = 1; b < 18; b += 1) bulbPts.push(curve.getPoint(b / 18));
-      });
-      const fairyBulbs = new THREE.InstancedMesh(bulbGeo, bulbMat, bulbPts.length);
-      bulbPts.forEach((pt, idx) => {
-        ornDummy.position.copy(pt);
-        ornDummy.updateMatrix();
-        fairyBulbs.setMatrixAt(idx, ornDummy.matrix);
-      });
-      fairyBulbs.instanceMatrix.needsUpdate = true;
-      group.add(fairyBulbs);
-
-      // Animated Falling 3D Snowflakes (InstancedMesh, zero per-frame allocations!)
-      const snowCount = 180;
-      const flakeGeo = trackGeo(new THREE.OctahedronGeometry(0.085, 0));
+      const snowCount = 240;
+      const flakeGeo = trackGeo(new THREE.OctahedronGeometry(0.1, 0));
       const flakeMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.88 }));
       const snowMesh = new THREE.InstancedMesh(flakeGeo, flakeMat, snowCount);
       snowMesh.frustumCulled = false;
-      const flakes = [];
-      for (let i = 0; i < snowCount; i += 1) {
-        flakes.push({
-          x: (Math.random() - 0.5) * 32,
-          y: Math.random() * 16 + 0.5,
-          z: (Math.random() - 0.5) * 24 - 2,
-          vy: 1.1 + Math.random() * 1.4,
-          phase: Math.random() * Math.PI * 2,
-          scale: 0.65 + Math.random() * 0.85,
-        });
-      }
+      const flakes = Array.from({ length: snowCount }, () => ({
+        x: (Math.random() - 0.5) * 56,
+        y: Math.random() * 24 - 1.5,
+        z: (Math.random() - 0.5) * 46,
+        vy: 1.25 + Math.random() * 1.5,
+        phase: Math.random() * Math.PI * 2,
+        scale: 0.7 + Math.random() * 0.9,
+      }));
       group.add(snowMesh);
 
       const snowDummy = new THREE.Object3D();
-      dynamicElements.update = (dt, t) => {
+      return (dt, t) => {
         for (let i = 0; i < snowCount; i += 1) {
           const f = flakes[i];
           f.y -= f.vy * dt;
-          if (f.y < -1.0) {
-            f.y = 16.5;
-            f.x = (Math.random() - 0.5) * 32;
-          }
-          snowDummy.position.set(f.x + Math.sin(t * 0.9 + f.phase) * 0.65, f.y, f.z);
+          if (f.y < -2.2) f.y = 22.5;
+          snowDummy.position.set(f.x + Math.sin(t * 0.9 + f.phase) * 0.7, f.y, f.z);
           snowDummy.rotation.set(t + f.phase, t * 0.7, 0);
           snowDummy.scale.setScalar(f.scale);
           snowDummy.updateMatrix();
@@ -846,25 +1715,11 @@ export function buildVenueEnvironment(venueId) {
         }
         snowMesh.instanceMatrix.needsUpdate = true;
       };
-
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 20,
-        radiusZ: 17,
-        tiers: 3,
-        lightstickPalette: [0x38bdf8, 0xfef08a, 0xef4444, 0xffffff],
-        seatColor: 0x10203a,
-      });
-      break;
     }
 
-    /* ======================================================================
-       EXTRAVAGANT 3D STAGE THEME 2: 🎃 HAUNTED HALLOWEEN CATHEDRAL
-       ====================================================================== */
-    case 'halloween-cathedral': {
-      addSkyDome(group, disposables, '#090314', '#1e0b36', '#3b154c', true);
-      addOutdoorGround(group, disposables, 0x120a1c);
-
-      const stoneTex = trackTex(createStoneTexture());
+    case 'HALLOWEEN': {
+      const stoneTex = createStoneTexture();
+      disposables.textures.push(stoneTex);
       const gothicMat = trackMat(new THREE.MeshStandardMaterial({
         map: stoneTex,
         color: 0x524663,
@@ -872,7 +1727,6 @@ export function buildVenueEnvironment(venueId) {
         metalness: 0.14,
       }));
       const ironMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.4, metalness: 0.85 }));
-      const organMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.25, metalness: 0.88 }));
       const toxicMat = trackMat(new THREE.MeshStandardMaterial({
         color: 0x4ade80,
         emissive: 0x22c55e,
@@ -887,109 +1741,74 @@ export function buildVenueEnvironment(venueId) {
       }));
       dynamicElements.pulseMaterials.push(toxicMat, pumpkinGlowMat);
 
-      // Towering Gothic Cathedral Stone Arches framing the stage
-      [-9.5, -4.8, 4.8, 9.5].forEach((ax) => {
-        const col = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.15, 11.5, 1.15)), gothicMat);
-        col.position.set(ax, 4.8, -7.8);
-        group.add(col);
-      });
-      [-7.15, 0, 7.15].forEach((cx, idx) => {
-        const arch = new THREE.Mesh(
-          trackGeo(new THREE.TorusGeometry(idx === 1 ? 4.8 : 2.35, 0.36, 8, 24, Math.PI)),
-          gothicMat
-        );
-        arch.position.set(cx, 10.2, -7.8);
-        group.add(arch);
-      });
+      const moonMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfef3c7, fog: false }));
+      const moon = new THREE.Mesh(trackGeo(new THREE.CircleGeometry(22, 32)), moonMat);
+      moon.position.set(-64, 118, -280);
+      group.add(moon);
 
-      // Towering Gothic Pipe Organ behind the drum riser
-      for (let i = -8; i <= 8; i += 1) {
-        const h = 4.2 + (8 - Math.abs(i)) * 0.62;
-        const pipe = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.16, 0.16, h, 8)), organMat);
-        pipe.position.set(i * 0.44, 1.2 + h * 0.5, -8.2);
-        group.add(pipe);
-      }
-
-      // Wrought-iron spooky cemetery fence spikes on left & right wings
-      [-1, 1].forEach((side) => {
-        for (let k = 0; k < 6; k += 1) {
-          const post = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.05, 0.06, 3.6, 6)), ironMat);
-          post.position.set(side * (9.2 + k * 0.8), 0.7, -3.5 + k * 0.9);
-          const tip = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.11, 0.35, 4)), ironMat);
-          tip.position.set(side * (9.2 + k * 0.8), 2.65, -3.5 + k * 0.9);
-          group.add(post, tip);
-        }
+      [-16.2, 16.2].forEach((ax) => {
+        const col = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.8, 13.5, 1.8)), gothicMat);
+        col.position.set(ax, 4.5, -5.2);
+        const spire = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.4, 5.2, 4)), ironMat);
+        spire.position.set(ax, 13.8, -5.2);
+        spire.rotation.y = Math.PI * 0.25;
+        group.add(col, spire);
       });
 
-      // Cobweb wireframes spanning upper truss corners
-      const webMat = trackMat(new THREE.LineBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.34 }));
-      [-8.2, 8.2].forEach((wx) => {
-        const webGeo = trackGeo(new THREE.WireframeGeometry(new THREE.CircleGeometry(2.6, 8, 0, Math.PI * 0.65)));
-        const web = new THREE.LineSegments(webGeo, webMat);
-        web.position.set(wx, 8.2, -5.0);
-        web.rotation.z = wx < 0 ? -0.4 : Math.PI + 0.4;
-        group.add(web);
-      });
-
-      // Glowing Jack-o'-Lantern pumpkins lining the front stage apron!
       const stemMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 }));
       const eyeMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfef08a }));
-      const pumpkinXs = [-6.2, -4.4, -2.6, 2.6, 4.4, 6.2];
-      pumpkinXs.forEach((px, idx) => {
+      [
+        { x: -15.6, y: -1.65, z: 3.8 },
+        { x: -12.8, y: -1.65, z: 6.8 },
+        { x: 12.8, y: -1.65, z: 6.8 },
+        { x: 15.6, y: -1.65, z: 3.8 },
+      ].forEach((ps) => {
         const pGroup = new THREE.Group();
-        const body = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.38, 12, 10)), pumpkinGlowMat);
+        const body = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.55, 10, 8)), pumpkinGlowMat);
         body.scale.set(1.18, 0.88, 1.05);
-        const stem = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.05, 0.08, 0.2, 6)), stemMat);
-        stem.position.y = 0.38;
-        const eyeL = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.08, 0.14, 3)), eyeMat);
-        eyeL.position.set(-0.14, 0.08, 0.37);
-        const eyeR = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.08, 0.14, 3)), eyeMat);
-        eyeR.position.set(0.14, 0.08, 0.37);
-        const grin = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.28, 0.06, 0.05)), eyeMat);
-        grin.position.set(0, -0.1, 0.37);
-        pGroup.add(body, stem, eyeL, eyeR, grin);
-        pGroup.position.set(px, 0.32, 1.2 + (idx % 2) * 0.12);
+        const stem = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.06, 0.1, 0.25, 6)), stemMat);
+        stem.position.y = 0.52;
+        const eyeL = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.11, 0.18, 3)), eyeMat);
+        eyeL.position.set(-0.19, 0.12, 0.53);
+        const eyeR = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.11, 0.18, 3)), eyeMat);
+        eyeR.position.set(0.19, 0.12, 0.53);
+        pGroup.add(body, stem, eyeL, eyeR);
+        pGroup.position.set(ps.x, ps.y, ps.z);
         group.add(pGroup);
       });
 
-      // Bubbling toxic-green cauldron glow pools on stage wings
-      [-7.6, 7.6].forEach((cx) => {
-        const pool = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.1, 1.3, 0.25, 16)), toxicMat);
-        pool.position.set(cx, 0.08, -2.5);
+      [-16.4, 16.4].forEach((cx) => {
+        const pool = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.4, 1.65, 0.35, 16)), toxicMat);
+        pool.position.set(cx, -2.02, -0.5);
         group.add(pool);
       });
 
-      // Floating Haunted Candle Lanterns bobbing in mid-air!
-      const candleCount = 26;
-      const candleBodyGeo = trackGeo(new THREE.CylinderGeometry(0.08, 0.09, 0.56, 8));
+      const candleCount = 30;
+      const candleBodyGeo = trackGeo(new THREE.CylinderGeometry(0.09, 0.1, 0.62, 8));
       const candleBodyMat = trackMat(new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.6 }));
-      const flameGeo = trackGeo(new THREE.ConeGeometry(0.07, 0.22, 6));
+      const flameGeo = trackGeo(new THREE.ConeGeometry(0.08, 0.24, 6));
       const flameMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
       const candleMesh = new THREE.InstancedMesh(candleBodyGeo, candleBodyMat, candleCount);
       const flameMesh = new THREE.InstancedMesh(flameGeo, flameMat, candleCount);
-      const candles = [];
-      for (let i = 0; i < candleCount; i += 1) {
-        candles.push({
-          x: (Math.random() - 0.5) * 20,
-          baseY: 3.6 + Math.random() * 5.8,
-          z: -6.5 + Math.random() * 9.5,
-          phase: Math.random() * Math.PI * 2,
-          speed: 0.8 + Math.random() * 0.8,
-        });
-      }
+      const candles = Array.from({ length: candleCount }, () => ({
+        x: (Math.random() - 0.5) * 34,
+        baseY: 4.5 + Math.random() * 8.2,
+        z: -8.5 + Math.random() * 14,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 0.8,
+      }));
       group.add(candleMesh, flameMesh);
       const cDummy = new THREE.Object3D();
-      dynamicElements.update = (dt, t) => {
+      return (dt, t) => {
         for (let i = 0; i < candleCount; i += 1) {
           const c = candles[i];
-          const y = c.baseY + Math.sin(t * c.speed + c.phase) * 0.42;
+          const y = c.baseY + Math.sin(t * c.speed + c.phase) * 0.48;
           cDummy.position.set(c.x, y, c.z);
           cDummy.rotation.set(0, 0, Math.sin(t * 0.6 + c.phase) * 0.06);
           cDummy.scale.setScalar(1);
           cDummy.updateMatrix();
           candleMesh.setMatrixAt(i, cDummy.matrix);
-
-          cDummy.position.set(c.x, y + 0.38, c.z);
+          cDummy.position.set(c.x, y + 0.42, c.z);
           cDummy.scale.set(1, 0.85 + Math.sin(t * 14 + c.phase) * 0.22, 1);
           cDummy.updateMatrix();
           flameMesh.setMatrixAt(i, cDummy.matrix);
@@ -997,32 +1816,17 @@ export function buildVenueEnvironment(venueId) {
         candleMesh.instanceMatrix.needsUpdate = true;
         flameMesh.instanceMatrix.needsUpdate = true;
       };
-
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 19,
-        radiusZ: 16,
-        tiers: 3,
-        lightstickPalette: [0xa855f7, 0xf97316, 0x4ade80, 0xfacc15],
-        seatColor: 0x160b24,
-      });
-      break;
     }
 
-    /* ======================================================================
-       EXTRAVAGANT 3D STAGE THEME 3: 🌸 CHERRY BLOSSOM FESTIVAL (SAKURA ARENA)
-       ====================================================================== */
-    case 'sakura-festival': {
-      addSkyDome(group, disposables, '#140822', '#2e1342', '#70285a', true);
-      addOutdoorGround(group, disposables, 0x1d1324);
-
+    case 'SAKURA': {
       const toriiRed = trackMat(new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35, metalness: 0.14 }));
       const toriiCap = trackMat(new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45, metalness: 0.25 }));
       const barkMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x3b2319, roughness: 0.9 }));
       const blossomMat = trackMat(new THREE.MeshStandardMaterial({
         color: 0xf9a8d4,
         emissive: 0xbe185d,
-        emissiveIntensity: 0.28,
-        roughness: 0.72,
+        emissiveIntensity: 0.34,
+        roughness: 0.68,
       }));
       const lanternMat = trackMat(new THREE.MeshStandardMaterial({
         color: 0xfef08a,
@@ -1032,66 +1836,39 @@ export function buildVenueEnvironment(venueId) {
       }));
       dynamicElements.pulseMaterials.push(lanternMat);
 
-      // Iconic Crimson Torii Gate framing the rear drum riser!
-      const torii = new THREE.Group();
-      torii.position.set(0, 0, -7.8);
-      [-5.2, 5.2].forEach((tx) => {
-        const pillar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.42, 0.5, 9.8, 12)), toriiRed);
-        pillar.position.set(tx, 4.9, 0);
-        const plinth = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.65, 0.74, 0.9, 12)), toriiCap);
-        plinth.position.set(tx, 0.45, 0);
-        torii.add(pillar, plinth);
-      });
-      const lowerBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(12.6, 0.48, 0.55)), toriiRed);
-      lowerBeam.position.set(0, 7.6, 0);
-      const topBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(14.8, 0.65, 0.82)), toriiRed);
-      topBeam.position.set(0, 9.4, 0);
-      const topRoof = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(15.4, 0.32, 0.96)), toriiCap);
-      topRoof.position.set(0, 9.82, 0);
-      const plaque = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.1, 1.45, 0.24)), toriiCap);
-      plaque.position.set(0, 8.5, 0.12);
-      torii.add(lowerBeam, topBeam, topRoof, plaque);
-      group.add(torii);
-
-      // Giant blooming Sakura Cherry Blossom Trees on both stage wings
-      [
-        { x: -10.8, z: -5.4, s: 1.25 },
-        { x: 10.8, z: -5.4, s: 1.25 },
-        { x: -13.5, z: 0.8, s: 1.05 },
-        { x: 13.5, z: 0.8, s: 1.05 },
-      ].forEach((tp) => {
-        const tree = new THREE.Group();
-        const trunk = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.38, 0.62, 5.4, 8)), barkMat);
-        trunk.position.y = 2.6;
-        tree.add(trunk);
-        [
-          [0, 6.2, 0, 2.8],
-          [-1.8, 5.5, 0.8, 2.2],
-          [1.8, 5.7, -0.5, 2.3],
-          [0.4, 7.1, 0.9, 1.9],
-        ].forEach(([bx, by, bz, br]) => {
-          const puff = new THREE.Mesh(trackGeo(new THREE.DodecahedronGeometry(br, 1)), blossomMat);
-          puff.scale.set(1.2, 0.72, 1.15);
-          puff.position.set(bx, by, bz);
-          tree.add(puff);
+      [-16.4, 16.4].forEach((tx) => {
+        const torii = new THREE.Group();
+        torii.position.set(tx, -2.2, -3.5);
+        torii.rotation.y = tx < 0 ? 0.35 : -0.35;
+        [-2.2, 2.2].forEach((px) => {
+          const p = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.28, 0.34, 8.8, 10)), toriiRed);
+          p.position.set(px, 4.4, 0);
+          torii.add(p);
         });
-        tree.position.set(tp.x, -1.0, tp.z);
-        tree.scale.setScalar(tp.s);
-        group.add(tree);
+        const lBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(6.2, 0.38, 0.44)), toriiRed);
+        lBeam.position.set(0, 7.0, 0);
+        const tBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(7.2, 0.52, 0.64)), toriiCap);
+        tBeam.position.set(0, 8.6, 0);
+        torii.add(lBeam, tBeam);
+        group.add(torii);
+
+        const trunk = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.35, 0.52, 6.2, 8)), barkMat);
+        trunk.position.set(tx * 1.06, 0.9, 2.5);
+        const crown = new THREE.Mesh(trackGeo(new THREE.DodecahedronGeometry(3.1, 1)), blossomMat);
+        crown.scale.set(1.25, 0.78, 1.25);
+        crown.position.set(tx * 1.06, 4.8, 2.5);
+        group.add(trunk, crown);
       });
 
-      // Glowing Matsuri Paper Lanterns hanging along stage perimeter
-      const lanternXs = [-9, -6, -3, 0, 3, 6, 9];
-      lanternXs.forEach((lx) => {
-        const lant = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.42, 10, 10)), lanternMat);
+      [-12, -8, -4, 0, 4, 8, 12].forEach((lx) => {
+        const lant = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.45, 10, 10)), lanternMat);
         lant.scale.set(0.88, 1.24, 0.88);
-        lant.position.set(lx, 6.9 - Math.abs(lx) * 0.08, -4.6);
+        lant.position.set(lx, 12.6, 4.2);
         group.add(lant);
       });
 
-      // Drifting Pink Cherry Blossom Petals (InstancedMesh)
-      const petalCount = 170;
-      const petalGeo = trackGeo(new THREE.PlaneGeometry(0.18, 0.12));
+      const petalCount = 210;
+      const petalGeo = trackGeo(new THREE.PlaneGeometry(0.2, 0.14));
       const petalMat = trackMat(new THREE.MeshBasicMaterial({
         color: 0xfbcfe8,
         side: THREE.DoubleSide,
@@ -1100,166 +1877,96 @@ export function buildVenueEnvironment(venueId) {
       }));
       const petalMesh = new THREE.InstancedMesh(petalGeo, petalMat, petalCount);
       petalMesh.frustumCulled = false;
-      const petals = [];
-      for (let i = 0; i < petalCount; i += 1) {
-        petals.push({
-          x: (Math.random() - 0.5) * 30,
-          y: Math.random() * 14 + 0.5,
-          z: (Math.random() - 0.5) * 22 - 2,
-          vy: 0.65 + Math.random() * 0.85,
-          vx: 0.55 + Math.random() * 0.6,
-          phase: Math.random() * Math.PI * 2,
-        });
-      }
+      const petals = Array.from({ length: petalCount }, () => ({
+        x: (Math.random() - 0.5) * 48,
+        y: Math.random() * 19 - 1.0,
+        z: (Math.random() - 0.5) * 38,
+        vy: 0.7 + Math.random() * 0.9,
+        vx: 0.6 + Math.random() * 0.65,
+        phase: Math.random() * Math.PI * 2,
+      }));
       group.add(petalMesh);
       const pDummy = new THREE.Object3D();
-      dynamicElements.update = (dt, t) => {
+      return (dt, t) => {
         for (let i = 0; i < petalCount; i += 1) {
           const p = petals[i];
           p.y -= p.vy * dt;
           p.x += p.vx * dt;
-          if (p.y < -0.8 || p.x > 16) {
-            p.y = 14.2;
-            p.x = -15 + Math.random() * 24;
+          if (p.y < -2.1 || p.x > 25) {
+            p.y = 18.2;
+            p.x = -24 + Math.random() * 34;
           }
-          pDummy.position.set(p.x, p.y, p.z + Math.sin(t * 1.4 + p.phase) * 0.5);
+          pDummy.position.set(p.x, p.y, p.z + Math.sin(t * 1.4 + p.phase) * 0.55);
           pDummy.rotation.set(t * 1.8 + p.phase, t * 2.2, t + p.phase);
+          pDummy.scale.setScalar(1);
           pDummy.updateMatrix();
           petalMesh.setMatrixAt(i, pDummy.matrix);
         }
         petalMesh.instanceMatrix.needsUpdate = true;
       };
-
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 19,
-        radiusZ: 16,
-        tiers: 3,
-        lightstickPalette: [0xf472b6, 0xfef08a, 0xfbcfe8, 0xfb7185],
-        seatColor: 0x221024,
-      });
-      break;
     }
 
-    /* ======================================================================
-       EXTRAVAGANT 3D STAGE THEME 4: 🌃 CYBER NEON TOKYO ROOFTOP
-       ====================================================================== */
-    case 'cyber-tokyo': {
-      addSkyDome(group, disposables, '#03020d', '#0d0626', '#260a3d', true);
-
-      // Glowing Neon Laser-Grid Rooftop Floor
-      const gridTex = trackTex(createNeonGridTexture());
-      const gridFloorMat = trackMat(new THREE.MeshBasicMaterial({ map: gridTex }));
-      const gridFloor = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(86, 86)), gridFloorMat);
-      gridFloor.rotation.x = -Math.PI * 0.5;
-      gridFloor.position.y = -1.2;
-      group.add(gridFloor);
-
-      // Towering Cyberpunk Skyscrapers ringing the rooftop skyline
-      const bldgMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x0b0d1f, roughness: 0.45, metalness: 0.65 }));
-      const cyanNeon = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x22d3ee,
-        emissive: 0x22d3ee,
-        emissiveIntensity: 1.85,
+    case 'CYBER_NEON': {
+      const gridTex = createNeonGridTexture();
+      disposables.textures.push(gridTex);
+      const gridRingMat = trackMat(new THREE.MeshBasicMaterial({
+        map: gridTex,
+        transparent: true,
+        opacity: 0.52,
       }));
-      const magNeon = trackMat(new THREE.MeshStandardMaterial({
-        color: 0xec4899,
-        emissive: 0xec4899,
-        emissiveIntensity: 1.85,
-      }));
-      dynamicElements.pulseMaterials.push(cyanNeon, magNeon);
+      const gridRing = new THREE.Mesh(trackGeo(new THREE.RingGeometry(16, 36, 48)), gridRingMat);
+      gridRing.rotation.x = -Math.PI * 0.5;
+      gridRing.position.set(0, -2.16, 4.0);
+      group.add(gridRing);
 
-      const towers = [
-        { x: -16, z: -15, w: 4.5, h: 24, d: 4.5, neon: cyanNeon },
-        { x: -9.5, z: -18, w: 4.2, h: 28, d: 4.2, neon: magNeon },
-        { x: 0, z: -21, w: 5.5, h: 32, d: 5.0, neon: cyanNeon },
-        { x: 9.5, z: -18, w: 4.4, h: 27, d: 4.4, neon: magNeon },
-        { x: 16, z: -15, w: 4.5, h: 23, d: 4.5, neon: cyanNeon },
-        { x: -20, z: -5, w: 4.2, h: 21, d: 4.2, neon: magNeon },
-        { x: 20, z: -5, w: 4.2, h: 22, d: 4.2, neon: cyanNeon },
-      ];
-      towers.forEach((tw) => {
-        const mesh = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(tw.w, tw.h, tw.d)), bldgMat);
-        mesh.position.set(tw.x, tw.h * 0.5 - 2, tw.z);
-        const trim = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(tw.w + 0.14, 0.25, tw.d + 0.14)), tw.neon);
-        trim.position.set(tw.x, tw.h - 2.4, tw.z);
-        const vertStrip = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.18, tw.h * 0.85, 0.18)), tw.neon);
-        vertStrip.position.set(tw.x, tw.h * 0.45 - 1.2, tw.z + tw.d * 0.51);
-        group.add(mesh, trim, vertStrip);
-      });
-
-      // Holographic Kanji Neon Billboards flanking the stage!
-      const kanjiTexL = trackTex(createKanjiBillboardTexture('東京音楽', 'CYBER LIVE', '#22d3ee', '#070b24'));
-      const kanjiTexR = trackTex(createKanjiBillboardTexture('電脳舞台', 'ENCORE 2099', '#ec4899', '#1d0624'));
+      const kanjiTexL = createKanjiBillboardTexture('東京音楽', 'CYBER LIVE', '#22d3ee', '#070b24');
+      const kanjiTexR = createKanjiBillboardTexture('電脳舞台', 'ENCORE 2099', '#ec4899', '#1d0624');
+      disposables.textures.push(kanjiTexL, kanjiTexR);
       const billMatL = trackMat(new THREE.MeshBasicMaterial({ map: kanjiTexL, transparent: true, opacity: 0.94, side: THREE.DoubleSide }));
       const billMatR = trackMat(new THREE.MeshBasicMaterial({ map: kanjiTexR, transparent: true, opacity: 0.94, side: THREE.DoubleSide }));
 
-      const billL = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(3.4, 6.8)), billMatL);
-      billL.position.set(-10.8, 6.2, -6.2);
-      billL.rotation.y = 0.36;
-      const billR = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(3.4, 6.8)), billMatR);
-      billR.position.set(10.8, 6.2, -6.2);
-      billR.rotation.y = -0.36;
+      const billL = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(4.4, 9.2)), billMatL);
+      billL.position.set(-16.8, 5.2, -3.5);
+      billL.rotation.y = 0.34;
+      const billR = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(4.4, 9.2)), billMatR);
+      billR.position.set(16.8, 5.2, -3.5);
+      billR.rotation.y = -0.34;
       group.add(billL, billR);
 
-      // Falling Neon Rain / Digital Sparks (InstancedMesh)
-      const rainCount = 150;
-      const rainGeo = trackGeo(new THREE.BoxGeometry(0.04, 0.55, 0.04));
+      const rainCount = 190;
+      const rainGeo = trackGeo(new THREE.BoxGeometry(0.05, 0.65, 0.05));
       const rainMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.72 }));
       const rainMesh = new THREE.InstancedMesh(rainGeo, rainMat, rainCount);
       rainMesh.frustumCulled = false;
-      const rainDrops = [];
+      const rainDrops = Array.from({ length: rainCount }, (_, i) => ({
+        x: (Math.random() - 0.5) * 48,
+        y: Math.random() * 22,
+        z: (Math.random() - 0.5) * 38,
+        vy: 10 + Math.random() * 8,
+        hex: i % 2 === 0 ? 0x22d3ee : 0xec4899,
+      }));
       const rainCol = new THREE.Color();
-      for (let i = 0; i < rainCount; i += 1) {
-        rainDrops.push({
-          x: (Math.random() - 0.5) * 32,
-          y: Math.random() * 18,
-          z: (Math.random() - 0.5) * 24 - 2,
-          vy: 9 + Math.random() * 7,
-        });
-        rainCol.setHex(i % 2 === 0 ? 0x22d3ee : 0xec4899);
+      rainDrops.forEach((d, i) => {
+        rainCol.setHex(d.hex);
         rainMesh.setColorAt(i, rainCol);
-      }
+      });
       if (rainMesh.instanceColor) rainMesh.instanceColor.needsUpdate = true;
       group.add(rainMesh);
       const rDummy = new THREE.Object3D();
-      dynamicElements.update = (dt) => {
+      return (dt) => {
         for (let i = 0; i < rainCount; i += 1) {
           const d = rainDrops[i];
           d.y -= d.vy * dt;
-          if (d.y < -1.0) d.y = 17.5;
+          if (d.y < -2.2) d.y = 20.5;
           rDummy.position.set(d.x, d.y, d.z);
           rDummy.updateMatrix();
           rainMesh.setMatrixAt(i, rDummy.matrix);
         }
         rainMesh.instanceMatrix.needsUpdate = true;
       };
-
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 20,
-        radiusZ: 17,
-        tiers: 3,
-        lightstickPalette: [0x22d3ee, 0xec4899, 0xa855f7, 0xfacc15],
-        seatColor: 0x0b081c,
-      });
-      break;
     }
 
-    /* ======================================================================
-       EXTRAVAGANT 3D STAGE THEME 5: 👑 ROYAL GOLD & CRIMSON OPERA
-       ====================================================================== */
-    case 'royal-opera': {
-      // Grand crimson-and-gold baroque opera dome
-      const hallMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x260910,
-        roughness: 0.72,
-        metalness: 0.18,
-        side: THREE.BackSide,
-      }));
-      const hallDome = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(28, 28, 16, 0, Math.PI * 2, 0, Math.PI * 0.52)), hallMat);
-      hallDome.scale.set(1.15, 0.74, 1.1);
-      hallDome.position.set(0, 0.5, -1);
-      group.add(hallDome);
-
+    case 'ROYAL_OPERA': {
       const velvetMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x881337, roughness: 0.85, metalness: 0.08 }));
       const marbleMat = trackMat(new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.28, metalness: 0.12 }));
       const goldMat = trackMat(new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.9 }));
@@ -1271,99 +1978,46 @@ export function buildVenueEnvironment(venueId) {
       }));
       dynamicElements.pulseMaterials.push(crystalGlow);
 
-      // Sweeping Crimson Velvet Opera Curtains framing left, right & upper proscenium arch
       [-1, 1].forEach((side) => {
-        for (let f = 0; f < 4; f += 1) {
-          const drape = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.65, 0.78, 10.6, 10)), velvetMat);
-          drape.position.set(side * (8.4 + f * 0.85), 4.4, -4.6 + f * 0.35);
+        for (let f = 0; f < 3; f += 1) {
+          const drape = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.68, 0.84, 13.6, 10)), velvetMat);
+          drape.position.set(side * (15.0 + f * 0.95), 4.6, -4.5 + f * 0.45);
           group.add(drape);
         }
-      });
-      const valance = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(20.5, 1.7, 0.9)), velvetMat);
-      valance.position.set(0, 9.6, -4.4);
-      const goldTrim = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(20.8, 0.24, 1.0)), goldMat);
-      goldTrim.position.set(0, 8.75, -4.35);
-      group.add(valance, goldTrim);
-
-      // Fluted White Marble Columns with gilded gold capitals
-      [-11.8, -8.2, 8.2, 11.8].forEach((cx) => {
-        const col = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.55, 0.62, 10.8, 14)), marbleMat);
-        col.position.set(cx, 4.4, -6.8);
-        const cap = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.45, 0.5, 1.45)), goldMat);
-        cap.position.set(cx, 9.9, -6.8);
-        const base = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.5, 0.6, 1.5)), goldMat);
-        base.position.set(cx, -0.7, -6.8);
-        group.add(col, cap, base);
+        const col = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.62, 0.7, 13.8, 14)), marbleMat);
+        col.position.set(side * 15.8, 4.7, -5.8);
+        const cap = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.65, 0.58, 1.65)), goldMat);
+        cap.position.set(side * 15.8, 11.8, -5.8);
+        group.add(col, cap);
       });
 
-      // 3 Ornate Hanging Golden Crystal Chandeliers rotating gently overhead!
-      [-6.5, 0, 6.5].forEach((chx, idx) => {
+      [-11.5, 0, 11.5].forEach((chx, idx) => {
         const chand = new THREE.Group();
-        chand.position.set(chx, idx === 1 ? 10.4 : 9.4, idx === 1 ? -1.2 : -2.6);
-        const chain = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.06, 0.06, 4.0, 6)), goldMat);
-        chain.position.y = 2.0;
-        const ring1 = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(1.45, 0.09, 8, 22)), goldMat);
+        chand.position.set(chx, idx === 1 ? 14.8 : 13.4, idx === 1 ? 1.8 : -0.6);
+        const chain = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.06, 0.06, 3.8, 6)), goldMat);
+        chain.position.y = 1.9;
+        const ring1 = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(1.55, 0.1, 8, 22)), goldMat);
         ring1.rotation.x = Math.PI * 0.5;
-        const ring2 = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.85, 0.08, 8, 18)), goldMat);
+        const ring2 = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.92, 0.08, 8, 18)), goldMat);
         ring2.rotation.x = Math.PI * 0.5;
-        ring2.position.y = -0.65;
-        const drop = new THREE.Mesh(trackGeo(new THREE.OctahedronGeometry(0.35, 0)), crystalGlow);
-        drop.position.y = -1.1;
+        ring2.position.y = -0.7;
+        const drop = new THREE.Mesh(trackGeo(new THREE.OctahedronGeometry(0.38, 0)), crystalGlow);
+        drop.position.y = -1.2;
         chand.add(chain, ring1, ring2, drop);
-        for (let b = 0; b < 8; b += 1) {
-          const a = (b / 8) * Math.PI * 2;
-          const bulb = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.14, 6, 6)), crystalGlow);
-          bulb.position.set(Math.cos(a) * 1.45, 0.16, Math.sin(a) * 1.45);
-          chand.add(bulb);
-        }
         group.add(chand);
         dynamicElements.rotatingRings.push(chand);
       });
-
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 18,
-        radiusZ: 15,
-        tiers: 3,
-        lightstickPalette: [0xfacc15, 0xfef08a, 0xf43f5e, 0xffffff],
-        seatColor: 0x3b0d19,
-      });
-      break;
+      return null;
     }
 
-    /* ======================================================================
-       EXTRAVAGANT 3D STAGE THEME 6: 🌴 TROPICAL SUNSET BEACH FESTIVAL
-       ====================================================================== */
-    case 'tropical-beach': {
-      addSkyDome(group, disposables, '#160b2e', '#9d2b57', '#fb923c', true);
-      addOutdoorGround(group, disposables, 0xc29b68); // Warm golden beach sand!
-
-      // Shimmering Sunset Ocean horizon behind the stage
-      const oceanMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x0e7490,
-        emissive: 0xc2410c,
-        emissiveIntensity: 0.35,
-        roughness: 0.18,
-        metalness: 0.62,
-      }));
-      const ocean = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(110, 42)), oceanMat);
-      ocean.rotation.x = -Math.PI * 0.5;
-      ocean.position.set(0, -1.12, -26);
-      group.add(ocean);
-
-      // Glowing golden-hour sun setting over the horizon
-      const sunMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfde047, fog: false }));
-      const sunsetSun = new THREE.Mesh(trackGeo(new THREE.CircleGeometry(6.8, 28)), sunMat);
-      sunsetSun.position.set(0, 5.2, -40);
-      group.add(sunsetSun);
-
-      // Tropical Palm Trees framing stage speakers
+    case 'TROPICAL_SUMMER': {
       const palmTrunkMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.88 }));
       const palmLeafMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.72, side: THREE.DoubleSide }));
       [
-        { x: -11.5, z: -5.5, h: 10.5, lean: 0.18 },
-        { x: -14.2, z: -0.5, h: 9.2, lean: 0.12 },
-        { x: 11.5, z: -5.5, h: 10.8, lean: -0.18 },
-        { x: 14.2, z: -0.5, h: 9.4, lean: -0.12 },
+        { x: -16.2, z: -4.2, h: 12.2, lean: 0.18 },
+        { x: -17.8, z: 2.2, h: 10.6, lean: 0.14 },
+        { x: 16.2, z: -4.2, h: 12.4, lean: -0.18 },
+        { x: 17.8, z: 2.2, h: 10.8, lean: -0.14 },
       ].forEach((p) => {
         const palm = new THREE.Group();
         const curve = new THREE.CatmullRomCurve3([
@@ -1371,565 +2025,815 @@ export function buildVenueEnvironment(venueId) {
           new THREE.Vector3(p.lean * 4, p.h * 0.55, 0),
           new THREE.Vector3(p.lean * 6, p.h, 0),
         ]);
-        const trunk = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(curve, 12, 0.28, 7, false)), palmTrunkMat);
-        palm.add(trunk);
+        palm.add(new THREE.Mesh(trackGeo(new THREE.TubeGeometry(curve, 12, 0.3, 7, false)), palmTrunkMat));
         const top = curve.getPoint(1);
         for (let f = 0; f < 8; f += 1) {
           const a = (f / 8) * Math.PI * 2;
-          const frond = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.68, 3.8, 4)), palmLeafMat);
+          const frond = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.75, 4.2, 4)), palmLeafMat);
           frond.scale.set(1, 1, 0.22);
-          frond.position.set(top.x + Math.cos(a) * 1.45, top.y - 0.35, top.z + Math.sin(a) * 1.45);
+          frond.position.set(top.x + Math.cos(a) * 1.55, top.y - 0.35, top.z + Math.sin(a) * 1.55);
           frond.rotation.z = -Math.cos(a) * 1.15;
           frond.rotation.x = Math.sin(a) * 1.15;
           palm.add(frond);
         }
-        palm.position.set(p.x, -1.2, p.z);
+        palm.position.set(p.x, -2.2, p.z);
         group.add(palm);
       });
 
-      // Giant colorful Surfboards planted in the sand beside the stage wings
-      const surfSpecs = [
-        { x: -8.2, z: -2.2, col: 0x06b6d4, stripe: 0xfef08a, rz: 0.14, ry: 0.32 },
-        { x: -7.1, z: -3.4, col: 0xec4899, stripe: 0xf8fafc, rz: -0.1, ry: 0.45 },
-        { x: 8.2, z: -2.2, col: 0xf97316, stripe: 0xfef08a, rz: -0.14, ry: -0.32 },
-        { x: 7.1, z: -3.4, col: 0x22c55e, stripe: 0xf8fafc, rz: 0.1, ry: -0.45 },
-      ];
-      surfSpecs.forEach((sf) => {
-        const boardGroup = new THREE.Group();
-        const bMat = trackMat(new THREE.MeshStandardMaterial({ color: sf.col, roughness: 0.24, metalness: 0.12 }));
-        const sMat = trackMat(new THREE.MeshStandardMaterial({ color: sf.stripe, roughness: 0.24 }));
-        const board = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.14, 0.14, 3.4, 12)), bMat);
-        board.scale.set(3.2, 1.0, 0.42);
-        const stripe = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.14, 3.1, 0.15)), sMat);
-        boardGroup.add(board, stripe);
-        boardGroup.position.set(sf.x, 1.35, sf.z);
-        boardGroup.rotation.set(0, sf.ry, sf.rz);
-        group.add(boardGroup);
-      });
-
-      // Flickering Flame Tiki Torches lining the beach festival perimeter!
       const bambooMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.82 }));
       const flameMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfb923c }));
       const tikiFlames = [];
-      [-8.5, -5.8, 5.8, 8.5].forEach((tx, idx) => {
-        const post = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 8)), bambooMat);
-        post.position.set(tx, 0.5, 1.2 + (idx % 2) * 0.3);
-        const cup = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.2, 0.1, 0.38, 8)), bambooMat);
-        cup.position.set(tx, 2.2, 1.2 + (idx % 2) * 0.3);
-        const flame = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.18, 0.58, 7)), flameMat);
-        flame.position.set(tx, 2.66, 1.2 + (idx % 2) * 0.3);
-        group.add(post, cup, flame);
+      [
+        { x: -15.2, z: 4.5 },
+        { x: -5.4, z: 10.2 },
+        { x: 5.4, z: 10.2 },
+        { x: 15.2, z: 4.5 },
+      ].forEach((ts, idx) => {
+        const post = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.09, 0.12, 3.6, 8)), bambooMat);
+        post.position.set(ts.x, -0.4, ts.z);
+        const flame = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.22, 0.68, 7)), flameMat);
+        flame.position.set(ts.x, 1.72, ts.z);
+        group.add(post, flame);
         tikiFlames.push({ mesh: flame, phase: idx * 1.7 });
       });
 
-      dynamicElements.update = (dt, t) => {
+      return (_dt, t) => {
         for (let i = 0; i < tikiFlames.length; i += 1) {
           const tf = tikiFlames[i];
           const flick = 0.82 + Math.sin(t * 16 + tf.phase) * 0.24 + Math.cos(t * 23 + tf.phase) * 0.12;
           tf.mesh.scale.set(0.92 + Math.sin(t * 12 + tf.phase) * 0.12, flick, 0.92);
         }
-        oceanMat.emissiveIntensity = 0.3 + Math.sin(t * 1.6) * 0.08;
       };
-
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 19,
-        radiusZ: 16,
-        tiers: 2,
-        lightstickPalette: [0xf97316, 0xfacc15, 0x22d3ee, 0xf472b6],
-        seatColor: 0x3b2218,
-      });
-      break;
     }
 
-    /* 1. PHILIPPINE ARENA (Bulacan, PH) */
-    case 'philippine-arena': {
-      // Sweeping mega indoor dome shell
-      const domeGeo = trackGeo(new THREE.SphereGeometry(34, 28, 16, 0, Math.PI * 2, 0, Math.PI * 0.52));
-      const domeMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x0b1224,
-        roughness: 0.72,
-        metalness: 0.25,
-        side: THREE.BackSide,
+    case 'FIESTA_PINOY': {
+      const parolGold = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xfef08a,
+        emissive: 0xfacc15,
+        emissiveIntensity: 1.85,
+        roughness: 0.22,
       }));
-      const dome = new THREE.Mesh(domeGeo, domeMat);
-      dome.scale.set(1.25, 0.68, 1.1);
-      dome.position.set(0, -1, -2);
-      group.add(dome);
-
-      // Sweeping radial steel dome trusses arching overhead
-      const trussMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x334155,
+      const parolMagenta = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xf9a8d4,
+        emissive: 0xec4899,
+        emissiveIntensity: 1.7,
+        roughness: 0.22,
+      }));
+      const parolCyan = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x7dd3fc,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.65,
+        roughness: 0.22,
+      }));
+      const capizRingMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        emissive: 0xfde047,
+        emissiveIntensity: 0.55,
         roughness: 0.35,
-        metalness: 0.85,
       }));
-      for (let i = 0; i < 10; i += 1) {
-        const angle = (i / 10) * Math.PI;
-        const archGeo = trackGeo(new THREE.TorusGeometry(28, 0.28, 6, 32, Math.PI));
-        const arch = new THREE.Mesh(archGeo, trussMat);
-        arch.position.set(0, 0, -2);
-        arch.rotation.y = angle;
-        arch.scale.set(1.2, 0.74, 1.0);
-        group.add(arch);
+      const bambooMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x713f12, roughness: 0.82 }));
+      dynamicElements.pulseMaterials.push(parolGold, parolMagenta, parolCyan);
+
+      const parols = [];
+      const parolCoords = [
+        { x: -16.2, y: 8.6, z: -2.2, s: 1.45, mat: parolGold },
+        { x: -15.4, y: 5.2, z: 3.4, s: 1.05, mat: parolMagenta },
+        { x: 16.2, y: 8.6, z: -2.2, s: 1.45, mat: parolGold },
+        { x: 15.4, y: 5.2, z: 3.4, s: 1.05, mat: parolCyan },
+        { x: -9.5, y: 12.9, z: -4.2, s: 0.95, mat: parolCyan },
+        { x: 0.0, y: 13.4, z: -4.4, s: 1.25, mat: parolGold },
+        { x: 9.5, y: 12.9, z: -4.2, s: 0.95, mat: parolMagenta },
+      ];
+      parolCoords.forEach((pc, idx) => {
+        const starGroup = new THREE.Group();
+        starGroup.position.set(pc.x, pc.y, pc.z);
+        starGroup.scale.setScalar(pc.s);
+        const outerRing = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(1.15, 0.07, 8, 28)), capizRingMat);
+        starGroup.add(outerRing);
+        for (let pt = 0; pt < 5; pt += 1) {
+          const ang = (pt / 5) * Math.PI * 2 + Math.PI * 0.5;
+          const cone = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.28, 1.05, 4)), pc.mat);
+          cone.position.set(Math.cos(ang) * 0.58, Math.sin(ang) * 0.58, 0);
+          cone.rotation.z = ang - Math.PI * 0.5;
+          starGroup.add(cone);
+        }
+        const core = new THREE.Mesh(trackGeo(new THREE.OctahedronGeometry(0.36, 0)), pc.mat);
+        starGroup.add(core);
+        [-0.28, 0.28].forEach((tx) => {
+          const tassel = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.05, 0.09, 0.65, 6)), parolGold);
+          tassel.position.set(tx, -1.42, 0);
+          starGroup.add(tassel);
+        });
+        if (Math.abs(pc.x) > 14) {
+          const post = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.16, 0.22, pc.y + 2.4, 8)), bambooMat);
+          post.position.set(pc.x, (pc.y - 2.2) * 0.5, pc.z);
+          group.add(post);
+        }
+        group.add(starGroup);
+        parols.push({ group: starGroup, phase: idx * 0.9 });
+      });
+
+      const bandColors = [0xef4444, 0xfacc15, 0x3b82f6, 0x22c55e, 0xec4899, 0xf97316];
+      const flagGeo = trackGeo(new THREE.ConeGeometry(0.26, 0.54, 3));
+      const flagMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+      const rowCount = 4;
+      const flagsPerRow = 26;
+      const totalFlags = rowCount * flagsPerRow;
+      const bandMesh = new THREE.InstancedMesh(flagGeo, flagMat, totalFlags);
+      bandMesh.frustumCulled = false;
+      const bDummy = new THREE.Object3D();
+      const bCol = new THREE.Color();
+      const flagMeta = [];
+      let fi = 0;
+      for (let r = 0; r < rowCount; r += 1) {
+        const z = -2.0 + r * 4.4;
+        for (let k = 0; k < flagsPerRow; k += 1) {
+          const u = k / (flagsPerRow - 1);
+          const x = -18 + u * 36;
+          const sag = Math.sin(u * Math.PI) * 1.45;
+          const y = 13.6 - sag;
+          flagMeta.push({ x, y, z, phase: k * 0.35 + r });
+          bDummy.position.set(x, y, z);
+          bDummy.rotation.set(Math.PI, 0, 0);
+          bDummy.updateMatrix();
+          bandMesh.setMatrixAt(fi, bDummy.matrix);
+          bCol.setHex(bandColors[(k + r * 2) % bandColors.length]);
+          bandMesh.setColorAt(fi, bCol);
+          fi += 1;
+        }
+      }
+      bandMesh.instanceMatrix.needsUpdate = true;
+      if (bandMesh.instanceColor) bandMesh.instanceColor.needsUpdate = true;
+      group.add(bandMesh);
+
+      return (_dt, t) => {
+        for (let i = 0; i < parols.length; i += 1) {
+          parols[i].group.rotation.y = Math.sin(t * 0.7 + parols[i].phase) * 0.22;
+        }
+        for (let i = 0; i < totalFlags; i += 1) {
+          const fm = flagMeta[i];
+          bDummy.position.set(fm.x, fm.y, fm.z);
+          bDummy.rotation.set(Math.PI + Math.sin(t * 2.4 + fm.phase) * 0.16, 0, Math.cos(t * 1.9 + fm.phase) * 0.1);
+          bDummy.updateMatrix();
+          bandMesh.setMatrixAt(i, bDummy.matrix);
+        }
+        bandMesh.instanceMatrix.needsUpdate = true;
+      };
+    }
+
+    case 'APOCALYPSE_HELLFIRE': {
+      const obsidianMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x111116,
+        roughness: 0.78,
+        metalness: 0.32,
+        flatShading: true,
+      }));
+      const magmaMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xf97316,
+        emissive: 0xef4444,
+        emissiveIntensity: 2.1,
+        roughness: 0.25,
+      }));
+      const emberRingMat = trackMat(new THREE.MeshBasicMaterial({
+        color: 0xfb923c,
+        transparent: true,
+        opacity: 0.78,
+        side: THREE.DoubleSide,
+      }));
+      dynamicElements.pulseMaterials.push(magmaMat);
+
+      [
+        { x: -16.6, y: 3.4, z: -4.2, sx: 1.8, sy: 10.2, sz: 2.1, rz: 0.16 },
+        { x: -18.2, y: 1.8, z: 1.4, sx: 1.4, sy: 6.4, sz: 1.6, rz: 0.26 },
+        { x: 16.6, y: 3.4, z: -4.2, sx: 1.8, sy: 10.2, sz: 2.1, rz: -0.16 },
+        { x: 18.2, y: 1.8, z: 1.4, sx: 1.4, sy: 6.4, sz: 1.6, rz: -0.26 },
+      ].forEach((sp) => {
+        const pillar = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.1, 1.0, 5)), obsidianMat);
+        pillar.scale.set(sp.sx, sp.sy, sp.sz);
+        pillar.position.set(sp.x, sp.y, sp.z);
+        pillar.rotation.z = sp.rz;
+        const vein = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.6, 0.92, 5)), magmaMat);
+        vein.scale.set(sp.sx * 0.48, sp.sy * 0.85, sp.sz * 0.48);
+        vein.position.set(sp.x * 0.97, sp.y - 0.4, sp.z + 0.4);
+        vein.rotation.z = sp.rz;
+        group.add(pillar, vein);
+      });
+
+      const fissureRing = new THREE.Mesh(trackGeo(new THREE.RingGeometry(15.2, 22.8, 36)), emberRingMat);
+      fissureRing.rotation.x = -Math.PI * 0.5;
+      fissureRing.position.set(0, -2.14, 4.0);
+      group.add(fissureRing);
+      for (let f = 0; f < 10; f += 1) {
+        const ang = (f / 10) * Math.PI * 2;
+        const crack = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.45, 0.08, 8.5)), magmaMat);
+        crack.position.set(Math.cos(ang) * 19.5, -2.15, 4.0 + Math.sin(ang) * 18.5);
+        crack.rotation.y = -ang + Math.PI * 0.5;
+        group.add(crack);
       }
 
-      // Dual Mega-Concert LED Side Jumbotron Screens flanking the stage
+      const emberCount = 240;
+      const emberGeo = trackGeo(new THREE.OctahedronGeometry(0.095, 0));
+      const emberMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      const emberMesh = new THREE.InstancedMesh(emberGeo, emberMat, emberCount);
+      emberMesh.frustumCulled = false;
+      const eCol = new THREE.Color();
+      const embers = Array.from({ length: emberCount }, (_, i) => {
+        eCol.setHex(i % 3 === 0 ? 0xfef08a : i % 2 === 0 ? 0xf97316 : 0xef4444);
+        emberMesh.setColorAt(i, eCol);
+        return {
+          x: (Math.random() - 0.5) * 44,
+          y: -2.0 + Math.random() * 21,
+          z: (Math.random() - 0.5) * 34,
+          vy: 1.9 + Math.random() * 2.8,
+          phase: Math.random() * Math.PI * 2,
+          scale: 0.65 + Math.random() * 1.1,
+        };
+      });
+      if (emberMesh.instanceColor) emberMesh.instanceColor.needsUpdate = true;
+      group.add(emberMesh);
+
+      const eDummy = new THREE.Object3D();
+      return (dt, t) => {
+        for (let i = 0; i < emberCount; i += 1) {
+          const e = embers[i];
+          e.y += e.vy * dt;
+          if (e.y > 20.5) e.y = -2.0;
+          eDummy.position.set(
+            e.x + Math.sin(t * 2.1 + e.phase) * 0.75,
+            e.y,
+            e.z + Math.cos(t * 1.7 + e.phase) * 0.6
+          );
+          eDummy.rotation.set(t * 2 + e.phase, t * 1.5, 0);
+          eDummy.scale.setScalar(e.scale * (0.75 + Math.sin(t * 9 + e.phase) * 0.25));
+          eDummy.updateMatrix();
+          emberMesh.setMatrixAt(i, eDummy.matrix);
+        }
+        emberMesh.instanceMatrix.needsUpdate = true;
+      };
+    }
+
+    default:
+      return null;
+  }
+}
+
+/* ============================================================================
+   MAIN 10-STADIUM + OVERLAY WORLD BUILDER
+   ============================================================================ */
+
+export function buildVenueEnvironment(venueId, overlayId = 'STANDARD') {
+  const resolved = resolveLegacyVenueChoice(venueId, overlayId);
+  const metaBase = getVenueById(resolved.venueId);
+  const overlayMeta = getStageOverlayById(resolved.overlayId);
+  const meta = {
+    ...metaBase,
+    overlayId: overlayMeta.id,
+    overlayName: overlayMeta.name,
+    laserColors: overlayMeta.laserColors || metaBase.laserColors,
+    continuousIndoorFountains: Boolean(
+      metaBase.continuousIndoorFountains || overlayMeta.continuousIndoorFountains
+    ),
+  };
+
+  const palette = getVenuePalette(meta.id);
+  const overlayPalette = getStageOverlayPalette(overlayMeta.id);
+  const effectiveFascia = overlayPalette.fasciaOverride ?? palette.fasciaHex;
+  const secondaryColor = overlayMeta.secondaryHex || metaBase.accentHex || 0xfacc15;
+
+  const group = new THREE.Group();
+  const disposables = { geometries: [], materials: [], textures: [] };
+  const dynamicElements = {
+    pulseMaterials: [],
+    scrollingRibbons: [],
+    rotatingRings: [],
+    retractableRoofMeshes: [],
+    searchlights: [],
+    bowlLights: null,
+    skyDome: null,
+    skyMat: null,
+    updateBowl: null,
+    updateAtmosphere: null,
+    update: null,
+  };
+
+  const trackGeo = (g) => { disposables.geometries.push(g); return g; };
+  const trackMat = (m) => { disposables.materials.push(m); return m; };
+  const trackTex = (t) => { disposables.textures.push(t); return t; };
+
+  /**
+   * Tags retractable indoor roof panels with both vertical clearance & radial parting vectors
+   * so Grand Encore smoothly parts dome halves/petals open to reveal the starry sky & fireworks.
+   */
+  const markRetractable = (mesh, {
+    openOffsetY = 26,
+    slideDirX = 0,
+    slideDirZ = 0,
+    openScaleXZ = 1.0,
+    openRotZ = 0,
+  } = {}) => {
+    mesh.userData.isRetractableRoof = true;
+    mesh.userData.baseX = mesh.position.x;
+    mesh.userData.baseY = mesh.position.y;
+    mesh.userData.baseZ = mesh.position.z;
+    mesh.userData.baseScaleX = mesh.scale.x;
+    mesh.userData.baseScaleZ = mesh.scale.z;
+    mesh.userData.baseRotZ = mesh.rotation.z;
+    mesh.userData.openOffsetY = openOffsetY;
+    mesh.userData.slideDirX = slideDirX;
+    mesh.userData.slideDirZ = slideDirZ;
+    mesh.userData.openScaleXZ = openScaleXZ;
+    mesh.userData.openRotZ = openRotZ;
+    dynamicElements.retractableRoofMeshes.push(mesh);
+    return mesh;
+  };
+
+  let venueTick = null;
+
+  switch (meta.id) {
+    /* ======================================================================
+       1. PHILIPPINE ARENA (Bulacan Mega Dome + NLEX Light Trails + Victoria Plaza + Manila Horizon)
+       ====================================================================== */
+    case 'philippine-arena': {
+      addSkyDome(group, disposables, '#030712', '#0b1936', '#1e293b', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x0b1220);
+
+      // Split sliding clamshell mega-dome halves + steel radial ribs for smooth Grand Encore parting
+      const domeMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x0d152a,
+        roughness: 0.58,
+        metalness: 0.42,
+        side: THREE.DoubleSide,
+      }));
+      const trussMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.32, metalness: 0.85 }));
+
+      [-1, 1].forEach((side) => {
+        const halfGroup = new THREE.Group();
+        halfGroup.position.set(0, -1, 4);
+        const startTheta = side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+        const domeHalfGeo = trackGeo(new THREE.SphereGeometry(56, 28, 14, startTheta, Math.PI, 0, Math.PI * 0.48));
+        const domeHalf = new THREE.Mesh(domeHalfGeo, domeMat);
+        domeHalf.scale.set(1.24, 0.68, 1.12);
+        halfGroup.add(domeHalf);
+
+        for (let i = 0; i < 6; i += 1) {
+          const arch = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(54.2, 0.4, 6, 32, Math.PI * 0.5)), trussMat);
+          arch.rotation.y = startTheta + (i / 5) * Math.PI * 0.92;
+          arch.scale.set(1.22, 0.7, 1.1);
+          halfGroup.add(arch);
+        }
+        group.add(markRetractable(halfGroup, {
+          openOffsetY: 14,
+          slideDirX: side * 46,
+          slideDirZ: -12,
+        }));
+      });
+
+      // Wing Venue Screens (outside 28m stage deck)
       const screenTex = trackTex(createLedScreenTexture('PHILIPPINE ARENA', '#0284c7', 'rgba(56,189,248,0.45)'));
       const screenMat = trackMat(new THREE.MeshBasicMaterial({ map: screenTex }));
       const frameMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.7 }));
-
-      [-11.4, 11.4].forEach((sx) => {
+      [-18.6, 18.6].forEach((sx) => {
         const holder = new THREE.Group();
-        const frame = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(7.2, 4.3, 0.4)), frameMat);
-        const screen = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(6.7, 3.8)), screenMat);
-        screen.position.z = 0.22;
-        holder.add(frame, screen);
-        holder.position.set(sx, 5.2, -5.2);
-        holder.rotation.y = sx < 0 ? 0.32 : -0.32;
+        const scr = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(7.0, 4.0)), screenMat);
+        scr.position.z = 0.22;
+        holder.add(new THREE.Mesh(trackGeo(new THREE.BoxGeometry(7.6, 4.5, 0.4)), frameMat), scr);
+        holder.position.set(sx, 7.2, -3.5);
+        holder.rotation.y = sx < 0 ? 0.34 : -0.34;
         group.add(holder);
       });
 
-      // Massive tiered seating bowls packed with glowing lightsticks
+      // Illuminated NLEX Expressway + Animated Car Headlight & Taillight Streaks
+      const roadMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.85 }));
+      const nlexRoad = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(440, 0.25, 16)), roadMat);
+      nlexRoad.position.set(0, -2.14, -98);
+      group.add(nlexRoad);
+
+      const lampCount = 24;
+      const lampPostGeo = trackGeo(new THREE.CylinderGeometry(0.14, 0.2, 6.2, 6));
+      const lampBulbGeo = trackGeo(new THREE.SphereGeometry(0.32, 6, 6));
+      const lampBulbMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfde68a }));
+      const lamps = new THREE.InstancedMesh(lampPostGeo, trussMat, lampCount);
+      const lampBulbs = new THREE.InstancedMesh(lampBulbGeo, lampBulbMat, lampCount);
+      for (let l = 0; l < lampCount; l += 1) {
+        const lx = -200 + (l / (lampCount - 1)) * 400;
+        _bowlDummy.position.set(lx, 0.9, -98);
+        _bowlDummy.rotation.set(0, 0, 0);
+        _bowlDummy.scale.setScalar(1);
+        _bowlDummy.updateMatrix();
+        lamps.setMatrixAt(l, _bowlDummy.matrix);
+        _bowlDummy.position.set(lx, 4.1, -98);
+        _bowlDummy.updateMatrix();
+        lampBulbs.setMatrixAt(l, _bowlDummy.matrix);
+      }
+      lamps.instanceMatrix.needsUpdate = true;
+      lampBulbs.instanceMatrix.needsUpdate = true;
+      group.add(lamps, lampBulbs);
+
+      const carCount = 44;
+      const carGeo = trackGeo(new THREE.BoxGeometry(3.2, 0.42, 0.85));
+      const carMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      const trafficCars = new THREE.InstancedMesh(carGeo, carMat, carCount);
+      trafficCars.frustumCulled = false;
+      const carMeta = [];
+      for (let c = 0; c < carCount; c += 1) {
+        const lane = c % 2 === 0 ? -1 : 1;
+        carMeta.push({
+          x: -200 + (c / carCount) * 400,
+          z: -98 + lane * 3.6,
+          speed: (22 + (c % 5) * 6) * lane,
+        });
+        _bowlColor.setHex(lane > 0 ? 0xfef08a : 0xf43f5e);
+        trafficCars.setColorAt(c, _bowlColor);
+      }
+      if (trafficCars.instanceColor) trafficCars.instanceColor.needsUpdate = true;
+      group.add(trafficCars);
+
+      // Ciudad de Victoria Plaza Reflection Basins & Illuminated Fountains
+      const poolGlowMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x0ea5e9,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 1.15,
+        roughness: 0.12,
+        metalness: 0.75,
+      }));
+      dynamicElements.pulseMaterials.push(poolGlowMat);
+      [-58, 58].forEach((fx) => {
+        const pool = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(11, 11.5, 0.3, 24)), poolGlowMat);
+        pool.position.set(fx, -2.06, -54);
+        const jet = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.4, 7.2, 10)), poolGlowMat);
+        jet.position.set(fx, 1.6, -54);
+        group.add(pool, jet);
+      });
+
+      addInstancedFoliageRing(group, disposables, { count: 48, minRadius: 74, maxRadius: 118, centerZ: 5, canopyColor: 0x14532d });
+      addDistantCitySkyline(group, disposables, {
+        count: 96,
+        minRadius: 165,
+        maxRadius: 310,
+        minHeight: 22,
+        maxHeight: 74,
+        accentHex: 0x38bdf8,
+        baseColor: 0x091124,
+      });
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 68,
+        centerZ: 5,
+        colors: [0x38bdf8, 0xfacc15, 0xf43f5e],
+      });
+
+      venueTick = (dt) => {
+        for (let c = 0; c < carCount; c += 1) {
+          const cm = carMeta[c];
+          cm.x += cm.speed * dt;
+          if (cm.x > 210) cm.x = -210;
+          if (cm.x < -210) cm.x = 210;
+          _bowlDummy.position.set(cm.x, -1.76, cm.z);
+          _bowlDummy.rotation.set(0, 0, 0);
+          _bowlDummy.scale.setScalar(1);
+          _bowlDummy.updateMatrix();
+          trafficCars.setMatrixAt(c, _bowlDummy.matrix);
+        }
+        trafficCars.instanceMatrix.needsUpdate = true;
+      };
+
       dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 22,
-        radiusZ: 18,
+        venueName: 'PHILIPPINE ARENA',
+        radiusX: 35,
+        radiusZ: 32,
+        centerZ: 5.0,
         tiers: 4,
-        lightstickPalette: [0x38bdf8, 0xf8fafc, 0xf43f5e, 0xfacc15],
-        includeBackTiers: true,
+        lightstickPalette: overlayMeta.laserColors || [0x38bdf8, 0xf8fafc, 0xf43f5e, 0xfacc15],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
       });
       break;
     }
 
-    /* 2. SM MALL OF ASIA ARENA (Pasay, PH) */
+    /* ======================================================================
+       2. SM MALL OF ASIA ARENA (Eye Roof + Manila Bay Ocean + Detailed MOA Eye Ferris Wheel)
+       ====================================================================== */
     case 'moa-arena': {
-      // Sleek modern blue-and-cyan eye-shaped indoor ceiling curve
+      addSkyDome(group, disposables, '#04091a', '#0c1d3d', '#0f3057', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x0a1324);
+
       const roofMat = trackMat(new THREE.MeshStandardMaterial({
         color: 0x08142b,
-        roughness: 0.45,
-        metalness: 0.48,
-        side: THREE.BackSide,
+        roughness: 0.4,
+        metalness: 0.62,
+        side: THREE.DoubleSide,
       }));
-      const shell = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(24, 21, 18, 32, 1, true)), roofMat);
-      shell.scale.set(1.25, 1, 0.92);
-      shell.position.set(0, 7.5, -1);
-      group.add(shell);
-
-      // Iconic curved eye-shaped cyan LED architectural roof ribs
       const cyanGlow = trackMat(new THREE.MeshStandardMaterial({
         color: 0x06b6d4,
         emissive: 0x06b6d4,
-        emissiveIntensity: 1.5,
+        emissiveIntensity: 1.55,
         roughness: 0.2,
       }));
       dynamicElements.pulseMaterials.push(cyanGlow);
 
-      [-4.2, -1.4, 1.4, 4.2].forEach((rz) => {
-        const curve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(-22, 6.5, rz - 4),
-          new THREE.Vector3(-10, 14.5, rz - 3),
-          new THREE.Vector3(0, 16.2, rz - 3),
-          new THREE.Vector3(10, 14.5, rz - 3),
-          new THREE.Vector3(22, 6.5, rz - 4),
-        ]);
-        const rib = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(curve, 28, 0.22, 6, false)), cyanGlow);
-        group.add(rib);
+      // Split retracting Eye-Shaped Roof Halves with glowing cyan structural ribs
+      [-1, 1].forEach((side) => {
+        const roofWing = new THREE.Group();
+        roofWing.position.set(0, 0, 4);
+        const startTheta = side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+        const shellHalf = new THREE.Mesh(
+          trackGeo(new THREE.CylinderGeometry(48, 44, 22, 24, 1, true, startTheta, Math.PI)),
+          roofMat
+        );
+        shellHalf.scale.set(1.24, 1, 1.0);
+        shellHalf.position.y = 11.5;
+        roofWing.add(shellHalf);
+
+        [-4.8, -1.6, 1.6, 4.8].forEach((rz) => {
+          const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(side * 42, 9.5, rz - 2),
+            new THREE.Vector3(side * 22, 20.5, rz - 2),
+            new THREE.Vector3(side * 1.2, 23.2, rz - 2),
+          ]);
+          const rib = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(curve, 18, 0.28, 6, false)), cyanGlow);
+          roofWing.add(rib);
+        });
+
+        group.add(markRetractable(roofWing, {
+          openOffsetY: 14,
+          slideDirX: side * 42,
+        }));
       });
 
-      // Wrap-around glowing blue-and-cyan LED ribbon boards
-      [3.4, 7.6].forEach((ry) => {
-        const ribbonGeo = trackGeo(new THREE.TorusGeometry(21, 0.24, 8, 48));
-        ribbonGeo.rotateX(Math.PI * 0.5);
-        const ribbon = new THREE.Mesh(ribbonGeo, cyanGlow);
-        ribbon.scale.set(1.18, 1, 0.88);
-        ribbon.position.set(0, ry, -1);
-        group.add(ribbon);
+      const bayOcean = createAnimatedOcean(group, disposables, {
+        width: 620,
+        depth: 320,
+        y: -2.08,
+        z: -195,
+        color: 0x083344,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.26,
       });
 
-      // MOA LED side banners
+      // Bayside Promenade Seawall + Animated MOA Eye Ferris Wheel with 24 Passenger Gondolas
+      const seawallMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.72 }));
+      const seawall = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(260, 1.4, 8)), seawallMat);
+      seawall.position.set(0, -1.6, -72);
+      group.add(seawall);
+
+      const wheelStand = new THREE.Group();
+      wheelStand.position.set(66, -2.2, -82);
+      const wheelMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.86, roughness: 0.28 }));
+      [-7.5, 7.5].forEach((lz) => {
+        [-1, 1].forEach((side) => {
+          const leg = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.45, 0.7, 34, 8)), wheelMat);
+          leg.position.set(side * 8.5, 14.5, lz);
+          leg.rotation.z = side * 0.48;
+          wheelStand.add(leg);
+        });
+      });
+
+      const wheelGroup = new THREE.Group();
+      wheelGroup.position.set(0, 29, 0);
+      const wheelRim = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(23, 0.52, 8, 48)), cyanGlow);
+      const innerRim = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(15, 0.24, 6, 36)), wheelMat);
+      for (let sp = 0; sp < 16; sp += 1) {
+        const spoke = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.14, 0.14, 46, 6)), wheelMat);
+        spoke.rotation.z = (sp / 16) * Math.PI;
+        wheelGroup.add(spoke);
+      }
+      const gondolaGeo = trackGeo(new THREE.BoxGeometry(1.55, 1.8, 1.4));
+      const gondolaMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xe0f2fe,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 0.95,
+      }));
+      const gondolas = [];
+      for (let g = 0; g < 24; g += 1) {
+        const ga = (g / 24) * Math.PI * 2;
+        const gon = new THREE.Mesh(gondolaGeo, gondolaMat);
+        gon.position.set(Math.cos(ga) * 23, Math.sin(ga) * 23, 0);
+        wheelGroup.add(gon);
+        gondolas.push(gon);
+      }
+      wheelGroup.add(wheelRim, innerRim);
+      wheelStand.add(wheelGroup);
+      group.add(wheelStand);
+
       const moaTex = trackTex(createLedScreenTexture('MOA ARENA', '#0369a1', 'rgba(6,182,212,0.5)'));
       const moaMat = trackMat(new THREE.MeshBasicMaterial({ map: moaTex }));
-      [-10.4, 10.4].forEach((sx) => {
-        const panel = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(5.6, 3.2)), moaMat);
-        panel.position.set(sx, 4.8, -4.8);
+      [-18.2, 18.2].forEach((sx) => {
+        const panel = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(6.4, 3.6)), moaMat);
+        panel.position.set(sx, 6.8, -3.2);
         panel.rotation.y = sx < 0 ? 0.38 : -0.38;
         group.add(panel);
       });
 
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 19,
-        radiusZ: 16,
-        tiers: 3,
-        lightstickPalette: [0x06b6d4, 0x38bdf8, 0xe0f2fe, 0x3b82f6],
-        seatColor: 0x0b162c,
+      addInstancedFoliageRing(group, disposables, {
+        count: 36,
+        minRadius: 68,
+        maxRadius: 96,
+        centerZ: 5,
+        canopyColor: 0x15803d,
+        skipRearArc: true,
       });
-      break;
-    }
-
-    /* 3. SMART ARANETA COLISEUM (Quezon City, PH) */
-    case 'araneta-coliseum': {
-      // Iconic "Big Dome" ribbed hemispherical roof
-      const domeMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x1b120c,
-        roughness: 0.72,
-        metalness: 0.2,
-        side: THREE.BackSide,
-      }));
-      const bigDome = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(24, 28, 16, 0, Math.PI * 2, 0, Math.PI * 0.5)), domeMat);
-      bigDome.scale.set(1.15, 0.72, 1.15);
-      bigDome.position.set(0, 1.0, -1.5);
-      group.add(bigDome);
-
-      // 16 signature radial ceiling ribs converging at the central golden oculus ring
-      const ribMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x78502c,
-        roughness: 0.45,
-        metalness: 0.6,
-      }));
-      const goldGlow = trackMat(new THREE.MeshStandardMaterial({
-        color: 0xf59e0b,
-        emissive: 0xf59e0b,
-        emissiveIntensity: 1.4,
-      }));
-      dynamicElements.pulseMaterials.push(goldGlow);
-
-      for (let i = 0; i < 16; i += 1) {
-        const a = (i / 16) * Math.PI;
-        const rib = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(23.2, 0.24, 6, 32, Math.PI)), ribMat);
-        rib.scale.set(1.12, 0.71, 1.12);
-        rib.position.set(0, 1.0, -1.5);
-        rib.rotation.y = a;
-        group.add(rib);
-      }
-
-      // Warm central Big Dome chandelier / scoreboard truss ring
-      const oculus = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(5.6, 0.32, 10, 32)), goldGlow);
-      oculus.rotation.x = Math.PI * 0.5;
-      oculus.position.set(0, 15.8, -1.5);
-      group.add(oculus);
-      dynamicElements.rotatingRings.push(oculus);
-
-      // Tight, high-energy classic bowl seating
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 16.5,
-        radiusZ: 14,
-        tiers: 3,
-        lightstickPalette: [0xf59e0b, 0xfde68a, 0xfb923c, 0xffffff],
-        seatColor: 0x24160e,
+      addDistantCitySkyline(group, disposables, {
+        count: 88,
+        minRadius: 138,
+        maxRadius: 275,
+        minHeight: 22,
+        maxHeight: 78,
+        accentHex: 0x06b6d4,
+        baseColor: 0x091224,
+        skipRearOceanArc: true,
       });
-      break;
-    }
-
-    /* 4. UP SUNKEN GARDEN (Quezon City, PH) */
-    case 'up-sunken-garden': {
-      addSkyDome(group, disposables, '#080c24', '#161b40', '#31234a', true);
-      addOutdoorGround(group, disposables, 0x0f2414);
-
-      // Lush surrounding multi-part Acacia tree silhouettes ringing the sunken field
-      const trunkMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x1e1612, roughness: 0.92 }));
-      const canopyMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x0c2114, roughness: 0.88 }));
-
-      const treePositions = [
-        { x: -16, z: -12, s: 1.3 }, { x: -11, z: -15, s: 1.15 }, { x: -5, z: -17, s: 1.2 },
-        { x: 6, z: -17, s: 1.25 }, { x: 12, z: -15, s: 1.1 }, { x: 17, z: -11, s: 1.35 },
-        { x: -19, z: -4, s: 1.2 }, { x: 19, z: -4, s: 1.25 },
-        { x: -18, z: 4, s: 1.05 }, { x: 18, z: 4, s: 1.05 },
-      ];
-      treePositions.forEach((tp) => {
-        const tree = new THREE.Group();
-        const trunk = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.42, 0.68, 5.2, 8)), trunkMat);
-        trunk.position.y = 2.6;
-        // Wide umbrella Acacia canopy built from 3 overlapping organic tiers
-        const c1 = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(3.4, 10, 8)), canopyMat);
-        c1.scale.set(1.45, 0.56, 1.35);
-        c1.position.set(0, 5.8, 0);
-        const c2 = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(2.5, 9, 7)), canopyMat);
-        c2.scale.set(1.3, 0.55, 1.2);
-        c2.position.set(-1.6, 5.1, 0.7);
-        const c3 = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(2.4, 9, 7)), canopyMat);
-        c3.scale.set(1.25, 0.55, 1.2);
-        c3.position.set(1.7, 5.2, -0.5);
-        tree.add(trunk, c1, c2, c3);
-        tree.position.set(tp.x, -1.2, tp.z);
-        tree.scale.setScalar(tp.s);
-        group.add(tree);
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 66,
+        centerZ: 5,
+        colors: [0x06b6d4, 0x38bdf8, 0xe0f2fe],
       });
 
-      // Warm college-fair festival string lights arching across the open grass field!
-      const cableMat = trackMat(new THREE.MeshBasicMaterial({ color: 0x334155 }));
-      const bulbGeo = trackGeo(new THREE.SphereGeometry(0.14, 6, 6));
-      const bulbMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfef08a }));
-      const bulbPositions = [];
-
-      [[-15, -6, 15, -6, 9.2], [-16, 2, 16, 2, 8.2]].forEach(([x1, z1, x2, z2, h]) => {
-        const curve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(x1, h, z1),
-          new THREE.Vector3(0, h - 2.3, z1),
-          new THREE.Vector3(x2, h, z2),
-        ]);
-        const cable = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(curve, 20, 0.03, 4, false)), cableMat);
-        group.add(cable);
-        for (let b = 1; b < 15; b += 1) {
-          bulbPositions.push(curve.getPoint(b / 15));
+      venueTick = (dt, t) => {
+        bayOcean.uniforms.uTime.value = t;
+        wheelGroup.rotation.z += dt * 0.14;
+        for (let g = 0; g < gondolas.length; g += 1) {
+          gondolas[g].rotation.z = -wheelGroup.rotation.z;
         }
-      });
+      };
 
-      const bulbs = new THREE.InstancedMesh(bulbGeo, bulbMat, bulbPositions.length);
-      const dummy = new THREE.Object3D();
-      bulbPositions.forEach((pt, idx) => {
-        dummy.position.copy(pt);
-        dummy.position.y -= 0.14;
-        dummy.updateMatrix();
-        bulbs.setMatrixAt(idx, dummy.matrix);
-      });
-      bulbs.instanceMatrix.needsUpdate = true;
-      group.add(bulbs);
-
-      // Festival lawn crowd lightsticks
       dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 17,
-        radiusZ: 15,
-        tiers: 2,
-        lightstickPalette: [0x4ade80, 0xfef08a, 0x38bdf8, 0xf472b6],
-        seatColor: 0x102817,
+        venueName: 'MOA ARENA MANILA BAY',
+        radiusX: 34,
+        radiusZ: 31,
+        centerZ: 5.0,
+        tiers: 3,
+        lightstickPalette: overlayMeta.laserColors || [0x06b6d4, 0x38bdf8, 0xe0f2fe, 0x3b82f6],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
       });
       break;
     }
 
-    /* 5. INTRAMUROS OPEN GROUNDS (Manila, PH) */
-    case 'intramuros': {
-      addSkyDome(group, disposables, '#060712', '#121024', '#2c1b1e', true);
-      addOutdoorGround(group, disposables, 0x1c1714);
-
-      const stoneTex = trackTex(createStoneTexture());
-      const stoneMat = trackMat(new THREE.MeshStandardMaterial({
-        map: stoneTex,
-        roughness: 0.9,
-        metalness: 0.05,
-      }));
-      const warmLampMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0xfdba74,
-        emissive: 0xf97316,
-        emissiveIntensity: 1.6,
-      }));
-      dynamicElements.pulseMaterials.push(warmLampMat);
-
-      // Spanish-era Fortification Wall Battlements wrapping behind & beside the stage
-      const wallSpecs = [
-        { x: 0, z: -13.5, w: 34, h: 6.2, d: 2.2, rotY: 0 },
-        { x: -16.5, z: -3.5, w: 22, h: 5.8, d: 2.2, rotY: Math.PI * 0.5 },
-        { x: 16.5, z: -3.5, w: 22, h: 5.8, d: 2.2, rotY: Math.PI * 0.5 },
-      ];
-      wallSpecs.forEach((ws) => {
-        const wall = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(ws.w, ws.h, ws.d)), stoneMat);
-        wall.position.set(ws.x, ws.h * 0.5 - 1.2, ws.z);
-        wall.rotation.y = ws.rotY;
-        group.add(wall);
-
-        // Crenellated merlons along top of the stone walls
-        const merlonCount = Math.floor(ws.w / 2.2);
-        for (let m = 0; m < merlonCount; m += 1) {
-          const offset = -ws.w * 0.5 + 1.1 + m * 2.2;
-          const merlon = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.2, 1.05, 1.9)), stoneMat);
-          if (ws.rotY === 0) {
-            merlon.position.set(ws.x + offset, ws.h - 0.7, ws.z);
-          } else {
-            merlon.position.set(ws.x, ws.h - 0.7, ws.z + offset);
-            merlon.rotation.y = ws.rotY;
-          }
-          group.add(merlon);
-        }
-      });
-
-      // Iconic Garita (Spanish sentinel stone watchtowers) at both corners
-      [-15.6, 15.6].forEach((gx) => {
-        const garita = new THREE.Group();
-        const base = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.5, 1.7, 7.6, 10)), stoneMat);
-        base.position.y = 2.6;
-        const cupola = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.75, 2.4, 10)), stoneMat);
-        cupola.position.y = 7.6;
-        const lantern = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.6, 0.85, 0.6)), warmLampMat);
-        lantern.position.set(0, 5.8, 1.4);
-        garita.add(base, cupola, lantern);
-        garita.position.set(gx, 0, -12.8);
-        group.add(garita);
-      });
-
-      // Warm heritage stone uplights along the rear wall
-      [-10, -5, 0, 5, 10].forEach((lx) => {
-        const uplight = new THREE.PointLight(0xfb923c, 16, 14, 1.5);
-        uplight.position.set(lx, 0.8, -11.4);
-        group.add(uplight);
-      });
-      break;
-    }
-
-    /* 6. TOKYO DOME (Tokyo, Japan) */
-    case 'tokyo-dome': {
-      // Iconic white air-supported pressurized Teflon membrane roof
-      const memMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0xdbeafe,
-        emissive: 0x1e293b,
-        emissiveIntensity: 0.45,
-        roughness: 0.65,
-        metalness: 0.08,
-        side: THREE.BackSide,
-      }));
-      const roofGeo = trackGeo(new THREE.SphereGeometry(32, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.44));
-      const roof = new THREE.Mesh(roofGeo, memMat);
-      roof.scale.set(1.18, 0.56, 1.12);
-      roof.position.set(0, 3.2, -1);
-      group.add(roof);
-
-      // Signature Tokyo Dome diagonal cable grid across the bright membrane roof
-      const wireGeo = trackGeo(new THREE.WireframeGeometry(roofGeo));
-      const wireMat = trackMat(new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.48 }));
-      const grid = new THREE.LineSegments(wireGeo, wireMat);
-      grid.scale.copy(roof.scale).multiplyScalar(0.992);
-      grid.position.copy(roof.position);
-      group.add(grid);
-
-      // Sleek sci-fi LED banner wall behind stage
-      const tdTex = trackTex(createLedScreenTexture('TOKYO DOME', '#7c3aed', 'rgba(34,211,238,0.5)'));
-      const tdMat = trackMat(new THREE.MeshBasicMaterial({ map: tdTex }));
-      const backScreen = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(16, 6.4)), tdMat);
-      backScreen.position.set(0, 5.4, -7.8);
-      group.add(backScreen);
-
-      // Synchronized ocean of colorful concert penlights in multi-tier bowls!
-      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 21,
-        radiusZ: 18,
-        tiers: 4,
-        lightstickPalette: [0xe879f9, 0x38bdf8, 0x4ade80, 0xfacc15, 0xf43f5e, 0xffffff],
-        includeBackTiers: true,
-        seatColor: 0x0d1226,
-      });
-      break;
-    }
-
-    /* 7. WEMBLEY STADIUM (London, UK) */
+    /* ======================================================================
+       3. WEMBLEY STADIUM (133m Arch + Suspension Cables + Olympic Way + London Skyline)
+       ====================================================================== */
     case 'wembley': {
-      addSkyDome(group, disposables, '#040712', '#0b142c', '#182442', true);
+      addSkyDome(group, disposables, '#040712', '#0b142c', '#182442', true, dynamicElements);
       addOutdoorGround(group, disposables, 0x0b1a12);
 
-      // Iconic towering illuminated WEMBLEY ARCH spanning across the stadium night sky!
+      // Iconic Illuminated 133m Wembley Arch canted dramatically with steel suspension cables
       const archCurve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(-28, -1, -11),
-        new THREE.Vector3(-19, 13, -12),
-        new THREE.Vector3(0, 21.5, -13),
-        new THREE.Vector3(19, 13, -12),
-        new THREE.Vector3(28, -1, -11),
+        new THREE.Vector3(-56, -2.2, -16),
+        new THREE.Vector3(-38, 28, -20),
+        new THREE.Vector3(0, 46, -24),
+        new THREE.Vector3(38, 28, -20),
+        new THREE.Vector3(56, -2.2, -16),
       ]);
       const archGlowMat = trackMat(new THREE.MeshStandardMaterial({
         color: 0xf8fafc,
         emissive: 0xef4444,
-        emissiveIntensity: 1.35,
-        roughness: 0.25,
+        emissiveIntensity: 1.5,
+        roughness: 0.22,
         metalness: 0.65,
       }));
       dynamicElements.pulseMaterials.push(archGlowMat);
 
-      const archMain = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(archCurve, 44, 0.72, 10, false)), archGlowMat);
+      const archMain = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(archCurve, 56, 1.05, 10, false)), archGlowMat);
       group.add(archMain);
 
-      // Steel truss lattice ring accents along the arch
       const ringMat = trackMat(new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.85, roughness: 0.25 }));
-      for (let i = 2; i <= 14; i += 1) {
-        const pt = archCurve.getPoint(i / 16);
-        const tan = archCurve.getTangent(i / 16);
-        const ribRing = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.95, 0.1, 6, 12)), ringMat);
+      const cableMat = trackMat(new THREE.MeshBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.62 }));
+      const cableGeo = trackGeo(new THREE.CylinderGeometry(0.06, 0.06, 1, 5));
+
+      for (let i = 2; i <= 20; i += 1) {
+        const u = i / 22;
+        const pt = archCurve.getPoint(u);
+        const tan = archCurve.getTangent(u);
+        const ribRing = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(1.36, 0.14, 6, 12)), ringMat);
         ribRing.position.copy(pt);
         ribRing.lookAt(pt.clone().add(tan));
         group.add(ribRing);
+
+        // Diagonal suspension cables anchoring arch down to stadium roof deck
+        const anchorPt = new THREE.Vector3(pt.x * 0.86, 20.5, -24.5);
+        const midPt = pt.clone().lerp(anchorPt, 0.5);
+        const len = pt.distanceTo(anchorPt);
+        const cable = new THREE.Mesh(cableGeo, cableMat);
+        cable.position.copy(midPt);
+        cable.scale.set(1, len, 1);
+        cable.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), anchorPt.clone().sub(pt).normalize());
+        group.add(cable);
       }
 
-      // Massive multi-tier stadium stands
+      // Olympic Way Illuminated Pedestrian Promenade & London Landmarks (The Shard + London Eye)
+      const olyRoad = new THREE.Mesh(
+        trackGeo(new THREE.BoxGeometry(20, 0.24, 150)),
+        trackMat(new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.72 }))
+      );
+      olyRoad.position.set(0, -2.14, -108);
+      group.add(olyRoad);
+      for (let p = 0; p < 10; p += 1) {
+        const pz = -56 - p * 12;
+        [-10.5, 10.5].forEach((px) => {
+          const bollard = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.65, 3.2, 0.65)), archGlowMat);
+          bollard.position.set(px, -0.5, pz);
+          group.add(bollard);
+        });
+      }
+
+      const shardMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xbae6fd,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 0.72,
+        roughness: 0.16,
+        metalness: 0.85,
+      }));
+      const shard = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(13, 106, 4)), shardMat);
+      shard.position.set(84, 51, -198);
+      group.add(shard);
+
+      const londonEye = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(26, 0.75, 8, 44)), shardMat);
+      londonEye.position.set(-86, 32, -182);
+      group.add(londonEye);
+
+      addDistantCitySkyline(group, disposables, {
+        count: 96,
+        minRadius: 148,
+        maxRadius: 290,
+        minHeight: 20,
+        maxHeight: 72,
+        accentHex: 0xef4444,
+        baseColor: 0x0c1322,
+      });
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 68,
+        centerZ: 5,
+        colors: [0xef4444, 0xf8fafc, 0x38bdf8],
+      });
+
+      venueTick = (dt) => {
+        londonEye.rotation.z += dt * 0.08;
+      };
+
       dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 22,
-        radiusZ: 20,
+        venueName: 'WEMBLEY STADIUM LONDON',
+        radiusX: 35,
+        radiusZ: 32,
+        centerZ: 5.0,
         tiers: 4,
-        lightstickPalette: [0xef4444, 0xf8fafc, 0x38bdf8, 0xfacc15],
-        includeBackTiers: true,
-        seatColor: 0x161b2a,
+        lightstickPalette: overlayMeta.laserColors || [0xef4444, 0xf8fafc, 0x38bdf8, 0xfacc15],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
       });
       break;
     }
 
-    /* 8. RED ROCKS AMPHITHEATRE (Colorado, USA) */
-    case 'red-rocks': {
-      addSkyDome(group, disposables, '#050410', '#120b24', '#33161f', true);
-      addOutdoorGround(group, disposables, 0x26130d);
-
-      const rockMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x8a341c,
-        roughness: 0.92,
-        metalness: 0.04,
-        flatShading: true,
-      }));
-      const rockDarkMat = trackMat(new THREE.MeshStandardMaterial({
-        color: 0x5c2214,
-        roughness: 0.95,
-        metalness: 0.04,
-        flatShading: true,
-      }));
-
-      // Towering angled Red Sandstone Monoliths flanking stage left (Creation Rock) & stage right (Ship Rock)
-      const rockSpecs = [
-        // Stage Left giant tilted slab + stepped outcrops
-        { x: -12.5, y: 5.5, z: -4.5, sx: 6.5, sy: 16.5, sz: 11, rz: -0.26, mat: rockMat },
-        { x: -16.8, y: 7.2, z: -11, sx: 8.0, sy: 20.0, sz: 12, rz: -0.22, mat: rockDarkMat },
-        { x: -11.5, y: 2.2, z: 3.0, sx: 5.2, sy: 8.5, sz: 7, rz: -0.18, mat: rockMat },
-        // Stage Right giant tilted slab + stepped outcrops
-        { x: 12.5, y: 5.8, z: -4.5, sx: 6.8, sy: 17.5, sz: 11, rz: 0.28, mat: rockMat },
-        { x: 17.2, y: 7.8, z: -11, sx: 8.4, sy: 21.0, sz: 12, rz: 0.24, mat: rockDarkMat },
-        { x: 11.8, y: 2.4, z: 3.2, sx: 5.0, sy: 8.8, sz: 7, rz: 0.2, mat: rockMat },
-        // Distant low canyon ridge behind the stage
-        { x: 0, y: 1.5, z: -17.5, sx: 22, sy: 6.5, sz: 5.5, rz: 0.04, mat: rockDarkMat },
-      ];
-      rockSpecs.forEach((rs) => {
-        const geo = trackGeo(new THREE.DodecahedronGeometry(1, 1));
-        const slab = new THREE.Mesh(geo, rs.mat);
-        slab.position.set(rs.x, rs.y, rs.z);
-        slab.scale.set(rs.sx * 0.52, rs.sy * 0.52, rs.sz * 0.52);
-        slab.rotation.z = rs.rz;
-        group.add(slab);
-      });
-
-      // Warm amber canyon uplights grazing the sandstone monolith walls
-      [-10.2, 10.2].forEach((ux) => {
-        const light = new THREE.PointLight(0xf97316, 36, 22, 1.3);
-        light.position.set(ux, 2.2, -3.5);
-        group.add(light);
-      });
-      break;
-    }
-
-    /* 9. MADISON SQUARE GARDEN (New York, USA) */
+    /* ======================================================================
+       4. MADISON SQUARE GARDEN (Penn Plaza Drum + Retractable Cable Roof + NYC Times Square & ESB)
+       ====================================================================== */
     case 'madison-square-garden': {
-      // Classic circular arena wall & ceiling
+      addSkyDome(group, disposables, '#050612', '#10122c', '#231f42', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x090a14);
+
       const cylMat = trackMat(new THREE.MeshStandardMaterial({
         color: 0x0d0d18,
         roughness: 0.72,
         metalness: 0.25,
-        side: THREE.BackSide,
+        side: THREE.DoubleSide,
       }));
-      const arenaCyl = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(23, 22, 19, 32, 1, true)), cylMat);
-      arenaCyl.position.set(0, 8, -1);
-      group.add(arenaCyl);
-
-      // Iconic Circular Overhead Ceiling Truss Rig with radial spokes
       const trussSteel = trackMat(new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.35, metalness: 0.85 }));
       const accentRingMat = trackMat(new THREE.MeshStandardMaterial({
         color: 0x818cf8,
         emissive: 0x6366f1,
-        emissiveIntensity: 1.4,
+        emissiveIntensity: 1.5,
       }));
       dynamicElements.pulseMaterials.push(accentRingMat);
 
+      // Exterior Penn Plaza Ribbed Concrete Drum + Illuminated Marquee Ring
+      const marqueeHalo = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(55, 0.7, 8, 60)), accentRingMat);
+      marqueeHalo.rotation.x = Math.PI * 0.5;
+      marqueeHalo.position.set(0, 14, 5);
+      group.add(marqueeHalo);
+
+      // Retractable Cable-Net Roof Halves
+      [-1, 1].forEach((side) => {
+        const roofPanel = new THREE.Group();
+        roofPanel.position.set(0, 22, 4);
+        const startTheta = side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+        const capHalf = new THREE.Mesh(
+          trackGeo(new THREE.ConeGeometry(49, 7, 36, 1, false, startTheta, Math.PI)),
+          cylMat
+        );
+        capHalf.position.y = 3.5;
+        roofPanel.add(capHalf);
+        group.add(markRetractable(roofPanel, { openOffsetY: 14, slideDirX: side * 44 }));
+      });
+
       const rigGroup = new THREE.Group();
-      rigGroup.position.set(0, 12.6, -1.2);
-      [5.5, 11.2, 17.5].forEach((r, idx) => {
+      rigGroup.position.set(0, 19.5, 2);
+      [8.0, 16.5, 24.5].forEach((r, idx) => {
         const ring = new THREE.Mesh(
-          trackGeo(new THREE.TorusGeometry(r, idx === 1 ? 0.34 : 0.22, 8, 40)),
+          trackGeo(new THREE.TorusGeometry(r, idx === 1 ? 0.38 : 0.26, 8, 44)),
           idx === 1 ? accentRingMat : trussSteel
         );
         ring.rotation.x = Math.PI * 0.5;
@@ -1937,106 +2841,763 @@ export function buildVenueEnvironment(venueId) {
       });
       for (let i = 0; i < 12; i += 1) {
         const a = (i / 12) * Math.PI * 2;
-        const spoke = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.24, 0.28, 17.5)), trussSteel);
-        spoke.position.set(Math.sin(a) * 8.75, 0, Math.cos(a) * 8.75);
+        const spoke = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.28, 0.32, 24.5)), trussSteel);
+        spoke.position.set(Math.sin(a) * 12.25, 0, Math.cos(a) * 12.25);
         spoke.rotation.y = a;
         rigGroup.add(spoke);
       }
-      group.add(rigGroup);
+      group.add(markRetractable(rigGroup, { openOffsetY: 26 }));
       dynamicElements.rotatingRings.push(rigGroup);
 
-      // Dramatic vertical arena spotlight shafts descending from circular rig
-      const shaftMat = trackMat(new THREE.MeshBasicMaterial({
-        color: 0xa5b4fc,
-        transparent: true,
-        opacity: 0.065,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-      }));
-      [-9, -4.5, 4.5, 9].forEach((sx) => {
-        const shaft = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.45, 1.85, 13.5, 12, 1, true)), shaftMat);
-        shaft.position.set(sx, 6.2, -4.8);
-        group.add(shaft);
+      // Midtown Manhattan Skyline + Times Square Glowing Neon Billboard Towers + Empire State Building
+      addDistantCitySkyline(group, disposables, {
+        count: 136,
+        minRadius: 112,
+        maxRadius: 270,
+        minHeight: 38,
+        maxHeight: 112,
+        accentHex: 0x818cf8,
+        baseColor: 0x0b0e1e,
+        warmBias: true,
+      });
+
+      const tsColors = [0xf43f5e, 0x22d3ee, 0xfacc15, 0xa855f7];
+      for (let b = 0; b < 6; b += 1) {
+        const bx = -72 + b * 28;
+        const bz = -112 - (b % 2) * 18;
+        const tsMat = trackMat(new THREE.MeshBasicMaterial({ color: tsColors[b % tsColors.length] }));
+        const panel = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(10, 22, 1.2)), tsMat);
+        panel.position.set(bx, 28 + (b % 3) * 8, bz);
+        group.add(panel);
+      }
+
+      const esbGroup = new THREE.Group();
+      esbGroup.position.set(-54, -2.2, -162);
+      const esbLower = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(20, 62, 18)), trussSteel);
+      esbLower.position.y = 31;
+      const esbMid = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(13, 36, 13)), trussSteel);
+      esbMid.position.y = 78;
+      const esbCrown = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.1, 4.8, 28, 8)), accentRingMat);
+      esbCrown.position.y = 109;
+      esbGroup.add(esbLower, esbMid, esbCrown);
+      group.add(esbGroup);
+
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 66,
+        centerZ: 5,
+        colors: [0x818cf8, 0xf43f5e, 0xfacc15],
       });
 
       dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
-        radiusX: 19,
-        radiusZ: 17,
+        venueName: 'MADISON SQUARE GARDEN NYC',
+        radiusX: 34,
+        radiusZ: 31,
+        centerZ: 5.0,
         tiers: 3,
-        lightstickPalette: [0x818cf8, 0xf8fafc, 0xf43f5e, 0xfacc15],
-        seatColor: 0x131222,
+        lightstickPalette: overlayMeta.laserColors || [0x818cf8, 0xf8fafc, 0xf43f5e, 0xfacc15],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
       });
       break;
     }
 
-    /* 10. COACHELLA MAIN STAGE (California, USA) */
-    case 'coachella': {
-      // Iconic California desert sunset-to-night gradient sky dome
-      addSkyDome(group, disposables, '#0c0824', '#3b1548', '#d95b59', true);
-      addOutdoorGround(group, disposables, 0x261a14);
+    /* ======================================================================
+       5. TOKYO DOME (Quilted Big Egg + Animated Thunder Dolphin Coaster + Big-O + Skytree)
+       ====================================================================== */
+    case 'tokyo-dome': {
+      addSkyDome(group, disposables, '#040618', '#0e1738', '#1e2b58', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x090e1c);
 
-      // Massive ultra-wide desert festival curved LED mega-backdrop
-      const coaTex = trackTex(createLedScreenTexture('COACHELLA VALLEY', '#be185d', 'rgba(251,146,60,0.5)'));
-      const coaMat = trackMat(new THREE.MeshBasicMaterial({ map: coaTex }));
-      const backdrop = new THREE.Mesh(
-        trackGeo(new THREE.CylinderGeometry(18, 18, 7.6, 28, 1, true, Math.PI * 0.72, Math.PI * 0.56)),
-        coaMat
-      );
-      backdrop.material.side = THREE.DoubleSide;
-      backdrop.position.set(0, 4.4, 7.5);
-      group.add(backdrop);
-
-      // Towering stacked festival line-array speaker towers flanking both wings
-      const towerMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5, metalness: 0.72 }));
-      const neonPink = trackMat(new THREE.MeshStandardMaterial({
-        color: 0xf472b6,
-        emissive: 0xf472b6,
-        emissiveIntensity: 1.6,
+      const memMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xdbeafe,
+        emissive: 0x1e293b,
+        emissiveIntensity: 0.45,
+        roughness: 0.62,
+        metalness: 0.08,
+        side: THREE.DoubleSide,
       }));
-      dynamicElements.pulseMaterials.push(neonPink);
+      const wireMat = trackMat(new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.55 }));
 
-      [-10.5, 10.5].forEach((tx) => {
-        const tower = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.6, 11.5, 1.4)), towerMat);
-        tower.position.set(tx, 4.6, -3.2);
-        const strip = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.16, 10.6, 1.48)), neonPink);
-        strip.position.set(tx, 4.6, -3.2);
-        group.add(tower, strip);
+      // Split Big Egg pressurized membrane shell
+      [-1, 1].forEach((side) => {
+        const eggHalf = new THREE.Group();
+        eggHalf.position.set(0, 4.5, 4);
+        const startTheta = side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+        const roofGeo = trackGeo(new THREE.SphereGeometry(52, 24, 14, startTheta, Math.PI, 0, Math.PI * 0.46));
+        const roof = new THREE.Mesh(roofGeo, memMat);
+        roof.scale.set(1.22, 0.58, 1.14);
+        const wireGeo = trackGeo(new THREE.WireframeGeometry(roofGeo));
+        const grid = new THREE.LineSegments(wireGeo, wireMat);
+        grid.scale.copy(roof.scale).multiplyScalar(0.992);
+        eggHalf.add(roof, grid);
+        group.add(markRetractable(eggHalf, { openOffsetY: 14, slideDirX: side * 44 }));
       });
 
-      // Desert Palm Tree Silhouettes framing the festival horizon!
-      const palmTrunkMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x1a1016, roughness: 0.9 }));
-      const palmFrondMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x120b14, roughness: 0.85, side: THREE.DoubleSide }));
+      const tdTex = trackTex(createLedScreenTexture('TOKYO DOME', '#7c3aed', 'rgba(34,211,238,0.5)'));
+      const tdMat = trackMat(new THREE.MeshBasicMaterial({ map: tdTex }));
+      [-18.2, 18.2].forEach((sx) => {
+        const wingScreen = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(7.2, 4.0)), tdMat);
+        wingScreen.position.set(sx, 7.2, -3.5);
+        wingScreen.rotation.y = sx < 0 ? 0.36 : -0.36;
+        group.add(wingScreen);
+      });
+
+      const neonViolet = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xc084fc,
+        emissive: 0xa855f7,
+        emissiveIntensity: 1.5,
+      }));
+      const neonCyan = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x22d3ee,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.65,
+      }));
+      dynamicElements.pulseMaterials.push(neonViolet, neonCyan);
+
+      // Hubless Big-O Ferris Wheel
+      const bigO = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(22, 1.05, 10, 44)), neonViolet);
+      bigO.position.set(-64, 26, -78);
+      group.add(bigO);
+
+      // Thunder Dolphin Roller Coaster curving through Tokyo Dome City + racing animated train!
+      const coasterCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-105, 6, -92),
+        new THREE.Vector3(-64, 26, -78),
+        new THREE.Vector3(-18, 42, -108),
+        new THREE.Vector3(38, 18, -94),
+        new THREE.Vector3(82, 34, -112),
+        new THREE.Vector3(115, 8, -88),
+      ]);
+      const coasterTrack = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(coasterCurve, 64, 0.68, 8, false)), neonCyan);
+      group.add(coasterTrack);
+      const coasterTrain = new THREE.Mesh(
+        trackGeo(new THREE.BoxGeometry(3.8, 1.2, 1.4)),
+        trackMat(new THREE.MeshBasicMaterial({ color: 0xfef08a }))
+      );
+      group.add(coasterTrain);
+
+      // Tokyo Skytree illuminated needle tower
+      const skytree = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.1, 8.2, 128, 10)), neonViolet);
+      skytree.position.set(74, 62, -190);
+      group.add(skytree);
+
+      addDistantCitySkyline(group, disposables, {
+        count: 108,
+        minRadius: 124,
+        maxRadius: 270,
+        minHeight: 26,
+        maxHeight: 92,
+        accentHex: 0xc084fc,
+        baseColor: 0x0b1024,
+      });
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 66,
+        centerZ: 5,
+        colors: [0xe879f9, 0x22d3ee, 0x38bdf8],
+      });
+
+      const _trainPt = new THREE.Vector3();
+      const _trainTan = new THREE.Vector3();
+      venueTick = (_dt, t) => {
+        const u = (t * 0.14) % 1;
+        coasterCurve.getPointAt(u, _trainPt);
+        coasterCurve.getTangentAt(u, _trainTan);
+        coasterTrain.position.copy(_trainPt);
+        coasterTrain.lookAt(_trainPt.clone().add(_trainTan));
+      };
+
+      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
+        venueName: 'TOKYO DOME CITY LIVE',
+        radiusX: 34,
+        radiusZ: 31,
+        centerZ: 5.0,
+        tiers: 4,
+        lightstickPalette: overlayMeta.laserColors || [0xe879f9, 0x38bdf8, 0x4ade80, 0xfacc15, 0xf43f5e, 0xffffff],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
+      });
+      break;
+    }
+
+    /* ======================================================================
+       6. RED ROCKS AMPHITHEATRE (Stratified Creation & Ship Rock + Canyon Pines + Denver Lights)
+       ====================================================================== */
+    case 'red-rocks': {
+      addSkyDome(group, disposables, '#050410', '#120b24', '#33161f', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x24120c);
+
+      const sandstoneTex = trackTex(createSandstoneTexture());
+      const rockMat = trackMat(new THREE.MeshStandardMaterial({
+        map: sandstoneTex,
+        color: 0xb94d2c,
+        roughness: 0.9,
+        metalness: 0.04,
+        flatShading: true,
+      }));
+      const rockDarkMat = trackMat(new THREE.MeshStandardMaterial({
+        map: sandstoneTex,
+        color: 0x7c2d19,
+        roughness: 0.94,
+        metalness: 0.04,
+        flatShading: true,
+      }));
+
+      // Stratified Ship Rock & Creation Rock Sandstone Monoliths flanking outside stage (|x| >= 19.5)
+      [
+        { x: -20.5, y: 7.5, z: -4.5, sx: 9.2, sy: 24.5, sz: 14, rz: -0.24, mat: rockMat },
+        { x: -26.5, y: 10.5, z: -14, sx: 11.5, sy: 29.0, sz: 16, rz: -0.2, mat: rockDarkMat },
+        { x: 20.5, y: 7.8, z: -4.5, sx: 9.4, sy: 25.0, sz: 14, rz: 0.24, mat: rockMat },
+        { x: 26.8, y: 10.8, z: -14, sx: 11.8, sy: 30.0, sz: 16, rz: 0.22, mat: rockDarkMat },
+        { x: 0, y: 1.8, z: -26.5, sx: 32, sy: 9.5, sz: 8.5, rz: 0.04, mat: rockDarkMat },
+      ].forEach((rs) => {
+        const slabGeo = trackGeo(new THREE.DodecahedronGeometry(1, 1));
+        const slab = new THREE.Mesh(slabGeo, rs.mat);
+        slab.position.set(rs.x, rs.y, rs.z);
+        slab.scale.set(rs.sx * 0.56, rs.sy * 0.56, rs.sz * 0.56);
+        slab.rotation.z = rs.rz;
+        group.add(slab);
+      });
+
+      const ridgeGeo = trackGeo(new THREE.DodecahedronGeometry(1, 1));
+      const ridges = new THREE.InstancedMesh(ridgeGeo, rockDarkMat, 48);
+      const rDummy = new THREE.Object3D();
+      for (let i = 0; i < 48; i += 1) {
+        const ang = (i / 48) * Math.PI * 2;
+        const r = 112 + (i % 5) * 32;
+        rDummy.position.set(Math.cos(ang) * r, 4 + (i % 4) * 5, Math.sin(ang) * r);
+        rDummy.rotation.set(0, ang, (i % 2 === 0 ? 1 : -1) * 0.18);
+        rDummy.scale.set(26 + (i % 3) * 9, 16 + (i % 5) * 7, 18);
+        rDummy.updateMatrix();
+        ridges.setMatrixAt(i, rDummy.matrix);
+      }
+      ridges.instanceMatrix.needsUpdate = true;
+      group.add(ridges);
+
+      addInstancedFoliageRing(group, disposables, {
+        count: 68,
+        minRadius: 56,
+        maxRadius: 120,
+        centerZ: 5,
+        canopyColor: 0x0f3b26,
+        isPine: true,
+      });
+
+      addDistantCitySkyline(group, disposables, {
+        count: 42,
+        minRadius: 210,
+        maxRadius: 270,
+        minHeight: 14,
+        maxHeight: 34,
+        accentHex: 0xf97316,
+        baseColor: 0x160e12,
+        warmBias: true,
+      });
+
+      [-18.2, 18.2].forEach((ux) => {
+        const light = new THREE.PointLight(0xf97316, 48, 34, 1.25);
+        light.position.set(ux, 2.5, -3.5);
+        group.add(light);
+      });
+
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 62,
+        centerZ: 5,
+        colors: [0xf97316, 0xfacc15, 0xf43f5e],
+      });
+
+      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
+        venueName: 'RED ROCKS COLORADO',
+        radiusX: 34,
+        radiusZ: 31,
+        centerZ: 5.0,
+        tiers: 3,
+        lightstickPalette: overlayMeta.laserColors || [0xf97316, 0xfacc15, 0xf43f5e, 0xffffff],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        exteriorWall: false,
+        perimeterCatwalk: false,
+        dynamicElements,
+      });
+      break;
+    }
+
+    /* ======================================================================
+       7. MARACANÃ STADIUM (Tensioned Canopy + Tijuca Hills + Christ the Redeemer + Sugarloaf)
+       ====================================================================== */
+    case 'maracana': {
+      addSkyDome(group, disposables, '#04091a', '#0a223a', '#15443c', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x0a1c14);
+
+      const canopyMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xe2e8f0,
+        emissive: 0x0f172a,
+        emissiveIntensity: 0.25,
+        roughness: 0.55,
+        metalness: 0.22,
+        side: THREE.DoubleSide,
+      }));
+      const goldTrimMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        emissive: 0xeab308,
+        emissiveIntensity: 1.35,
+        roughness: 0.24,
+      }));
+      dynamicElements.pulseMaterials.push(goldTrimMat);
+
+      const ringCanopy = new THREE.Mesh(trackGeo(new THREE.RingGeometry(29, 49, 60)), canopyMat);
+      ringCanopy.rotation.x = -Math.PI * 0.5;
+      ringCanopy.scale.set(1.16, 1.04, 1);
+      ringCanopy.position.set(0, 19.5, 5.0);
+      group.add(markRetractable(ringCanopy, { openOffsetY: 24 }));
+
+      const tensionHalo = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(29.2, 0.36, 8, 60)), goldTrimMat);
+      tensionHalo.rotation.x = Math.PI * 0.5;
+      tensionHalo.scale.set(1.16, 1.04, 1);
+      tensionHalo.position.set(0, 19.3, 5.0);
+      group.add(markRetractable(tensionHalo, { openOffsetY: 24 }));
+
+      const hillMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x0f2e22,
+        roughness: 0.9,
+        flatShading: true,
+      }));
+      const sugarloaf = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(30, 82, 9)), hillMat);
+      sugarloaf.position.set(88, 38, -200);
+      const corcovado = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(38, 96, 10)), hillMat);
+      corcovado.position.set(-76, 45, -208);
+
+      const statueGlowMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xfef9c3,
+        emissive: 0xfacc15,
+        emissiveIntensity: 1.1,
+        roughness: 0.35,
+      }));
+      const statueBody = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.4, 1.8, 15, 8)), statueGlowMat);
+      statueBody.position.set(-76, 99, -208);
+      const statueHead = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(1.5, 8, 8)), statueGlowMat);
+      statueHead.position.set(-76, 107.5, -208);
+      const statueArms = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(14, 1.8, 1.4)), statueGlowMat);
+      statueArms.position.set(-76, 103.5, -208);
+      group.add(sugarloaf, corcovado, statueBody, statueHead, statueArms);
+
+      const bay = createAnimatedOcean(group, disposables, {
+        width: 480,
+        depth: 180,
+        x: 110,
+        y: -2.08,
+        z: -240,
+        color: 0x064e3b,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.24,
+      });
+
+      addInstancedFoliageRing(group, disposables, { count: 44, minRadius: 72, maxRadius: 118, centerZ: 5, canopyColor: 0x15803d });
+      addDistantCitySkyline(group, disposables, {
+        count: 82,
+        minRadius: 148,
+        maxRadius: 270,
+        minHeight: 18,
+        maxHeight: 64,
+        accentHex: 0x22c55e,
+        baseColor: 0x091614,
+      });
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 68,
+        centerZ: 5,
+        colors: [0x22c55e, 0xfacc15, 0x38bdf8],
+      });
+
+      venueTick = (_dt, t) => {
+        bay.uniforms.uTime.value = t;
+      };
+
+      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
+        venueName: 'MARACANÃ RIO DE JANEIRO',
+        radiusX: 35,
+        radiusZ: 32,
+        centerZ: 5.0,
+        tiers: 4,
+        lightstickPalette: overlayMeta.laserColors || [0x22c55e, 0xfacc15, 0x38bdf8, 0xf8fafc],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
+      });
+      break;
+    }
+
+    /* ======================================================================
+       8. SYDNEY HARBOUR STAGE (Waves + Multi-Shell Opera House + Lattice Steel Harbour Bridge)
+       ====================================================================== */
+    case 'sydney-harbour': {
+      addSkyDome(group, disposables, '#030818', '#0a1e42', '#173866', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x0a1324);
+
+      const harbourWater = createAnimatedOcean(group, disposables, {
+        width: 660,
+        depth: 360,
+        y: -2.06,
+        z: -205,
+        color: 0x0c4a6e,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.3,
+      });
+
+      // Harbour Bridge Steel Lattice Arch + Granite Pylons + Roadway
+      const bridgeMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.36, metalness: 0.85 }));
+      const deckMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6, metalness: 0.5 }));
+      const beaconGlow = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 1.65,
+      }));
+      dynamicElements.pulseMaterials.push(beaconGlow);
+
+      const upperArch = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-124, -1.5, -148),
+        new THREE.Vector3(-64, 38, -148),
+        new THREE.Vector3(0, 58, -148),
+        new THREE.Vector3(64, 38, -148),
+        new THREE.Vector3(124, -1.5, -148),
+      ]);
+      const lowerArch = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-124, -1.5, -148),
+        new THREE.Vector3(-64, 29, -148),
+        new THREE.Vector3(0, 44, -148),
+        new THREE.Vector3(64, 29, -148),
+        new THREE.Vector3(124, -1.5, -148),
+      ]);
+      group.add(
+        new THREE.Mesh(trackGeo(new THREE.TubeGeometry(upperArch, 48, 1.35, 8, false)), bridgeMat),
+        new THREE.Mesh(trackGeo(new THREE.TubeGeometry(lowerArch, 48, 1.2, 8, false)), bridgeMat)
+      );
+      const bridgeRoad = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(256, 2.0, 5.8)), deckMat);
+      bridgeRoad.position.set(0, 15, -148);
+      group.add(bridgeRoad);
+
+      const hangerGeo = trackGeo(new THREE.CylinderGeometry(0.18, 0.18, 1, 5));
+      for (let h = 2; h < 20; h += 1) {
+        const pt = lowerArch.getPoint(h / 22);
+        const hLen = Math.abs(pt.y - 15);
+        const hanger = new THREE.Mesh(hangerGeo, bridgeMat);
+        hanger.position.set(pt.x, (pt.y + 15) * 0.5, -148);
+        hanger.scale.set(1, Math.max(1, hLen), 1);
+        group.add(hanger);
+      }
+
+      [-126, 126].forEach((px) => {
+        const pylon = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(8.5, 48, 8.5)), deckMat);
+        pylon.position.set(px, 22, -148);
+        const cap = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(9.0, 1.6, 9.0)), beaconGlow);
+        cap.position.set(px, 46.5, -148);
+        group.add(pylon, cap);
+      });
+
+      // Multi-Cluster Illuminated Sydney Opera House Shells + Warm Golden Podium
+      const sailMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        emissive: 0x1e3a8a,
+        emissiveIntensity: 0.32,
+        roughness: 0.22,
+        metalness: 0.16,
+      }));
+      const podiumMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x334155,
+        emissive: 0xfbbf24,
+        emissiveIntensity: 0.22,
+      }));
+      const operaPodium = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(64, 4.5, 24)), podiumMat);
+      operaPodium.position.set(-72, 0.2, -96);
+      group.add(operaPodium);
 
       [
-        { x: -16.5, z: -8, h: 11.5, lean: 0.16 },
-        { x: -13.8, z: -12, h: 10.2, lean: -0.1 },
-        { x: -18.5, z: 0, h: 9.8, lean: 0.14 },
-        { x: 16.5, z: -8, h: 11.8, lean: -0.16 },
-        { x: 13.8, z: -12, h: 10.4, lean: 0.12 },
-        { x: 18.5, z: 0, h: 9.6, lean: -0.14 },
-      ].forEach((p) => {
-        const palm = new THREE.Group();
-        const curve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(p.lean * 4, p.h * 0.55, 0),
-          new THREE.Vector3(p.lean * 6, p.h, 0),
-        ]);
-        const trunk = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(curve, 12, 0.26, 6, false)), palmTrunkMat);
-        palm.add(trunk);
+        { x: -84, y: 12, z: -96, sx: 14, sy: 26, sz: 12, rz: -0.32 },
+        { x: -72, y: 14, z: -95, sx: 16, sy: 30, sz: 13, rz: -0.22 },
+        { x: -60, y: 10, z: -94, sx: 12, sy: 21, sz: 11, rz: -0.14 },
+        { x: -49, y: 8.5, z: -96, sx: 10, sy: 17, sz: 10, rz: 0.28 },
+        { x: 64, y: 11, z: -98, sx: 13, sy: 24, sz: 11, rz: 0.24 },
+      ].forEach((s) => {
+        const sail = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1, 1, 14, 1, false, 0, Math.PI)), sailMat);
+        sail.scale.set(s.sx, s.sy, s.sz);
+        sail.position.set(s.x, s.y, s.z);
+        sail.rotation.z = s.rz;
+        group.add(sail);
+      });
 
-        const crownPt = curve.getPoint(1);
-        for (let f = 0; f < 7; f += 1) {
-          const a = (f / 7) * Math.PI * 2;
-          const frond = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.65, 3.6, 4)), palmFrondMat);
-          frond.scale.set(1, 1, 0.2);
-          frond.position.set(crownPt.x + Math.cos(a) * 1.4, crownPt.y - 0.35, crownPt.z + Math.sin(a) * 1.4);
-          frond.rotation.z = -Math.cos(a) * 1.15;
-          frond.rotation.x = Math.sin(a) * 1.15;
-          palm.add(frond);
-        }
-        palm.position.set(p.x, -1.2, p.z);
-        group.add(palm);
+      addDistantCitySkyline(group, disposables, {
+        count: 92,
+        minRadius: 142,
+        maxRadius: 280,
+        minHeight: 24,
+        maxHeight: 86,
+        accentHex: 0x38bdf8,
+        baseColor: 0x0a1326,
+        skipRearOceanArc: true,
+      });
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 64,
+        centerZ: 5,
+        colors: [0x38bdf8, 0xfacc15, 0xf472b6],
+      });
+
+      venueTick = (_dt, t) => {
+        harbourWater.uniforms.uTime.value = t;
+      };
+
+      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
+        venueName: 'SYDNEY HARBOUR LIVE',
+        radiusX: 35,
+        radiusZ: 32,
+        centerZ: 5.0,
+        tiers: 3,
+        lightstickPalette: overlayMeta.laserColors || [0x38bdf8, 0xfacc15, 0xf472b6, 0xffffff],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        exteriorWall: false,
+        perimeterCatwalk: false,
+        dynamicElements,
+      });
+      break;
+    }
+
+    /* ======================================================================
+       9. STADE DE FRANCE (Floating Halo Canopy + 18 Stay-Cable Masts + Sparkling Eiffel Tower)
+       ====================================================================== */
+    case 'stade-de-france': {
+      addSkyDome(group, disposables, '#040615', '#0e1535', '#1e2752', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x0a101d);
+
+      const haloSteel = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xe2e8f0,
+        roughness: 0.34,
+        metalness: 0.62,
+        side: THREE.DoubleSide,
+      }));
+      const tricolorGlow = trackMat(new THREE.MeshStandardMaterial({
+        color: 0x60a5fa,
+        emissive: 0x3b82f6,
+        emissiveIntensity: 1.55,
+      }));
+      dynamicElements.pulseMaterials.push(tricolorGlow);
+
+      const floatingDisk = new THREE.Mesh(trackGeo(new THREE.RingGeometry(27.5, 47, 60)), haloSteel);
+      floatingDisk.rotation.x = -Math.PI * 0.5;
+      floatingDisk.scale.set(1.18, 1.02, 1);
+      floatingDisk.position.set(0, 20.4, 5.0);
+      group.add(markRetractable(floatingDisk, { openOffsetY: 25 }));
+
+      const innerLightRing = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(27.8, 0.34, 8, 60)), tricolorGlow);
+      innerLightRing.rotation.x = Math.PI * 0.5;
+      innerLightRing.scale.set(1.18, 1.02, 1);
+      innerLightRing.position.set(0, 20.2, 5.0);
+      group.add(markRetractable(innerLightRing, { openOffsetY: 25 }));
+
+      // 18 Perimeter Structural Steel Needles & Tensioned Stay Cables holding the Floating Canopy
+      const mastGeo = trackGeo(new THREE.CylinderGeometry(0.32, 0.55, 34, 6));
+      for (let m = 0; m < 18; m += 1) {
+        const ang = (m / 18) * Math.PI * 2;
+        const mx = Math.cos(ang) * 53 * 1.16;
+        const mz = 5.0 + Math.sin(ang) * 53 * 1.02;
+        const mast = new THREE.Mesh(mastGeo, haloSteel);
+        mast.position.set(mx, 14.5, mz);
+        group.add(mast);
+      }
+
+      // Detailed Lattice & Gold Floodlit Eiffel Tower + Rotating Beacon Beam
+      const eiffelGold = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xfef08a,
+        emissive: 0xfacc15,
+        emissiveIntensity: 1.18,
+        roughness: 0.28,
+        metalness: 0.8,
+      }));
+      const eiffelGroup = new THREE.Group();
+      eiffelGroup.position.set(-72, -2.2, -192);
+      const eBase = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(7.2, 16.5, 34, 4)), eiffelGold);
+      eBase.position.y = 17;
+      eBase.rotation.y = Math.PI * 0.25;
+      const eMid = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(4.2, 7.0, 32, 4)), eiffelGold);
+      eMid.position.y = 49;
+      eMid.rotation.y = Math.PI * 0.25;
+      const eSpire = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(4.1, 48, 4)), eiffelGold);
+      eSpire.position.y = 89;
+      eSpire.rotation.y = Math.PI * 0.25;
+      const beaconBeam = new THREE.Mesh(
+        trackGeo(new THREE.ConeGeometry(2.6, 54, 8, 1, true)),
+        trackMat(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32, side: THREE.DoubleSide }))
+      );
+      beaconBeam.rotation.z = Math.PI * 0.5;
+      beaconBeam.position.set(27, 113, 0);
+      const beaconPivot = new THREE.Group();
+      beaconPivot.add(beaconBeam);
+      eiffelGroup.add(eBase, eMid, eSpire, beaconPivot);
+      group.add(eiffelGroup);
+
+      addInstancedFoliageRing(group, disposables, { count: 38, minRadius: 74, maxRadius: 112, centerZ: 5, canopyColor: 0x1e3a2f });
+      addDistantCitySkyline(group, disposables, {
+        count: 92,
+        minRadius: 145,
+        maxRadius: 270,
+        minHeight: 20,
+        maxHeight: 58,
+        accentHex: 0x3b82f6,
+        baseColor: 0x0b1022,
+        warmBias: true,
+      });
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 68,
+        centerZ: 5,
+        colors: [0x3b82f6, 0xf8fafc, 0xef4444],
+      });
+
+      venueTick = (dt) => {
+        beaconPivot.rotation.y += dt * 0.65;
+      };
+
+      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
+        venueName: 'STADE DE FRANCE PARIS',
+        radiusX: 35,
+        radiusZ: 32,
+        centerZ: 5.0,
+        tiers: 4,
+        lightstickPalette: overlayMeta.laserColors || [0x3b82f6, 0xf8fafc, 0xef4444, 0xfacc15],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
+      });
+      break;
+    }
+
+    /* ======================================================================
+       10. SEOUL OLYMPIC STADIUM (Porcelain Canopy + Olympic Cauldron + Han River Bridge + Lotte Tower)
+       ====================================================================== */
+    case 'seoul-olympic': {
+      addSkyDome(group, disposables, '#050618', '#151238', '#2a184a', true, dynamicElements);
+      addOutdoorGround(group, disposables, 0x0b0e1e);
+
+      const porcelainMat = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xf1f5f9,
+        emissive: 0x1e1b4b,
+        emissiveIntensity: 0.28,
+        roughness: 0.35,
+        metalness: 0.24,
+        side: THREE.DoubleSide,
+      }));
+      const kpopMagenta = trackMat(new THREE.MeshStandardMaterial({
+        color: 0xf472b6,
+        emissive: 0xec4899,
+        emissiveIntensity: 1.6,
+        roughness: 0.2,
+      }));
+      dynamicElements.pulseMaterials.push(kpopMagenta);
+
+      [-1, 1].forEach((side) => {
+        const wingCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(side * 25, 16.5, -24),
+          new THREE.Vector3(side * 40, 23.0, 4),
+          new THREE.Vector3(side * 25, 16.5, 32),
+        ]);
+        const arch = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(wingCurve, 32, 1.9, 8, false)), porcelainMat);
+        const neonStrip = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(wingCurve, 32, 0.4, 6, false)), kpopMagenta);
+        neonStrip.position.x = -side * 1.45;
+        group.add(
+          markRetractable(arch, { openOffsetY: 22, slideDirX: side * 14 }),
+          markRetractable(neonStrip, { openOffsetY: 22, slideDirX: side * 14 })
+        );
+      });
+
+      const seoulTex = trackTex(createLedScreenTexture('SEOUL OLYMPIC', '#db2777', 'rgba(34,211,238,0.5)'));
+      const seoulMat = trackMat(new THREE.MeshBasicMaterial({ map: seoulTex }));
+      [-18.4, 18.4].forEach((sx) => {
+        const panel = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(7.2, 4.0)), seoulMat);
+        panel.position.set(sx, 7.2, -3.5);
+        panel.rotation.y = sx < 0 ? 0.36 : -0.36;
+        group.add(panel);
+      });
+
+      // Olympic Torch Cauldron with flickering flame
+      const cauldronMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.3, metalness: 0.8 }));
+      const cauldronPillar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.1, 1.8, 28, 12)), cauldronMat);
+      cauldronPillar.position.set(0, 12, -52);
+      const cauldronBowl = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(3.4, 1.2, 2.4, 14)), cauldronMat);
+      cauldronBowl.position.set(0, 26.8, -52);
+      const torchFlame = new THREE.Mesh(
+        trackGeo(new THREE.ConeGeometry(1.8, 5.2, 10)),
+        trackMat(new THREE.MeshBasicMaterial({ color: 0xfb923c }))
+      );
+      torchFlame.position.set(0, 30.2, -52);
+      group.add(cauldronPillar, cauldronBowl, torchFlame);
+
+      // Han River Water Ribbon + Illuminated Arched Bridge + Lotte World Tower (555m)
+      const hanRiver = createAnimatedOcean(group, disposables, {
+        width: 560,
+        depth: 120,
+        y: -2.08,
+        z: -158,
+        color: 0x1e1b4b,
+        emissive: 0x3b82f6,
+        emissiveIntensity: 0.28,
+      });
+      const hanBridgeRoad = new THREE.Mesh(
+        trackGeo(new THREE.BoxGeometry(280, 1.6, 5.2)),
+        trackMat(new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 }))
+      );
+      hanBridgeRoad.position.set(0, 6.2, -142);
+      const hanBridgeArch = new THREE.Mesh(
+        trackGeo(new THREE.TorusGeometry(28, 0.75, 8, 24, Math.PI)),
+        kpopMagenta
+      );
+      hanBridgeArch.position.set(-28, 6.2, -142);
+      const hanBridgeArchR = hanBridgeArch.clone();
+      hanBridgeArchR.position.set(28, 6.2, -142);
+      group.add(hanBridgeRoad, hanBridgeArch, hanBridgeArchR);
+
+      const lotteSpire = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(9.5, 134, 6)), kpopMagenta);
+      lotteSpire.position.set(78, 65, -195);
+      group.add(lotteSpire);
+
+      addDistantCitySkyline(group, disposables, {
+        count: 102,
+        minRadius: 132,
+        maxRadius: 270,
+        minHeight: 24,
+        maxHeight: 90,
+        accentHex: 0xec4899,
+        baseColor: 0x0d0f24,
+      });
+      addPerimeterSearchlights(group, disposables, dynamicElements, {
+        radius: 68,
+        centerZ: 5,
+        colors: [0xec4899, 0x22d3ee, 0xc084fc],
+      });
+
+      venueTick = (_dt, t) => {
+        hanRiver.uniforms.uTime.value = t;
+        torchFlame.scale.set(
+          0.92 + Math.sin(t * 14) * 0.14,
+          0.86 + Math.sin(t * 19) * 0.24,
+          0.92 + Math.cos(t * 16) * 0.14
+        );
+      };
+
+      dynamicElements.bowlLights = addStadiumSeatingBowl(group, disposables, {
+        venueName: 'SEOUL OLYMPIC STADIUM',
+        radiusX: 35,
+        radiusZ: 32,
+        centerZ: 5.0,
+        tiers: 4,
+        lightstickPalette: overlayMeta.laserColors || [0xec4899, 0x22d3ee, 0xc084fc, 0xfacc15],
+        seatColor: palette.seatColor,
+        fasciaColor: effectiveFascia,
+        secondaryColor,
+        dynamicElements,
       });
       break;
     }
@@ -2045,11 +3606,94 @@ export function buildVenueEnvironment(venueId) {
       break;
   }
 
+  // Layer the chosen Stage Theme / Event Overlay cleanly over this real-life venue
+  const overlayTick = attachStageOverlay(group, disposables, overlayMeta.id, dynamicElements);
+
+  // Atmosphere & Sky Dome driver synced smoothly with LightingProfileController
+  dynamicElements.updateAtmosphere = (lightState, isGrandEncore = false, dt = 0.016) => {
+    const skyMat = dynamicElements.skyMat;
+    if (skyMat?.uniforms) {
+      if (lightState?.skyTopColor) {
+        skyMat.uniforms.uTopColor.value.lerp(lightState.skyTopColor, 1 - Math.exp(-3.2 * dt));
+      }
+      if (lightState?.skyMidColor) {
+        skyMat.uniforms.uMidColor.value.lerp(lightState.skyMidColor, 1 - Math.exp(-3.2 * dt));
+      }
+      if (lightState?.skyHorizonColor) {
+        skyMat.uniforms.uHorizonColor.value.lerp(lightState.skyHorizonColor, 1 - Math.exp(-3.2 * dt));
+      }
+      if (isGrandEncore) {
+        _tmpSkyColor.setHex(0x02040d);
+        skyMat.uniforms.uTopColor.value.lerp(_tmpSkyColor, 1 - Math.exp(-3.5 * dt));
+      }
+      skyMat.uniforms.uGrandEncoreMix.value = THREE.MathUtils.damp(
+        skyMat.uniforms.uGrandEncoreMix.value,
+        isGrandEncore ? 1.0 : 0.0,
+        3.2,
+        dt
+      );
+    }
+  };
+
+  dynamicElements.update = (dt, t, overallEnergy = 0, envState = null) => {
+    if (dynamicElements.skyMat?.uniforms) {
+      dynamicElements.skyMat.uniforms.uTime.value = t;
+    }
+    const lightState = envState?.lightState || null;
+    const isGrandEncore = Boolean(envState?.isGrandEncore);
+    if (lightState || isGrandEncore) {
+      dynamicElements.updateAtmosphere(lightState, isGrandEncore, dt);
+    }
+
+    // Scroll 360° Arena LED Ribbon Scoreboards continuously with tempo/mood
+    const ribbonSpeed = lightState?.ribbonScrollSpeed ?? (0.06 + overallEnergy * 0.08);
+    for (let i = 0; i < dynamicElements.scrollingRibbons.length; i += 1) {
+      dynamicElements.scrollingRibbons[i].offset.x = (dynamicElements.scrollingRibbons[i].offset.x + dt * ribbonSpeed) % 1;
+    }
+
+    // Sweep Exterior Sky-Tracker Searchlights across the night sky
+    const slIntensity = lightState?.searchlightIntensity ?? (0.45 + overallEnergy * 0.65);
+    const slSpeed = lightState?.searchlightSpeed ?? 0.55;
+    for (let i = 0; i < dynamicElements.searchlights.length; i += 1) {
+      const sl = dynamicElements.searchlights[i];
+      sl.beamMat.uniforms.uIntensity.value = slIntensity;
+      if (lightState && i % 2 === 0 && lightState.spotPrimary) {
+        sl.beamMat.uniforms.uColor.value.lerp(lightState.spotPrimary, 0.08);
+      } else if (lightState && i % 2 === 1 && lightState.spotSecondary) {
+        sl.beamMat.uniforms.uColor.value.lerp(lightState.spotSecondary, 0.08);
+      }
+      sl.pivot.rotation.z = Math.sin(t * slSpeed + sl.phase) * 0.42;
+      sl.pivot.rotation.x = Math.cos(t * (slSpeed * 0.82) + sl.phase) * 0.34;
+    }
+
+    if (venueTick) venueTick(dt, t, overallEnergy);
+    if (overlayTick) overlayTick(dt, t, overallEnergy);
+  };
+
+  if (!dynamicElements.skyDome && group.userData.skyDome) {
+    dynamicElements.skyDome = group.userData.skyDome;
+    dynamicElements.skyMat = group.userData.skyMat;
+  }
+
   return {
     meta,
+    overlayMeta,
     group,
     dynamicElements,
     dispose() {
+      while (group.children.length > 0) {
+        group.remove(group.children[0]);
+      }
+      dynamicElements.pulseMaterials.length = 0;
+      dynamicElements.scrollingRibbons.length = 0;
+      dynamicElements.rotatingRings.length = 0;
+      dynamicElements.retractableRoofMeshes.length = 0;
+      dynamicElements.searchlights.length = 0;
+      dynamicElements.skyDome = null;
+      dynamicElements.skyMat = null;
+      dynamicElements.update = null;
+      dynamicElements.updateBowl = null;
+      dynamicElements.updateAtmosphere = null;
       disposables.geometries.forEach((g) => g.dispose());
       disposables.materials.forEach((m) => m.dispose());
       disposables.textures.forEach((t) => t.dispose());

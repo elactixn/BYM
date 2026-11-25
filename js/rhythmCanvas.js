@@ -15,7 +15,7 @@ import { getHighwaySkinById } from './bandGearCatalog.js';
 const PARTICLE_POOL_SIZE = 220;
 const PYRO_POOL_SIZE = 160;
 const RIPPLE_POOL_SIZE = 24;
-const PAST_GRACE_SEC = 0.22;
+const PAST_GRACE_SEC = 0.25;
 
 function hexToRgba(hex, alpha) {
   const clean = hex.replace('#', '');
@@ -26,14 +26,19 @@ function hexToRgba(hex, alpha) {
 }
 
 export class RhythmCanvas {
-  constructor(canvas, { getGameState, getNotes, getBeatGrid, getEffectiveTime, getAudioTelemetry, onFrameTick }) {
+  constructor(
+    canvas,
+    { getGameState, getNotes, getNotesP2, getBeatGrid, getEffectiveTime, getAudioTelemetry, getBeatSync, onFrameTick }
+  ) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: true });
     this.getGameState = getGameState;
     this.getNotes = getNotes;
+    this.getNotesP2 = getNotesP2 || (() => []);
     this.getBeatGrid = getBeatGrid;
     this.getEffectiveTime = getEffectiveTime;
     this.getAudioTelemetry = getAudioTelemetry;
+    this.getBeatSync = getBeatSync || (() => null);
     this.onFrameTick = onFrameTick || (() => {});
 
     this.width = 0;
@@ -44,10 +49,22 @@ export class RhythmCanvas {
     this.lastFrameMs = 0;
     this.animClock = 0;
 
-    // Input & Whammy visuals
-    this.heldLanes = [false, false, false, false, false];
-    this.laneBeamIntensity = [0, 0, 0, 0, 0];
-    this.padPulse = [0, 0, 0, 0, 0];
+    const createPlayerVisualState = () => ({
+      heldLanes: [false, false, false, false, false],
+      laneBeamIntensity: [0, 0, 0, 0, 0],
+      padPulse: [0, 0, 0, 0, 0],
+      whammyVisualAmount: 0,
+      timingTicks: [],
+      avgTimingRatio: 0,
+      timingMeterAlpha: 0,
+      judgementPopup: null,
+    });
+    this.playerStates = [createPlayerVisualState(), createPlayerVisualState()];
+
+    // Backward-compatible 1P references pointing to Player 1 state
+    this.heldLanes = this.playerStates[0].heldLanes;
+    this.laneBeamIntensity = this.playerStates[0].laneBeamIntensity;
+    this.padPulse = this.playerStates[0].padPulse;
     this.whammyVisualAmount = 0;
 
     // Camera shake & popups
@@ -56,7 +73,7 @@ export class RhythmCanvas {
     this.bannerPopup = null;
 
     // Hit-Window Timing Meter (Early / Late deviation ticks + rolling average needle)
-    this.timingTicks = [];
+    this.timingTicks = this.playerStates[0].timingTicks;
     this.avgTimingRatio = 0;
     this.timingMeterAlpha = 0;
 
@@ -162,23 +179,41 @@ export class RhythmCanvas {
     this.lowParticleMode = Boolean(low);
   }
 
-  getHighwayGeometry() {
+  getPlayerVisualState(player = 1) {
+    return this.playerStates[player === 2 ? 1 : 0];
+  }
+
+  getHighwayGeometry(player = 1) {
     const w = this.width;
     const h = this.height;
-    const cx = w * 0.5;
+    const state = this.getGameState();
+    const isTwoPlayer = typeof state.isTwoPlayerMode === 'function' ? state.isTwoPlayerMode() : false;
 
-    const topY = Math.max(58, h * 0.145);
+    const topY = isTwoPlayer ? Math.max(106, h * 0.27) : Math.max(82, h * 0.25);
     const hitY = h * 0.825;
     const bottomY = h * 0.965;
 
-    const laneCount = this.getGameState().laneCount;
-    const targetW = laneCount === 5 ? 650 : laneCount === 3 ? 440 : 550;
-    const maxBottomWidth = Math.min(w * 0.86, targetW);
-    const bottomWidth = Math.max(260, maxBottomWidth);
+    const diff = typeof state.getDifficultyConfigFor === 'function'
+      ? state.getDifficultyConfigFor(player)
+      : state.getDifficultyConfig();
+    const laneCount = diff.laneCount || state.laneCount || 4;
+
+    let cx = w * 0.5;
+    let targetW = laneCount === 5 ? 650 : laneCount === 3 ? 440 : 550;
+    let maxBottomWidth = Math.min(w * 0.86, targetW);
+    let minBottomWidth = 260;
+
+    if (isTwoPlayer) {
+      cx = player === 2 ? w * 0.725 : w * 0.275;
+      targetW = laneCount === 5 ? 430 : laneCount === 3 ? 320 : 380;
+      maxBottomWidth = Math.min(w * 0.4, targetW);
+      minBottomWidth = 200;
+    }
+
+    const bottomWidth = Math.max(minBottomWidth, maxBottomWidth);
     const topWidth = bottomWidth * 0.3;
 
     // Effective scroll speed (pixels per second along the vertical highway span)
-    const diff = this.getGameState().getDifficultyConfig();
     const windowSec = diff.scrollWindowSec || 1.5;
     const highwayLength = hitY - topY;
     const scrollSpeed = highwayLength / windowSec;
@@ -193,15 +228,15 @@ export class RhythmCanvas {
    * locked to the audio clock with zero frame-rate drift!
    */
   projectAudioTime(hitTimeSec, effectiveSongTime, geom) {
+    const lookaheadSec = Math.max(0.25, geom.windowSec || 1.5);
     const timeRemaining = hitTimeSec - effectiveSongTime;
-    const distPixels = timeRemaining * geom.scrollSpeed;
-    const linearProgress = 1 - distPixels / geom.highwayLength;
+    const linearProgress = 1.0 - timeRemaining / lookaheadSec;
 
     if (linearProgress < 0) {
       return { visible: false, progress: linearProgress, y: geom.topY, width: geom.topWidth, scale: 0.3 };
     }
 
-    // Subtle perspective curve preserving exact hitY alignment at linearProgress === 1.0
+    // Perspective foreshortening preserving exact hitY alignment at linearProgress === 1.0 (t = 0ms)
     const perspective = Math.pow(linearProgress, 1.72);
     const y = geom.topY + geom.highwayLength * perspective;
     const width = geom.topWidth + (geom.bottomWidth - geom.topWidth) * perspective;
@@ -209,20 +244,28 @@ export class RhythmCanvas {
     return { visible: true, progress: linearProgress, y, width, scale };
   }
 
-  setLaneHeld(laneIndex, held) {
+  setLaneHeld(laneIndex, held, player = 1) {
     if (laneIndex < 0 || laneIndex >= 5) return;
-    this.heldLanes[laneIndex] = held;
+    const ps = this.getPlayerVisualState(player);
+    ps.heldLanes[laneIndex] = held;
     if (held) {
-      this.laneBeamIntensity[laneIndex] = Math.max(this.laneBeamIntensity[laneIndex], 0.72);
+      ps.laneBeamIntensity[laneIndex] = Math.max(ps.laneBeamIntensity[laneIndex], 0.72);
     }
   }
 
-  setWhammyVisual(amount) {
-    this.whammyVisualAmount = Math.max(0, Math.min(1, amount));
+  setWhammyVisual(amount, player = 1) {
+    const clamped = Math.max(0, Math.min(1, amount));
+    this.getPlayerVisualState(player).whammyVisualAmount = clamped;
+    if (player === 1) this.whammyVisualAmount = clamped;
   }
 
-  clearHeldLanes() {
-    for (let i = 0; i < 5; i += 1) this.heldLanes[i] = false;
+  clearHeldLanes(player = null) {
+    if (player === 1 || player === 2) {
+      this.getPlayerVisualState(player).heldLanes.fill(false);
+      return;
+    }
+    this.playerStates[0].heldLanes.fill(false);
+    this.playerStates[1].heldLanes.fill(false);
   }
 
   /**
@@ -241,14 +284,16 @@ export class RhythmCanvas {
     };
   }
 
-  triggerHitVisual({ laneIndex, judgement, colorObj, isChord, isFever, feverActive, multiplierUp, effectiveMultiplier }) {
+  triggerHitVisual({ laneIndex, judgement, colorObj, isChord, isFever, feverActive, multiplierUp, effectiveMultiplier, player = 1 }) {
+    const ps = this.getPlayerVisualState(player);
     if (laneIndex >= 0 && laneIndex < 5) {
-      this.laneBeamIntensity[laneIndex] = judgement === 'PERFECT!' ? 1.0 : 0.84;
-      this.padPulse[laneIndex] = judgement === 'PERFECT!' ? 1.0 : 0.78;
+      ps.laneBeamIntensity[laneIndex] = judgement === 'PERFECT!' ? 1.0 : 0.84;
+      ps.padPulse[laneIndex] = judgement === 'PERFECT!' ? 1.0 : 0.78;
     }
 
-    const geom = this.getHighwayGeometry();
-    const laneCount = this.getGameState().laneCount;
+    const state = this.getGameState();
+    const geom = this.getHighwayGeometry(player);
+    const laneCount = typeof state.getLaneConfigFor === 'function' ? state.getLaneConfigFor(player).count : state.laneCount;
     const laneW = geom.bottomWidth / laneCount;
     const hitX = geom.cx - geom.bottomWidth * 0.5 + laneW * (laneIndex + 0.5);
     const hitY = geom.hitY;
@@ -267,22 +312,25 @@ export class RhythmCanvas {
     }
 
     const labelColor =
-      judgement === 'PERFECT!'
+      judgement === 'PERFECT!' || judgement === 'FREESTYLE!'
         ? '#fde047'
-        : judgement === 'EARLY'
+        : judgement === 'GREAT!' || judgement === 'EARLY'
           ? '#38bdf8'
-          : '#fb923c';
+          : judgement === 'GOOD'
+            ? '#4ade80'
+            : '#fb923c';
 
-    this.judgementPopup = {
+    ps.judgementPopup = {
       text: judgement,
       color: labelColor,
       age: 0,
       duration: 0.52,
     };
+    if (player === 1) this.judgementPopup = ps.judgementPopup;
 
     if (multiplierUp && effectiveMultiplier >= 2 && !this.bannerPopup) {
       this.bannerPopup = {
-        text: `${effectiveMultiplier}× STREAK`,
+        text: `${state.isTwoPlayerMode?.() ? `P${player} ` : ''}${effectiveMultiplier}× STREAK`,
         color: feverActive ? '#fde047' : '#f8fafc',
         age: 0,
         duration: 0.95,
@@ -290,16 +338,18 @@ export class RhythmCanvas {
     }
   }
 
-  triggerSustainSparkVisual(laneIndex, colorObj, feverActive, whammyActive) {
-    const geom = this.getHighwayGeometry();
-    const laneCount = this.getGameState().laneCount;
+  triggerSustainSparkVisual(laneIndex, colorObj, feverActive, whammyActive, player = 1) {
+    const state = this.getGameState();
+    const ps = this.getPlayerVisualState(player);
+    const geom = this.getHighwayGeometry(player);
+    const laneCount = typeof state.getLaneConfigFor === 'function' ? state.getLaneConfigFor(player).count : state.laneCount;
     const laneW = geom.bottomWidth / laneCount;
     const hitX = geom.cx - geom.bottomWidth * 0.5 + laneW * (laneIndex + 0.5);
     const c = feverActive || whammyActive
       ? { base: '#facc15', bright: '#ffffff' }
       : colorObj;
     this.spawnBurst(hitX, geom.hitY, c, whammyActive ? 7 : 4, whammyActive);
-    this.padPulse[laneIndex] = Math.max(this.padPulse[laneIndex], whammyActive ? 0.9 : 0.65);
+    ps.padPulse[laneIndex] = Math.max(ps.padPulse[laneIndex], whammyActive ? 0.9 : 0.65);
   }
 
   triggerMilestoneBanner(text, color = '#fde047', duration = 1.6) {
@@ -315,30 +365,50 @@ export class RhythmCanvas {
    * Records a hit's timing deviation (deltaMs: positive = EARLY, negative = LATE)
    * onto the compact Hit-Window Timing Deviation Bar below the hit-line.
    */
-  recordTimingDeviation(deltaMs, goodWindowMs = 138, judgement = 'PERFECT!') {
-    const win = Math.max(60, goodWindowMs);
+  recordTimingDeviation(deltaMs, timingWindowsOrGoodMs = 70, judgement = 'PERFECT!', player = 1) {
+    const ps = this.getPlayerVisualState(player);
+    const goodEarly =
+      typeof timingWindowsOrGoodMs === 'object' && timingWindowsOrGoodMs !== null
+        ? Math.max(50, timingWindowsOrGoodMs.GOOD_EARLY_MS || 70)
+        : Math.max(50, timingWindowsOrGoodMs);
+    const goodLate =
+      typeof timingWindowsOrGoodMs === 'object' && timingWindowsOrGoodMs !== null
+        ? Math.max(50, timingWindowsOrGoodMs.GOOD_LATE_MS || 70)
+        : Math.max(50, timingWindowsOrGoodMs);
     // Convention: LEFT = EARLY (-1), CENTER = PERFECT (0), RIGHT = LATE (+1)
-    const ratio = Math.max(-1, Math.min(1, -deltaMs / win));
+    const ratio =
+      deltaMs > 0
+        ? Math.max(-1, -deltaMs / goodEarly)
+        : Math.min(1, -deltaMs / goodLate);
     const color =
       judgement === 'PERFECT!'
         ? '#fde047'
-        : deltaMs > 0
+        : judgement === 'GREAT!'
           ? '#38bdf8'
-          : '#fb923c';
+          : judgement === 'GOOD'
+            ? '#4ade80'
+            : deltaMs > 0
+              ? '#38bdf8'
+              : '#fb923c';
 
-    this.timingTicks.push({ ratio, color, age: 0, maxAge: 1.8 });
-    if (this.timingTicks.length > 10) {
-      this.timingTicks.shift();
+    ps.timingTicks.push({ ratio, color, age: 0, maxAge: 1.8 });
+    if (ps.timingTicks.length > 10) {
+      ps.timingTicks.shift();
     }
-    this.avgTimingRatio = this.avgTimingRatio * 0.72 + ratio * 0.28;
-    this.timingMeterAlpha = 1.0;
+    ps.avgTimingRatio = ps.avgTimingRatio * 0.72 + ratio * 0.28;
+    ps.timingMeterAlpha = 1.0;
+    if (player === 1) {
+      this.avgTimingRatio = ps.avgTimingRatio;
+      this.timingMeterAlpha = ps.timingMeterAlpha;
+    }
   }
 
-  triggerFeverBanner() {
+  triggerFeverBanner(player = 1) {
     this.pyroEmitterTimer = Math.max(this.pyroEmitterTimer, 1.35);
     this.pyroEmitterStrength = Math.max(this.pyroEmitterStrength, 1.35);
+    const is2P = this.getGameState().isTwoPlayerMode?.();
     this.bannerPopup = {
-      text: 'FEVER MODE · 2× MULTIPLIER',
+      text: is2P ? `P${player} FEVER MODE · 2× MULTIPLIER` : 'FEVER MODE · 2× MULTIPLIER',
       color: '#fde047',
       age: 0,
       duration: 1.35,
@@ -346,50 +416,58 @@ export class RhythmCanvas {
     this.shakeAmount = Math.max(this.shakeAmount, 7.5);
   }
 
-  triggerMissVisual(brokeStreak = false) {
-    this.judgementPopup = {
+  triggerMissVisual(brokeStreak = false, player = 1) {
+    const ps = this.getPlayerVisualState(player);
+    ps.judgementPopup = {
       text: 'MISS',
       color: '#fb7185',
       age: 0,
       duration: 0.52,
     };
+    if (player === 1) this.judgementPopup = ps.judgementPopup;
     if (brokeStreak) {
       this.shakeAmount = Math.max(this.shakeAmount, 5.2);
     }
   }
 
-  triggerHazardDetonateVisual(laneIndex) {
-    const geom = this.getHighwayGeometry();
-    const laneCount = this.getGameState().laneCount;
+  triggerHazardDetonateVisual(laneIndex, player = 1) {
+    const state = this.getGameState();
+    const ps = this.getPlayerVisualState(player);
+    const geom = this.getHighwayGeometry(player);
+    const laneCount = typeof state.getLaneConfigFor === 'function' ? state.getLaneConfigFor(player).count : state.laneCount;
     const laneW = geom.bottomWidth / laneCount;
     const hitX = geom.cx - geom.bottomWidth * 0.5 + laneW * (laneIndex + 0.5);
 
-    this.padPulse[laneIndex] = 1.0;
+    ps.padPulse[laneIndex] = 1.0;
     this.shakeAmount = Math.max(this.shakeAmount, 10.5);
     this.spawnStereoRipple(hitX, geom.hitY, '#ef4444', true, true);
     this.spawnBurst(hitX, geom.hitY, { base: '#ef4444', bright: '#fde047' }, 24, true);
 
-    this.judgementPopup = {
+    ps.judgementPopup = {
       text: 'PANGGULO HIT!',
       color: '#ef4444',
       age: 0,
       duration: 0.72,
     };
+    if (player === 1) this.judgementPopup = ps.judgementPopup;
   }
 
-  triggerHazardDodgedVisual(laneIndex) {
-    const geom = this.getHighwayGeometry();
-    const laneCount = this.getGameState().laneCount;
+  triggerHazardDodgedVisual(laneIndex, player = 1) {
+    const state = this.getGameState();
+    const ps = this.getPlayerVisualState(player);
+    const geom = this.getHighwayGeometry(player);
+    const laneCount = typeof state.getLaneConfigFor === 'function' ? state.getLaneConfigFor(player).count : state.laneCount;
     const laneW = geom.bottomWidth / laneCount;
     const hitX = geom.cx - geom.bottomWidth * 0.5 + laneW * (laneIndex + 0.5);
 
     this.spawnBurst(hitX, geom.hitY, { base: '#22c55e', bright: '#bbf7d0' }, 8, false);
-    this.judgementPopup = {
+    ps.judgementPopup = {
       text: 'DODGED!',
       color: '#4ade80',
       age: 0,
       duration: 0.44,
     };
+    if (player === 1) this.judgementPopup = ps.judgementPopup;
   }
 
   spawnStereoRipple(x, y, color, isFever, isChord) {
@@ -489,14 +567,21 @@ export class RhythmCanvas {
 
   resetVisuals() {
     this.clearHeldLanes();
-    this.laneBeamIntensity.fill(0);
-    this.padPulse.fill(0);
+    for (let p = 0; p < this.playerStates.length; p += 1) {
+      const ps = this.playerStates[p];
+      ps.laneBeamIntensity.fill(0);
+      ps.padPulse.fill(0);
+      ps.whammyVisualAmount = 0;
+      ps.timingTicks.length = 0;
+      ps.avgTimingRatio = 0;
+      ps.timingMeterAlpha = 0;
+      ps.judgementPopup = null;
+    }
     this.shakeAmount = 0;
     this.whammyVisualAmount = 0;
     this.pyroEmitterTimer = 0;
     this.judgementPopup = null;
     this.bannerPopup = null;
-    this.timingTicks = [];
     this.avgTimingRatio = 0;
     this.timingMeterAlpha = 0;
     for (let i = 0; i < this.particles.length; i += 1) this.particles[i].active = false;
@@ -505,27 +590,43 @@ export class RhythmCanvas {
   }
 
   updateEffects(dt) {
-    for (let i = 0; i < 5; i += 1) {
-      const target = this.heldLanes[i] ? 0.56 : 0;
-      if (this.laneBeamIntensity[i] > target) {
-        this.laneBeamIntensity[i] = Math.max(target, this.laneBeamIntensity[i] - dt * 4.4);
+    for (let p = 0; p < this.playerStates.length; p += 1) {
+      const ps = this.playerStates[p];
+      for (let i = 0; i < 5; i += 1) {
+        const target = ps.heldLanes[i] ? 0.56 : 0;
+        if (ps.laneBeamIntensity[i] > target) {
+          ps.laneBeamIntensity[i] = Math.max(target, ps.laneBeamIntensity[i] - dt * 4.4);
+        }
+        if (ps.padPulse[i] > 0) {
+          ps.padPulse[i] = Math.max(0, ps.padPulse[i] - dt * 5.0);
+        }
       }
-      if (this.padPulse[i] > 0) {
-        this.padPulse[i] = Math.max(0, this.padPulse[i] - dt * 5.0);
+
+      if (ps.judgementPopup) {
+        ps.judgementPopup.age += dt;
+        if (ps.judgementPopup.age >= ps.judgementPopup.duration) {
+          ps.judgementPopup = null;
+          if (p === 0) this.judgementPopup = null;
+        }
+      }
+
+      for (let i = ps.timingTicks.length - 1; i >= 0; i -= 1) {
+        ps.timingTicks[i].age += dt;
+        if (ps.timingTicks[i].age >= ps.timingTicks[i].maxAge) {
+          ps.timingTicks.splice(i, 1);
+        }
+      }
+      if (ps.timingTicks.length === 0) {
+        ps.timingMeterAlpha = Math.max(0.32, ps.timingMeterAlpha - dt * 0.45);
       }
     }
+    this.avgTimingRatio = this.playerStates[0].avgTimingRatio;
+    this.timingMeterAlpha = this.playerStates[0].timingMeterAlpha;
 
     if (this.shakeAmount > 0.05) {
       this.shakeAmount *= Math.pow(0.0015, dt);
     } else {
       this.shakeAmount = 0;
-    }
-
-    if (this.judgementPopup) {
-      this.judgementPopup.age += dt;
-      if (this.judgementPopup.age >= this.judgementPopup.duration) {
-        this.judgementPopup = null;
-      }
     }
 
     if (this.bannerPopup) {
@@ -535,21 +636,10 @@ export class RhythmCanvas {
       }
     }
 
-    // Age timing meter deviation ticks
-    for (let i = this.timingTicks.length - 1; i >= 0; i -= 1) {
-      this.timingTicks[i].age += dt;
-      if (this.timingTicks[i].age >= this.timingTicks[i].maxAge) {
-        this.timingTicks.splice(i, 1);
-      }
-    }
-    if (this.timingTicks.length === 0) {
-      this.timingMeterAlpha = Math.max(0.32, this.timingMeterAlpha - dt * 0.45);
-    }
-
     // Active stage pyro cannons
     if (this.pyroEmitterTimer > 0) {
       this.pyroEmitterTimer = Math.max(0, this.pyroEmitterTimer - dt);
-      const geom = this.getHighwayGeometry();
+      const geom = this.getHighwayGeometry(1);
       this.emitPyroJetFlames(geom);
     }
 
@@ -589,21 +679,86 @@ export class RhythmCanvas {
     }
   }
 
+  renderPlayerHighway(ctx, state, player, notes, beatGrid, songTime, telemetry, beatSync, highwaySkin) {
+    const isP2 = player === 2;
+    const ps = this.getPlayerVisualState(player);
+    const geom = this.getHighwayGeometry(player);
+    const laneConfig = typeof state.getLaneConfigFor === 'function' ? state.getLaneConfigFor(player) : state.getLaneConfig();
+    const instConfig = typeof state.getInstrumentConfigFor === 'function' ? state.getInstrumentConfigFor(player) : state.getInstrumentConfig();
+    const timingWindows = state.getTimingWindows ? state.getTimingWindows(player) : null;
+    const feverActive = isP2 ? Boolean(state.p2?.feverActive) : Boolean(state.feverActive);
+    const feverCharge = isP2 ? (state.p2?.feverCharge || 0) : (state.feverCharge || 0);
+    const canFever = typeof state.canActivateFeverFor === 'function' ? state.canActivateFeverFor(player) : feverCharge >= 50;
+    const stemDropped = isP2 ? Boolean(state.p2?.stemDropped) : Boolean(state.stemDropped);
+    const stereoTier = isP2 ? 0 : (state.stereoWidthTier || 0);
+    const accentHex = feverActive ? '#facc15' : instConfig.accent;
+    const isTwoPlayer = typeof state.isTwoPlayerMode === 'function' && state.isTwoPlayerMode();
+
+    this.drawHorizonSpectrum(ctx, geom, telemetry.spectrum, accentHex, stemDropped);
+    this.drawHighwayDeck(
+      ctx,
+      geom,
+      laneConfig.count,
+      accentHex,
+      feverActive,
+      telemetry.bassEnergy,
+      highwaySkin
+    );
+    this.drawLaneFlashBeams(ctx, geom, laneConfig, feverActive, ps);
+    this.drawBeatGrid(ctx, geom, beatGrid, songTime, highwaySkin);
+    this.drawLaneRails(
+      ctx,
+      geom,
+      laneConfig.count,
+      accentHex,
+      feverActive,
+      stereoTier,
+      highwaySkin
+    );
+    this.drawHitZoneReceptors(
+      ctx,
+      geom,
+      laneConfig,
+      feverActive || state.breActive,
+      beatSync,
+      notes,
+      songTime,
+      timingWindows,
+      ps
+    );
+    this.drawTimingDeviationBar(ctx, geom, accentHex, isTwoPlayer ? null : beatSync, timingWindows, ps);
+    if (state.breActive) {
+      const breBonus = isP2 ? (state.p2?.breBonusPoints || 0) : (state.breBonusPoints || 0);
+      this.drawBreFreestyleOverlay(ctx, geom, laneConfig, breBonus);
+    }
+    this.drawBesideHighwayFeverMeter(ctx, geom, {
+      feverCharge,
+      feverActive,
+      canActivateFever: () => canFever,
+    });
+    this.drawNotes(ctx, geom, laneConfig, notes, songTime, feverActive, ps);
+    if (isTwoPlayer) {
+      this.drawPlayerHeaderBadge(ctx, geom, player, instConfig, state);
+    }
+    if (player === 1) {
+      this.drawLeadInCue(ctx, geom, songTime, accentHex);
+    }
+    this.drawCallouts(ctx, geom, ps, player === 1);
+  }
+
   render() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.width, this.height);
 
     const state = this.getGameState();
-    const laneConfig = state.getLaneConfig();
-    const instConfig = state.getInstrumentConfig();
-    const notes = this.getNotes();
+    const notesP1 = this.getNotes();
+    const notesP2 = this.getNotesP2 ? this.getNotesP2() : [];
     const beatGrid = this.getBeatGrid();
     const songTime = this.getEffectiveTime();
     const telemetry = this.getAudioTelemetry();
-    const geom = this.getHighwayGeometry();
-
-    const accentHex = state.feverActive ? '#facc15' : instConfig.accent;
+    const beatSync = this.getBeatSync ? this.getBeatSync() : null;
     const highwaySkin = getHighwaySkinById(state.highwaySkinId);
+    const isTwoPlayer = typeof state.isTwoPlayerMode === 'function' && state.isTwoPlayerMode();
 
     // Smoothly fade the highway deck in after Phase 1 Stage Walk-On (-2.25s -> -1.55s)
     // so the 2.5s band walk-on & gear setup has a 100% unobstructed 3D arena view!
@@ -621,70 +776,148 @@ export class RhythmCanvas {
     if (highwayAlpha > 0.01) {
       ctx.save();
       ctx.globalAlpha = highwayAlpha;
-      this.drawHorizonSpectrum(ctx, geom, telemetry.spectrum, accentHex, state.stemDropped);
-      this.drawHighwayDeck(
-        ctx,
-        geom,
-        laneConfig.count,
-        accentHex,
-        state.feverActive,
-        telemetry.bassEnergy,
-        highwaySkin
-      );
-      this.drawLaneFlashBeams(ctx, geom, laneConfig, state.feverActive);
-      this.drawBeatGrid(ctx, geom, beatGrid, songTime, highwaySkin);
-      this.drawLaneRails(
-        ctx,
-        geom,
-        laneConfig.count,
-        accentHex,
-        state.feverActive,
-        state.stereoWidthTier,
-        highwaySkin
-      );
-      this.drawHitZoneReceptors(ctx, geom, laneConfig, state.feverActive);
-      this.drawTimingDeviationBar(ctx, geom, accentHex);
+
+      this.renderPlayerHighway(ctx, state, 1, notesP1, beatGrid, songTime, telemetry, beatSync, highwaySkin);
+      if (isTwoPlayer) {
+        this.renderPlayerHighway(ctx, state, 2, notesP2, beatGrid, songTime, telemetry, beatSync, highwaySkin);
+        this.drawTwoPlayerVersusBar(ctx, state);
+      }
+
       this.drawStereoRipples(ctx);
-      this.drawNotes(ctx, geom, laneConfig, notes, songTime, state.feverActive);
       this.drawParticles(ctx);
-      this.drawLeadInCue(ctx, geom, songTime, accentHex);
-      this.drawCallouts(ctx, geom);
+
+      if (typeof state.hasValidPracticeLoop === 'function' && state.hasValidPracticeLoop()) {
+        const s = state.practiceLoop.startSec.toFixed(1);
+        const e = state.practiceLoop.endSec.toFixed(1);
+        ctx.save();
+        ctx.font = '700 11px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        this.roundRect(ctx, this.width * 0.5 - 92, this.height * 0.968 - 18, 184, 18, 5);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = '#bae6fd';
+        ctx.fillText(`LOOP [A ${s}s → B ${e}s]`, this.width * 0.5, this.height * 0.968 - 5);
+        ctx.restore();
+      }
+
       ctx.restore();
     }
 
     ctx.restore();
   }
 
+  drawPlayerHeaderBadge(ctx, geom, player, instConfig, state) {
+    const isP2 = player === 2;
+    const combo = isP2 ? (state.p2?.combo || 0) : (state.combo || 0);
+    const mult = typeof state.getEffectiveMultiplierFor === 'function' ? state.getEffectiveMultiplierFor(player) : 1;
+    const y = Math.max(54, geom.topY - 22);
+    const badgeW = Math.min(200, geom.topWidth * 1.45);
+    const x = geom.cx - badgeW * 0.5;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 13, 25, 0.82)';
+    this.roundRect(ctx, x, y - 12, badgeW, 22, 6);
+    ctx.fill();
+    ctx.strokeStyle = hexToRgba(instConfig.accent, 0.72);
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+
+    ctx.font = '700 11px "Oswald", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText(`P${player} · ${instConfig.shortLabel.toUpperCase()} · ${combo}× (${mult}×)`, geom.cx, y - 1);
+    ctx.restore();
+  }
+
+  drawTwoPlayerVersusBar(ctx, state) {
+    const cx = this.width * 0.5;
+    const y = Math.max(96, this.height * 0.25);
+    const isFaceoff = state.playMode === 'faceoff';
+
+    ctx.save();
+    const barW = Math.min(230, this.width * 0.19);
+    const halfW = barW * 0.5;
+    ctx.fillStyle = 'rgba(6, 10, 20, 0.86)';
+    this.roundRect(ctx, cx - halfW, y, barW, 40, 8);
+    ctx.fill();
+    ctx.strokeStyle = isFaceoff ? 'rgba(250, 204, 21, 0.55)' : 'rgba(56, 189, 248, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (isFaceoff) {
+      const p1Score = state.score || 0;
+      const p2Score = state.p2?.score || 0;
+      const delta = p1Score - p2Score;
+      const ratio = delta === 0 ? 0.5 : Math.max(0.1, Math.min(0.9, 0.5 - delta / Math.max(4000, p1Score + p2Score)));
+
+      ctx.font = '700 10px "Oswald", sans-serif';
+      ctx.fillStyle = '#fde047';
+      const leadLabel = delta === 0
+        ? 'TIE GAME'
+        : delta > 0
+          ? `P1 LEADS +${delta.toLocaleString()}`
+          : `P2 LEADS +${Math.abs(delta).toLocaleString()}`;
+      ctx.fillText(leadLabel, cx, y + 12);
+
+      const trackW = barW - 20;
+      const trackX = cx - trackW * 0.5;
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(trackX, y + 23, trackW * (1 - ratio), 6);
+      ctx.fillStyle = '#f43f5e';
+      ctx.fillRect(trackX + trackW * (1 - ratio), y + 23, trackW * ratio, 6);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(cx - 1, y + 21, 2, 10);
+    } else {
+      const combined = typeof state.getCombinedBandScore === 'function' ? state.getCombinedBandScore() : (state.score + (state.p2?.score || 0));
+      ctx.font = '700 10px "Oswald", sans-serif';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('BAND CO-OP SYNERGY', cx, y + 12);
+      ctx.font = '700 13px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(`${combined.toLocaleString()} PTS`, cx, y + 27);
+    }
+    ctx.restore();
+  }
+
   /**
    * Compact horizontal Hit-Window Timing Deviation Bar directly below the hit-line
-   * showing EARLY (left) / PERFECT (center) / LATE (right) ticks + rolling average needle.
+   * showing EARLY (left) / symmetric PERFECT (±26ms..±32ms center) / LATE (right) ticks + rolling needle.
    */
-  drawTimingDeviationBar(ctx, geom, accentHex) {
+  drawTimingDeviationBar(ctx, geom, accentHex, beatSync = null, timingWindows = null, ps = this.playerStates[0]) {
     const barW = Math.min(240, geom.bottomWidth * 0.44);
     const halfW = barW * 0.5;
     const x0 = geom.cx - halfW;
     const y = geom.hitY + 42;
-    const perfectHalfW = barW * 0.2;
+    const perfEarlyFrac = (timingWindows?.PERFECT_EARLY_MS || 26) / (timingWindows?.GOOD_EARLY_MS || 70);
+    const perfLateFrac = (timingWindows?.PERFECT_LATE_MS || 26) / (timingWindows?.GOOD_LATE_MS || 70);
+    const perfLeftX = geom.cx - perfEarlyFrac * halfW;
+    const perfRightX = geom.cx + perfLateFrac * halfW;
 
     ctx.save();
-    ctx.globalAlpha = Math.max(0.42, this.timingMeterAlpha);
+    ctx.globalAlpha = Math.max(0.42, ps.timingMeterAlpha);
 
     // Subtle track capsule
     ctx.fillStyle = 'rgba(8, 12, 22, 0.72)';
     this.roundRect(ctx, x0, y - 4, barW, 8, 4);
     ctx.fill();
 
-    // Center PERFECT zone tint
+    // Symmetric PERFECT zone tint
     ctx.fillStyle = 'rgba(250, 204, 21, 0.24)';
-    ctx.fillRect(geom.cx - perfectHalfW, y - 3, perfectHalfW * 2, 6);
+    ctx.fillRect(perfLeftX, y - 3, Math.max(4, perfRightX - perfLeftX), 6);
 
     // Center ideal zero-ms notch
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(geom.cx - 1, y - 6, 2, 12);
 
     // Recent fading hit tick marks
-    for (let i = 0; i < this.timingTicks.length; i += 1) {
-      const tk = this.timingTicks[i];
+    for (let i = 0; i < ps.timingTicks.length; i += 1) {
+      const tk = ps.timingTicks[i];
       const fade = Math.max(0, 1 - tk.age / tk.maxAge);
       const tx = geom.cx + tk.ratio * (halfW - 4);
       ctx.fillStyle = hexToRgba(tk.color, 0.25 + fade * 0.75);
@@ -692,8 +925,8 @@ export class RhythmCanvas {
     }
 
     // Rolling average timing needle
-    if (this.timingTicks.length > 0) {
-      const avgX = geom.cx + this.avgTimingRatio * (halfW - 4);
+    if (ps.timingTicks.length > 0) {
+      const avgX = geom.cx + ps.avgTimingRatio * (halfW - 4);
       ctx.fillStyle = accentHex;
       ctx.beginPath();
       ctx.moveTo(avgX, y - 8);
@@ -711,6 +944,21 @@ export class RhythmCanvas {
     ctx.fillText('EARLY', x0 - 7, y);
     ctx.textAlign = 'left';
     ctx.fillText('LATE', x0 + barW + 7, y);
+
+    // Compact static Beat-Sync Lock micro-readout directly beneath timing bar
+    if (beatSync && beatSync.syncLocked) {
+      const bpmLabel = Math.round(beatSync.currentBpm || 120);
+      const offMs = Math.round(beatSync.dynamicOffsetMs || 0);
+      const offStr = offMs === 0 ? '0ms' : `${offMs > 0 ? '+' : ''}${offMs}ms`;
+      ctx.font = '600 9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+      ctx.fillText(
+        `SYNC LOCK · ${bpmLabel} BPM · DRIFT ${offStr}`,
+        geom.cx,
+        y + 13
+      );
+    }
 
     ctx.restore();
   }
@@ -937,13 +1185,13 @@ export class RhythmCanvas {
     ctx.restore();
   }
 
-  drawLaneFlashBeams(ctx, geom, laneConfig, feverActive) {
+  drawLaneFlashBeams(ctx, geom, laneConfig, feverActive, ps = this.playerStates[0]) {
     const laneCount = laneConfig.count;
     const topLeft = geom.cx - geom.topWidth * 0.5;
     const hitLeft = geom.cx - geom.bottomWidth * 0.5;
 
     for (let i = 0; i < laneCount; i += 1) {
-      const intensity = this.laneBeamIntensity[i];
+      const intensity = ps.laneBeamIntensity[i];
       if (intensity <= 0.01) continue;
 
       const baseHex = feverActive ? '#facc15' : laneConfig.colors[i].base;
@@ -969,56 +1217,74 @@ export class RhythmCanvas {
     }
   }
 
+  lowerBoundTime(items, targetSec, getTime) {
+    let lo = 0;
+    let hi = items.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (getTime(items[mid]) < targetSec) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
   drawBeatGrid(ctx, geom, beatGrid, songTime, highwaySkin) {
-    if (!beatGrid) return;
+    if (!beatGrid || beatGrid.length === 0) return;
     const skinId = highwaySkin?.id || 'smoked-glass';
+    const getBeatTime = (b) => b.timeSec ?? b.time;
+    const startIdx = this.lowerBoundTime(beatGrid, songTime - 0.08, getBeatTime);
 
-    for (let i = 0; i < beatGrid.length; i += 1) {
+    for (let i = startIdx; i < beatGrid.length; i += 1) {
       const b = beatGrid[i];
-      if (b.time < songTime - 0.08) continue;
-      if (b.time > songTime + geom.windowSec) break;
+      const beatTime = getBeatTime(b);
+      if (beatTime > songTime + geom.windowSec) break;
 
-      const proj = this.projectAudioTime(b.time, songTime, geom);
+      const proj = this.projectAudioTime(beatTime, songTime, geom);
       if (!proj.visible || proj.progress <= 0.02 || proj.progress > 1.05) continue;
 
+      const tickVal = Number.isFinite(b.tick) ? Math.round(b.tick) : null;
+      const isMeasureLine = Boolean(
+        b.isMeasure || (tickVal !== null && tickVal % 768 === 0)
+      );
+      const isQuarterBeat = Boolean(
+        isMeasureLine || tickVal === null || tickVal % 192 === 0
+      );
+      if (!isQuarterBeat) continue;
+
       const halfW = proj.width * 0.5;
-      const fadeIn = Math.min(1, proj.progress * 3.5);
+      const fadeIn = Math.min(1, proj.progress * 3.6);
+      const nearStrike = Math.max(0, 1 - Math.abs(beatTime - songTime) / 0.14);
 
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(geom.cx - halfW, proj.y);
       ctx.lineTo(geom.cx + halfW, proj.y);
-      ctx.lineWidth = b.isMeasure ? Math.max(1.2, 2.5 * proj.scale) : Math.max(0.7, 1.1 * proj.scale);
 
-      if (skinId === 'rosewood-classic') {
-        // Metallic nickel-silver guitar fret wire
-        ctx.strokeStyle = b.isMeasure
-          ? `rgba(226, 214, 192, ${0.42 * fadeIn})`
-          : `rgba(180, 165, 142, ${0.22 * fadeIn})`;
-      } else if (skinId === 'royal-gold') {
-        ctx.strokeStyle = b.isMeasure
-          ? `rgba(251, 191, 36, ${0.38 * fadeIn})`
-          : `rgba(254, 243, 199, ${0.14 * fadeIn})`;
-      } else if (skinId === 'cyber-synth') {
-        ctx.strokeStyle = b.isMeasure
-          ? `rgba(34, 211, 238, ${0.38 * fadeIn})`
-          : `rgba(232, 121, 249, ${0.16 * fadeIn})`;
-      } else if (skinId === 'inferno-flames') {
-        ctx.strokeStyle = b.isMeasure
-          ? `rgba(251, 146, 60, ${0.36 * fadeIn})`
-          : `rgba(254, 215, 170, ${0.12 * fadeIn})`;
-      } else {
-        ctx.strokeStyle = b.isMeasure
-          ? `rgba(248, 250, 252, ${0.24 * fadeIn})`
-          : `rgba(148, 163, 184, ${0.1 * fadeIn})`;
-      }
+      // Clone Hero 192-PPQ fretboard lines: razor-sharp white 1/1 measure bars (tick % 768 === 0)
+      // & crisp slate 1/4 beat lines (tick % 192 === 0) crossing y = hitY at exact t = 0ms
+      ctx.lineWidth = isMeasureLine
+        ? Math.max(1.8, (3.0 + nearStrike * 0.9) * proj.scale)
+        : Math.max(1.0, (1.4 + nearStrike * 0.35) * proj.scale);
+
+      ctx.strokeStyle = isMeasureLine
+        ? `rgba(255, 255, 255, ${(0.8 + nearStrike * 0.2) * fadeIn})`
+        : `rgba(203, 213, 225, ${(0.38 + nearStrike * 0.14) * fadeIn})`;
       ctx.stroke();
 
+      // Subtle measure-bar outer edge fret markers for instant visual rhythm verification
+      if (isMeasureLine) {
+        const notchW = Math.max(3, 6 * proj.scale);
+        const notchH = Math.max(2, 4.2 * proj.scale);
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.82 * fadeIn).toFixed(3)})`;
+        ctx.fillRect(geom.cx - halfW - notchW, proj.y - notchH * 0.5, notchW, notchH);
+        ctx.fillRect(geom.cx + halfW, proj.y - notchH * 0.5, notchW, notchH);
+      }
+
       // Fretboard inlays on measure lines for Rosewood Classic (mother-of-pearl trapezoid) & Royal Gold (diamond)
-      if (b.isMeasure && skinId === 'rosewood-classic') {
+      if (isMeasureLine && skinId === 'rosewood-classic') {
         const inlayW = Math.max(10, proj.width * 0.24);
         const inlayH = Math.max(3, 9 * proj.scale);
-        ctx.fillStyle = `rgba(241, 245, 249, ${0.22 * fadeIn})`;
+        ctx.fillStyle = `rgba(241, 245, 249, ${0.24 * fadeIn})`;
         ctx.beginPath();
         ctx.moveTo(geom.cx - inlayW * 0.42, proj.y - inlayH * 0.5);
         ctx.lineTo(geom.cx + inlayW * 0.42, proj.y - inlayH * 0.5);
@@ -1026,9 +1292,9 @@ export class RhythmCanvas {
         ctx.lineTo(geom.cx - inlayW * 0.5, proj.y + inlayH * 0.5);
         ctx.closePath();
         ctx.fill();
-      } else if (b.isMeasure && skinId === 'royal-gold') {
+      } else if (isMeasureLine && skinId === 'royal-gold') {
         const dSize = Math.max(3, 7 * proj.scale);
-        ctx.fillStyle = `rgba(251, 191, 36, ${0.36 * fadeIn})`;
+        ctx.fillStyle = `rgba(251, 191, 36, ${0.38 * fadeIn})`;
         ctx.beginPath();
         ctx.moveTo(geom.cx, proj.y - dSize);
         ctx.lineTo(geom.cx + dSize * 1.4, proj.y);
@@ -1119,56 +1385,326 @@ export class RhythmCanvas {
     }
   }
 
-  drawHitZoneReceptors(ctx, geom, laneConfig, feverActive) {
+  drawHitZoneReceptors(
+    ctx,
+    geom,
+    laneConfig,
+    feverActive,
+    beatSync = null,
+    notes = null,
+    songTime = 0,
+    timingWindows = null,
+    ps = this.playerStates[0]
+  ) {
     const laneCount = laneConfig.count;
     const hitY = geom.hitY;
     const hitW = geom.bottomWidth;
     const hitLeft = geom.cx - hitW * 0.5;
     const laneW = hitW / laneCount;
 
+    // Detect per-lane incoming notes inside symmetric Clone Hero hit zone (±70ms / ±85ms), peaking at center PERFECT (±26ms)
+    const goodEarlySec = (timingWindows?.GOOD_EARLY_MS || 70) / 1000;
+    const goodLateSec = (timingWindows?.GOOD_LATE_MS || 70) / 1000;
+    const perfectSec = (timingWindows?.PERFECT_LATE_MS || 26) / 1000;
+    const perfectHalo = [0, 0, 0, 0, 0];
+    const getNoteTime = (n) => n.timeSec ?? n.hitTimeSec;
+    if (Array.isArray(notes) && notes.length > 0) {
+      const checkStart = this.lowerBoundTime(notes, songTime - goodLateSec - 0.02, getNoteTime);
+      for (let idx = checkStart; idx < notes.length; idx += 1) {
+        const n = notes[idx];
+        const noteTime = getNoteTime(n);
+        if (noteTime > songTime + goodEarlySec + 0.02) break;
+        if (n.hit || n.missed || n.dodged || n.isHazard) continue;
+        const diff = noteTime - songTime;
+        if (diff >= -goodLateSec && diff <= goodEarlySec) {
+          const absDiff = Math.abs(diff);
+          const limit = diff >= 0 ? goodEarlySec : goodLateSec;
+          const intensity =
+            absDiff <= perfectSec
+              ? 1.0
+              : Math.max(0.45, 0.9 - ((absDiff - perfectSec) / Math.max(0.01, limit - perfectSec)) * 0.45);
+          if (n.lane >= 0 && n.lane < 5) {
+            perfectHalo[n.lane] = Math.max(perfectHalo[n.lane], intensity);
+          }
+        }
+      }
+    }
+
+    // Sample-accurate 192 PPQ downbeat & drum-transient strike-bar pulse along y = hitY
+    const beatPulse = beatSync ? Math.pow(Math.max(0, 1 - beatSync.beatPhase * 3.4), 2) : 0;
+    const drumPulse = beatSync?.transientEnergy?.drums ?? beatSync?.transientEnergy?.kick ?? 0;
+    const downbeatBoost = beatSync?.isDownbeat ? 0.35 : 0;
+    const barGlow = Math.min(0.85, beatPulse * 0.28 + drumPulse * 0.24 + downbeatBoost);
+
     ctx.save();
-    ctx.fillStyle = feverActive ? 'rgba(250, 204, 21, 0.28)' : 'rgba(248, 250, 252, 0.14)';
-    ctx.fillRect(hitLeft - 6, hitY - 2, hitW + 12, 4);
+    // Live beat-locked pulse aura across the entire receptor strike-bar
+    if (barGlow > 0.05) {
+      const pulseGrad = ctx.createLinearGradient(0, hitY - 12, 0, hitY + 12);
+      const pulseRgb = feverActive || beatSync?.isDownbeat ? '250, 204, 21' : '56, 189, 248';
+      pulseGrad.addColorStop(0, `rgba(${pulseRgb}, 0)`);
+      pulseGrad.addColorStop(0.5, `rgba(${pulseRgb}, ${(barGlow * 0.42).toFixed(3)})`);
+      pulseGrad.addColorStop(1, `rgba(${pulseRgb}, 0)`);
+      ctx.fillStyle = pulseGrad;
+      ctx.fillRect(hitLeft - 12, hitY - 12, hitW + 24, 24);
+    }
+
+    // Wide center strike-bar anchored cleanly at y = hitY (exact t = 0ms centerline)
+    const strikeGrad = ctx.createLinearGradient(hitLeft - 10, hitY, hitLeft + hitW + 10, hitY);
+    strikeGrad.addColorStop(0, feverActive ? 'rgba(250, 204, 21, 0.18)' : 'rgba(226, 232, 240, 0.14)');
+    strikeGrad.addColorStop(0.5, feverActive ? `rgba(254, 240, 138, ${(0.58 + barGlow * 0.42).toFixed(3)})` : `rgba(248, 250, 252, ${(0.42 + barGlow * 0.48).toFixed(3)})`);
+    strikeGrad.addColorStop(1, feverActive ? 'rgba(250, 204, 21, 0.18)' : 'rgba(226, 232, 240, 0.14)');
+    ctx.fillStyle = strikeGrad;
+    ctx.fillRect(hitLeft - 8, hitY - 1.5, hitW + 16, 3 + beatPulse * 1.4);
+
+    // Subtle rail alignment notches at exact hitY
+    ctx.fillStyle = feverActive || beatSync?.isDownbeat ? '#fef08a' : '#f8fafc';
+    ctx.fillRect(hitLeft - 11, hitY - 3, 5, 6);
+    ctx.fillRect(hitLeft + hitW + 6, hitY - 3, 5, 6);
 
     for (let i = 0; i < laneCount; i += 1) {
       const baseColor = feverActive ? { base: '#facc15', bright: '#fef9c3' } : laneConfig.colors[i];
-      const held = this.heldLanes[i];
-      const pulse = this.padPulse[i];
+      const held = ps.heldLanes[i];
+      const pulse = ps.padPulse[i];
+      const haloStrength = perfectHalo[i];
 
-      const padMargin = laneW * 0.085;
-      const padX = hitLeft + i * laneW + padMargin;
+      const padMargin = laneW * 0.065;
+      const padCenterX = hitLeft + (i + 0.5) * laneW;
       const padW = laneW - padMargin * 2;
       const padH = 22;
-      const padY = hitY - padH * 0.5 + (held ? 3 : 0);
+      const depressY = held ? 2.5 : 0;
+      const ringCy = hitY + depressY;
+      const topHalfW = padW * 0.47;
+      const botHalfW = padW * 0.51;
+      const topEdgeY = ringCy - padH * 0.5;
+      const botEdgeY = ringCy + padH * 0.5;
 
-      if (held || pulse > 0.02) {
+      const traceTrapezoid = (dx = 0, dyTop = 0, dyBot = 0) => {
+        ctx.beginPath();
+        ctx.moveTo(padCenterX - topHalfW - dx, topEdgeY - dyTop);
+        ctx.lineTo(padCenterX + topHalfW + dx, topEdgeY - dyTop);
+        ctx.lineTo(padCenterX + botHalfW + dx, botEdgeY + dyBot);
+        ctx.lineTo(padCenterX - botHalfW - dx, botEdgeY + dyBot);
+        ctx.closePath();
+      };
+
+      // 1. Dynamic outer bloom when held, struck, or note enters PERFECT (-45ms..+55ms) zone
+      if (held || pulse > 0.02 || haloStrength > 0.05) {
         ctx.save();
-        ctx.shadowColor = baseColor.base;
-        ctx.shadowBlur = 18 + pulse * 20;
-        ctx.fillStyle = hexToRgba(baseColor.base, 0.34 + pulse * 0.44);
-        this.roundRect(ctx, padX - 2, padY - 2, padW + 4, padH + 4, 6);
+        ctx.shadowColor = haloStrength > 0.1 ? '#fef08a' : baseColor.base;
+        ctx.shadowBlur = 14 + Math.max(pulse * 18, haloStrength * 22);
+        const haloAlpha = Math.max(held ? 0.28 : 0, pulse * 0.42, haloStrength * 0.36);
+        ctx.fillStyle = hexToRgba(haloStrength > 0.15 ? baseColor.bright : baseColor.base, haloAlpha);
+        traceTrapezoid(3, 2, 3);
         ctx.fill();
         ctx.restore();
       }
 
-      ctx.fillStyle = held ? hexToRgba(baseColor.base, 0.78) : 'rgba(14, 18, 28, 0.9)';
-      this.roundRect(ctx, padX, padY, padW, padH, 5);
+      // 2. Dark 3D Fret Pad base bevel underneath
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+      traceTrapezoid(1, 0, 4);
       ctx.fill();
 
-      ctx.lineWidth = held || pulse > 0.1 ? 2.6 : 2;
-      ctx.strokeStyle = held || pulse > 0.1 ? baseColor.bright : baseColor.base;
-      this.roundRect(ctx, padX, padY, padW, padH, 5);
+      // 3. Wide, flat perspective-matched 3D Fret Pad socket
+      const padGrad = ctx.createLinearGradient(0, topEdgeY, 0, botEdgeY);
+      if (held) {
+        padGrad.addColorStop(0, hexToRgba(baseColor.bright, 0.72));
+        padGrad.addColorStop(1, hexToRgba(baseColor.base, 0.9));
+      } else {
+        padGrad.addColorStop(0, 'rgba(15, 23, 42, 0.88)');
+        padGrad.addColorStop(0.55, 'rgba(9, 13, 24, 0.94)');
+        padGrad.addColorStop(1, 'rgba(24, 33, 52, 0.92)');
+      }
+      ctx.fillStyle = padGrad;
+      traceTrapezoid(0, 0, 0);
+      ctx.fill();
+
+      ctx.lineWidth = held || pulse > 0.1 || haloStrength > 0.15 ? 2.4 : 1.75;
+      ctx.strokeStyle = haloStrength > 0.25 ? '#fef08a' : held || pulse > 0.1 ? baseColor.bright : baseColor.base;
       ctx.stroke();
 
-      ctx.fillStyle = held || pulse > 0.2 ? '#ffffff' : hexToRgba(baseColor.bright, 0.5);
-      ctx.fillRect(padX + padW * 0.2, padY + padH * 0.44, padW * 0.6, 2.5);
+      // 4. Perspective Target Ring centered precisely at (padCenterX, ringCy == hitY)
+      const ringRx = Math.max(10, padW * 0.39);
+      const ringRy = Math.max(5.5, padH * 0.38);
 
+      // Dynamic Inner Halo illuminating when incoming note is inside PERFECT (-45ms..+55ms)
+      if (haloStrength > 0.05 || held || pulse > 0.1) {
+        const innerGlow = Math.max(haloStrength, pulse * 0.85, held ? 0.5 : 0);
+        const haloGrad = ctx.createRadialGradient(
+          padCenterX,
+          ringCy,
+          1,
+          padCenterX,
+          ringCy,
+          ringRx * 1.08
+        );
+        haloGrad.addColorStop(0, `rgba(255, 255, 255, ${(innerGlow * 0.78).toFixed(3)})`);
+        haloGrad.addColorStop(0.45, hexToRgba(haloStrength > 0.2 ? '#fde047' : baseColor.bright, innerGlow * 0.62));
+        haloGrad.addColorStop(1, hexToRgba(baseColor.base, 0));
+        ctx.fillStyle = haloGrad;
+        ctx.beginPath();
+        ctx.ellipse(padCenterX, ringCy, ringRx * 1.05, ringRy * 1.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Outer beveled target ring matching gem footprint
+      ctx.beginPath();
+      ctx.ellipse(padCenterX, ringCy, ringRx, ringRy, 0, 0, Math.PI * 2);
+      ctx.lineWidth = haloStrength > 0.15 || held ? 2.4 : 1.75;
+      ctx.strokeStyle = haloStrength > 0.2 ? '#ffffff' : held || pulse > 0.15 ? baseColor.bright : hexToRgba(baseColor.base, 0.92);
+      ctx.stroke();
+
+      // Crisp inner target ring & bright strike-bar crosshair aligned at exact hitY (t = 0ms)
+      ctx.beginPath();
+      ctx.ellipse(padCenterX, ringCy, ringRx * 0.64, ringRy * 0.62, 0, 0, Math.PI * 2);
+      ctx.lineWidth = haloStrength > 0.15 ? 1.8 : 1.2;
+      ctx.strokeStyle = haloStrength > 0.15 ? '#fef08a' : hexToRgba(baseColor.bright, held ? 0.92 : 0.45);
+      ctx.stroke();
+
+      ctx.fillStyle = haloStrength > 0.15 || held || pulse > 0.2 ? '#ffffff' : hexToRgba(baseColor.bright, 0.72);
+      ctx.fillRect(padCenterX - ringRx * 0.82, ringCy - 1, ringRx * 1.64, 2);
+
+      // 5. Key label cleanly beneath Fret Pad
       ctx.font = '700 13px "Oswald", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = held ? '#ffffff' : 'rgba(226, 232, 240, 0.76)';
-      ctx.fillText(laneConfig.keys[i], padX + padW * 0.5, padY + padH + 6);
+      ctx.fillStyle = held || haloStrength > 0.25 ? '#ffffff' : 'rgba(226, 232, 240, 0.78)';
+      ctx.fillText(laneConfig.keys[i], padCenterX, botEdgeY + 6);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Renders a diegetic glowing vertical Fever Lightning Charge tube flanking
+   * the right rail of the note highway, crackling with electric gold when ready/active.
+   */
+  drawBesideHighwayFeverMeter(ctx, geom, state) {
+    const charge = Math.max(0, Math.min(100, state.feverCharge || 0)) / 100;
+    const ready = typeof state.canActivateFever === 'function' ? state.canActivateFever() : charge >= 0.5;
+    const active = Boolean(state.feverActive);
+
+    const startFrac = 0.28;
+    const endFrac = 0.97;
+    const topRightX = geom.cx + geom.topWidth * 0.5;
+    const hitRightX = geom.cx + geom.bottomWidth * 0.5 * 1.07;
+
+    const pTop = Math.pow(startFrac, 1.72);
+    const pBot = Math.pow(endFrac, 1.72);
+    const yTop = geom.topY + geom.highwayLength * pTop;
+    const yBot = geom.topY + geom.highwayLength * pBot;
+
+    const railXTop = topRightX + (hitRightX - topRightX) * pTop + 14;
+    const railXBot = topRightX + (hitRightX - topRightX) * pBot + 22;
+    const wTop = 8;
+    const wBot = 15;
+
+    ctx.save();
+
+    // Outer glass tube casing following highway perspective slope
+    ctx.beginPath();
+    ctx.moveTo(railXTop, yTop);
+    ctx.lineTo(railXTop + wTop, yTop);
+    ctx.lineTo(railXBot + wBot, yBot);
+    ctx.lineTo(railXBot, yBot);
+    ctx.closePath();
+
+    ctx.fillStyle = 'rgba(7, 11, 20, 0.84)';
+    ctx.fill();
+    ctx.lineWidth = ready || active ? 1.8 : 1.1;
+    ctx.strokeStyle = active
+      ? '#fef08a'
+      : ready
+        ? '#38bdf8'
+        : 'rgba(148, 163, 184, 0.36)';
+    ctx.stroke();
+
+    // Rising charge liquid column inside the perspective tube
+    const fillRatio = active ? Math.max(0.08, charge) : charge;
+    if (fillRatio > 0.01) {
+      const fillFrac = endFrac - (endFrac - startFrac) * fillRatio;
+      const pFill = Math.pow(fillFrac, 1.72);
+      const yFill = geom.topY + geom.highwayLength * pFill;
+      const xFillLeft = topRightX + (hitRightX - topRightX) * pFill + (14 + 8 * pFill);
+      const wFill = wTop + (wBot - wTop) * ((fillFrac - startFrac) / (endFrac - startFrac));
+
+      if (ready || active) {
+        ctx.shadowColor = active ? '#facc15' : '#38bdf8';
+        ctx.shadowBlur = active ? 20 : 14;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(xFillLeft + 1.5, yFill);
+      ctx.lineTo(xFillLeft + wFill - 1.5, yFill);
+      ctx.lineTo(railXBot + wBot - 1.5, yBot - 1);
+      ctx.lineTo(railXBot + 1.5, yBot - 1);
+      ctx.closePath();
+
+      const colGrad = ctx.createLinearGradient(0, yFill, 0, yBot);
+      if (active) {
+        colGrad.addColorStop(0, '#ffffff');
+        colGrad.addColorStop(0.35, '#fef08a');
+        colGrad.addColorStop(1, '#f59e0b');
+      } else if (ready) {
+        colGrad.addColorStop(0, '#e0f2fe');
+        colGrad.addColorStop(0.4, '#38bdf8');
+        colGrad.addColorStop(1, '#facc15');
+      } else {
+        colGrad.addColorStop(0, '#38bdf8');
+        colGrad.addColorStop(1, '#0284c7');
+      }
+      ctx.fillStyle = colGrad;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Animated electric crackle wave inside active/ready tube
+      if (ready || active) {
+        ctx.beginPath();
+        const steps = 8;
+        for (let s = 0; s <= steps; s += 1) {
+          const t = s / steps;
+          const sy = yFill + (yBot - yFill) * t;
+          const sxBase = xFillLeft + (railXBot - xFillLeft) * t + (wFill + (wBot - wFill) * t) * 0.5;
+          const jitter = Math.sin(this.animClock * 28 + s * 2.7) * 3.2;
+          if (s === 0) ctx.moveTo(sxBase + jitter, sy);
+          else ctx.lineTo(sxBase + jitter, sy);
+        }
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
+    }
+
+    // 50% Ready threshold notch
+    const halfFrac = startFrac + (endFrac - startFrac) * 0.5;
+    const pHalf = Math.pow(halfFrac, 1.72);
+    const yHalf = geom.topY + geom.highwayLength * pHalf;
+    const xHalf = topRightX + (hitRightX - topRightX) * pHalf + (14 + 8 * pHalf);
+    const wHalf = wTop + (wBot - wTop) * 0.5;
+    ctx.fillStyle = ready || active ? '#fef08a' : 'rgba(255, 255, 255, 0.45)';
+    ctx.fillRect(xHalf - 2, yHalf - 1, wHalf + 4, 2);
+
+    // Top lightning bolt emblem
+    const boltX = railXTop + wTop * 0.5;
+    const boltY = yTop - 14;
+    const pulse = ready || active ? 1 + 0.14 * Math.sin(this.animClock * 11) : 1;
+    ctx.save();
+    ctx.translate(boltX, boltY);
+    ctx.scale(pulse, pulse);
+    if (ready || active) {
+      ctx.shadowColor = active ? '#facc15' : '#38bdf8';
+      ctx.shadowBlur = 14;
+    }
+    ctx.fillStyle = active ? '#fef08a' : ready ? '#38bdf8' : 'rgba(148, 163, 184, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(2, -9);
+    ctx.lineTo(-5, 1);
+    ctx.lineTo(0, 1);
+    ctx.lineTo(-2, 9);
+    ctx.lineTo(5, -1);
+    ctx.lineTo(0, -1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
     ctx.restore();
   }
 
@@ -1199,27 +1735,33 @@ export class RhythmCanvas {
     }
   }
 
-  drawNotes(ctx, geom, laneConfig, notes, songTime, feverActive) {
+  drawNotes(ctx, geom, laneConfig, notes, songTime, feverActive, ps = this.playerStates[0]) {
+    if (!notes || notes.length === 0) return;
     const laneCount = laneConfig.count;
+    const getHitTime = (n) => n.timeSec ?? n.hitTimeSec;
 
-    // 1. Draw Smart Non-Overlapping Hold / Sustain Ribbons (with live Whammy sine vibrato!)
-    for (let i = 0; i < notes.length; i += 1) {
+    // 1. Draw Smart Non-Overlapping Hold / Sustain Ribbons via stateless binary search (max sustain ~10s)
+    const sustainStart = this.lowerBoundTime(notes, songTime - 10.0, getHitTime);
+    for (let i = sustainStart; i < notes.length; i += 1) {
       const note = notes[i];
-      if (note.sustainDuration <= 0 || note.holdCompleted) continue;
+      const noteTime = getHitTime(note);
+      const sustainDur = note.sustainSec ?? note.sustainDuration ?? 0;
+      if (noteTime > songTime + geom.windowSec) break;
+      if (sustainDur <= 0 || note.holdCompleted) continue;
       if (note.hit && !note.holding) continue;
 
-      const tailTime = note.hitTimeSec + note.sustainDuration;
-      if (tailTime < songTime - 0.1 || note.hitTimeSec > songTime + geom.windowSec) continue;
+      const tailTime = noteTime + sustainDur;
+      if (tailTime < songTime - 0.1) continue;
 
-      const headTime = note.holding ? Math.max(note.hitTimeSec, songTime) : note.hitTimeSec;
+      const headTime = note.holding ? Math.max(noteTime, songTime) : noteTime;
       const clampedTailTime = Math.min(tailTime, songTime + geom.windowSec);
 
-      const isGolden = note.isFever || feverActive;
+      const isGolden = note.isFever || note.isStar || feverActive;
       const color = isGolden
         ? { base: '#facc15', bright: '#fef9c3' }
         : laneConfig.colors[note.lane];
 
-      const isWhammyBending = note.holding && this.whammyVisualAmount > 0.05;
+      const isWhammyBending = note.holding && ps.whammyVisualAmount > 0.05;
       const segments = isWhammyBending ? 14 : 6;
 
       ctx.save();
@@ -1239,13 +1781,14 @@ export class RhythmCanvas {
         let cx = geom.cx - proj.width * 0.5 + (note.lane + 0.5) * laneW;
         if (isWhammyBending) {
           // Physical vibrato wave pulsing along the held sustain ribbon!
-          const amp = laneW * 0.19 * this.whammyVisualAmount * Math.sin(frac * Math.PI);
+          const amp = laneW * 0.19 * ps.whammyVisualAmount * Math.sin(frac * Math.PI);
           cx += Math.sin(this.animClock * 36 - frac * 14) * amp;
         }
         const half = laneW * (isWhammyBending ? 0.2 : 0.16);
-        leftPts.push([cx - half, proj.y]);
-        rightPts.push([cx + half, proj.y]);
-        centerPts.push([cx, proj.y]);
+        const anchorY = proj.y;
+        leftPts.push([cx - half, anchorY]);
+        rightPts.push([cx + half, anchorY]);
+        centerPts.push([cx, anchorY]);
       }
 
       if (leftPts.length >= 2) {
@@ -1273,43 +1816,50 @@ export class RhythmCanvas {
       ctx.restore();
     }
 
-    // 2. Chord connector bars
-    for (let i = 0; i < notes.length - 1; i += 1) {
+    // 2. Chord connector bars via binary-search visible window
+    const chordStart = this.lowerBoundTime(notes, songTime - PAST_GRACE_SEC - 0.05, getHitTime);
+    for (let i = chordStart; i < notes.length - 1; i += 1) {
       const a = notes[i];
+      const aTime = getHitTime(a);
+      if (aTime > songTime + geom.windowSec) break;
       const b = notes[i + 1];
-      if (!a.isChord || !b.isChord || a.hit || b.hit || Math.abs(a.hitTimeSec - b.hitTimeSec) > 0.008) {
+      const bTime = getHitTime(b);
+      if (!a.isChord || !b.isChord || a.hit || b.hit || Math.abs(aTime - bTime) > 0.008) {
         continue;
       }
-      const proj = this.projectAudioTime(a.hitTimeSec, songTime, geom);
+      const proj = this.projectAudioTime(aTime, songTime, geom);
       if (!proj.visible || proj.progress <= 0.02 || proj.progress > 1.08) continue;
 
       const laneW = proj.width / laneCount;
       const left = geom.cx - proj.width * 0.5;
       const x1 = left + (a.lane + 0.5) * laneW;
       const x2 = left + (b.lane + 0.5) * laneW;
+      const barY = proj.y;
 
       ctx.save();
-      ctx.strokeStyle = a.isFever || feverActive
+      ctx.strokeStyle = a.isFever || a.isStar || feverActive
         ? `rgba(254, 240, 138, ${Math.min(0.95, proj.progress * 2.4)})`
         : `rgba(226, 232, 240, ${Math.min(0.72, proj.progress * 2.2)})`;
       ctx.lineWidth = Math.max(1.5, 4 * proj.scale);
       ctx.beginPath();
-      ctx.moveTo(x1, proj.y);
-      ctx.lineTo(x2, proj.y);
+      ctx.moveTo(x1, barY);
+      ctx.lineTo(x2, barY);
       ctx.stroke();
       ctx.restore();
     }
 
-    // 3. Draw note heads + unmistakable "Panggulo" Hazard Bomb notes locked directly to hitTimeSec
-    for (let i = 0; i < notes.length; i += 1) {
+    // 3. Draw note heads + "Panggulo" Hazard Bomb gems via stateless binary-search visible window
+    const headStart = this.lowerBoundTime(notes, songTime - PAST_GRACE_SEC - 0.05, getHitTime);
+    for (let i = headStart; i < notes.length; i += 1) {
       const note = notes[i];
       if (note.hit || note.dodged) continue;
 
-      const timeRemaining = note.hitTimeSec - songTime;
+      const noteTime = getHitTime(note);
+      const timeRemaining = noteTime - songTime;
       if (timeRemaining > geom.windowSec) break;
       if (timeRemaining < -PAST_GRACE_SEC) continue;
 
-      const proj = this.projectAudioTime(note.hitTimeSec, songTime, geom);
+      const proj = this.projectAudioTime(noteTime, songTime, geom);
       if (!proj.visible || proj.progress <= 0.01 || proj.progress > 1.12) continue;
 
       const laneW = proj.width / laneCount;
@@ -1318,7 +1868,6 @@ export class RhythmCanvas {
       const noteW = Math.max(8, laneW - margin * 2);
       const noteH = Math.max(5, 22 * proj.scale);
       const noteX = leftEdge + note.lane * laneW + margin;
-      const noteY = proj.y - noteH * 0.5;
 
       const fadeIn = Math.min(1, proj.progress * 4.4);
       const fadeOut = proj.progress > 1.02 ? Math.max(0, 1 - (proj.progress - 1.02) * 10) : 1;
@@ -1327,9 +1876,9 @@ export class RhythmCanvas {
       // Distinct "Panggulo" Hazard Bomb Gem (DO NOT HIT!)
       if (note.isHazard) {
         const cx = noteX + noteW * 0.5;
-        const cy = proj.y;
         const rx = Math.max(9, noteW * 0.38);
         const ry = Math.max(7, noteH * 0.72);
+        const cy = proj.y;
         const pulse = 0.75 + 0.25 * Math.sin(this.animClock * 18 + i);
 
         ctx.save();
@@ -1402,58 +1951,231 @@ export class RhythmCanvas {
       }
 
       const isGolden = note.isFever || feverActive;
+      const isStar = isGolden || Boolean(note.isStar) || Boolean(note.isAccent);
+      const isHopo = Boolean(note.isHopo);
       const color = isGolden
         ? { base: '#f59e0b', bright: '#fef08a' }
         : laneConfig.colors[note.lane];
+
+      const gemCx = noteX + noteW * 0.5;
+      const gemRx = Math.max(6.5, noteW * 0.42);
+      const gemRy = Math.max(4.5, noteH * 0.58);
+      // Center gem directly on proj.y so target-ring alignment is exact 0.0ms PERFECT
+      const gemCy = proj.y;
 
       ctx.save();
       ctx.globalAlpha = alpha;
 
       if (!note.missed) {
-        ctx.shadowColor = isGolden ? '#facc15' : color.base;
-        ctx.shadowBlur = Math.max(5, (isGolden ? 24 : 15) * proj.scale);
+        ctx.shadowColor = isHopo ? '#ffffff' : isGolden ? '#facc15' : isStar ? '#38bdf8' : color.base;
+        ctx.shadowBlur = Math.max(6, (isHopo ? 22 : isStar ? 24 : 15) * proj.scale);
       }
 
-      const barGrad = ctx.createLinearGradient(noteX, noteY, noteX, noteY + noteH);
-      barGrad.addColorStop(0, color.bright);
-      barGrad.addColorStop(0.35, color.base);
-      barGrad.addColorStop(1, isGolden ? '#b45309' : hexToRgba(color.base, 0.85));
-      ctx.fillStyle = barGrad;
-
-      const radius = Math.max(2, 4.5 * proj.scale);
-      this.roundRect(ctx, noteX, noteY, noteW, noteH, radius);
-      ctx.fill();
-
-      ctx.shadowBlur = 0;
-      if (isGolden) {
-        ctx.lineWidth = Math.max(1, 2 * proj.scale);
-        ctx.strokeStyle = '#fef9c3';
-        this.roundRect(ctx, noteX, noteY, noteW, noteH, radius);
-        ctx.stroke();
+      if (isStar) {
+        this.drawStarGem(ctx, gemCx, gemCy, gemRx * 1.06, gemRy * 1.18, proj.scale, {
+          color,
+          isGolden,
+          isHopo,
+          animSeed: i * 0.37,
+        });
+      } else {
+        this.drawCircleGem(ctx, gemCx, gemCy, gemRx, gemRy, proj.scale, {
+          color,
+          isHopo,
+        });
       }
-
-      const coreH = Math.max(1.5, noteH * 0.28);
-      ctx.fillStyle = isGolden ? '#ffffff' : 'rgba(255, 255, 255, 0.92)';
-      this.roundRect(
-        ctx,
-        noteX + noteW * 0.1,
-        noteY + noteH * 0.2,
-        noteW * 0.8,
-        coreH,
-        radius * 0.5
-      );
-      ctx.fill();
-
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.34)';
-      ctx.fillRect(
-        noteX + 2,
-        noteY + noteH - Math.max(2, 3 * proj.scale),
-        noteW - 4,
-        Math.max(1.5, 2.5 * proj.scale)
-      );
 
       ctx.restore();
     }
+  }
+
+  /**
+   * Draws a sculpted Guitar Hero-style beveled 3D circular disc gem with
+   * outer metallic bezel, radial dome lighting, specular crescent, and raised white HOPO cap.
+   */
+  drawCircleGem(ctx, cx, cy, rx, ry, scale, { color, isHopo }) {
+    const bevelOffset = Math.max(1.8, 3.2 * scale);
+
+    // 1. Dark underside 3D drop bevel
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + bevelOffset, rx * 1.02, ry * 1.02, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Outer metallic chrome/color bezel
+    const rimGrad = ctx.createLinearGradient(cx, cy - ry, cx, cy + ry);
+    rimGrad.addColorStop(0, isHopo ? '#ffffff' : '#e2e8f0');
+    rimGrad.addColorStop(0.5, color.base);
+    rimGrad.addColorStop(1, '#1e293b');
+    ctx.fillStyle = rimGrad;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = Math.max(1, 1.8 * scale);
+    ctx.strokeStyle = isHopo ? '#ffffff' : 'rgba(255, 255, 255, 0.72)';
+    ctx.stroke();
+
+    // 3. Inner dome core with offset 3D radial highlight
+    ctx.shadowBlur = 0;
+    const innerRx = rx * 0.78;
+    const innerRy = ry * 0.76;
+    const domeGrad = ctx.createRadialGradient(
+      cx - innerRx * 0.22,
+      cy - innerRy * 0.28,
+      Math.max(1, innerRx * 0.08),
+      cx,
+      cy,
+      innerRx
+    );
+    domeGrad.addColorStop(0, '#ffffff');
+    domeGrad.addColorStop(0.32, color.bright);
+    domeGrad.addColorStop(0.72, color.base);
+    domeGrad.addColorStop(1, hexToRgba(color.base, 0.92));
+
+    ctx.fillStyle = domeGrad;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, innerRx, innerRy, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. Center cap: bright raised glowing white cap for HOPO notes, glossy highlight crescent otherwise
+    if (isHopo) {
+      const capGrad = ctx.createRadialGradient(cx, cy - innerRy * 0.18, 1, cx, cy, innerRx * 0.54);
+      capGrad.addColorStop(0, '#ffffff');
+      capGrad.addColorStop(0.65, '#f8fafc');
+      capGrad.addColorStop(1, '#cbd5e1');
+      ctx.fillStyle = capGrad;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - ry * 0.05, innerRx * 0.56, innerRy * 0.56, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = Math.max(0.9, 1.4 * scale);
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - innerRy * 0.34, innerRx * 0.54, innerRy * 0.26, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /**
+   * Draws a sculpted 5-point Guitar Hero Star-Power / Accent gem with
+   * rotating golden-cyan halo and crisp inner star core.
+   */
+  drawStarGem(ctx, cx, cy, rx, ry, scale, { color, isGolden, isHopo, animSeed }) {
+    const bevelOffset = Math.max(1.8, 3.2 * scale);
+    const rot = Math.sin(this.animClock * 3.1 + animSeed) * 0.16;
+    const pulse = 1 + 0.06 * Math.sin(this.animClock * 7.5 + animSeed);
+
+    // Subtle golden-cyan outer halo ring
+    ctx.save();
+    ctx.strokeStyle = isGolden ? 'rgba(254, 240, 138, 0.65)' : 'rgba(56, 189, 248, 0.55)';
+    ctx.lineWidth = Math.max(1, 1.6 * scale);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx * 1.12 * pulse, ry * 1.12 * pulse, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    const traceStar = (xCenter, yCenter, outerX, outerY, innerRatio) => {
+      ctx.beginPath();
+      const spikes = 5;
+      for (let s = 0; s < spikes * 2; s += 1) {
+        const radiusScale = s % 2 === 0 ? 1 : innerRatio;
+        const ang = -Math.PI * 0.5 + rot + (s * Math.PI) / spikes;
+        const px = xCenter + Math.cos(ang) * outerX * radiusScale;
+        const py = yCenter + Math.sin(ang) * outerY * radiusScale;
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    };
+
+    // 1. Dark 3D drop bevel
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.86)';
+    traceStar(cx, cy + bevelOffset, rx * 1.03, ry * 1.03, 0.46);
+    ctx.fill();
+
+    // 2. Sculpted 3D metallic star body
+    const starGrad = ctx.createRadialGradient(
+      cx - rx * 0.15,
+      cy - ry * 0.25,
+      Math.max(1, rx * 0.08),
+      cx,
+      cy,
+      Math.max(rx, ry)
+    );
+    starGrad.addColorStop(0, '#ffffff');
+    starGrad.addColorStop(0.28, isGolden ? '#fef08a' : color.bright);
+    starGrad.addColorStop(0.7, isGolden ? '#f59e0b' : color.base);
+    starGrad.addColorStop(1, isGolden ? '#92400e' : '#0f172a');
+
+    ctx.fillStyle = starGrad;
+    traceStar(cx, cy, rx, ry, 0.46);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = Math.max(1.1, 2.0 * scale);
+    ctx.strokeStyle = isHopo || isGolden ? '#fef9c3' : '#e0f2fe';
+    ctx.stroke();
+
+    // 3. Inner luminous star core / HOPO white pearl center
+    ctx.fillStyle = isHopo ? '#ffffff' : 'rgba(255, 255, 255, 0.9)';
+    traceStar(cx, cy - ry * 0.03, rx * (isHopo ? 0.44 : 0.34), ry * (isHopo ? 0.44 : 0.34), 0.52);
+    ctx.fill();
+  }
+
+  /**
+   * Renders the glowing multi-lane Big Rock Ending (BRE) freestyle runway zone & live bonus counter!
+   */
+  drawBreFreestyleOverlay(ctx, geom, laneConfig, breBonusPoints) {
+    const laneCount = laneConfig.count;
+    const topLeft = geom.cx - geom.topWidth * 0.5;
+    const hitLeft = geom.cx - geom.bottomWidth * 0.5;
+    const pulse = 0.65 + 0.35 * Math.sin(this.animClock * 11);
+
+    ctx.save();
+    for (let i = 0; i < laneCount; i += 1) {
+      const u0 = i / laneCount;
+      const u1 = (i + 1) / laneCount;
+      const laneColor = laneConfig.colors[i]?.base || '#facc15';
+      const wave = 0.55 + 0.45 * Math.sin(this.animClock * 14 + i * 1.15);
+
+      ctx.beginPath();
+      ctx.moveTo(topLeft + geom.topWidth * u0, geom.topY);
+      ctx.lineTo(topLeft + geom.topWidth * u1, geom.topY);
+      ctx.lineTo(hitLeft + geom.bottomWidth * u1, geom.hitY);
+      ctx.lineTo(hitLeft + geom.bottomWidth * u0, geom.hitY);
+      ctx.closePath();
+
+      const grad = ctx.createLinearGradient(0, geom.topY, 0, geom.hitY);
+      grad.addColorStop(0, hexToRgba(laneColor, 0.06));
+      grad.addColorStop(0.55, hexToRgba(laneColor, 0.22 * wave));
+      grad.addColorStop(1, hexToRgba('#fde047', 0.38 * pulse));
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Center FREESTYLE banner & live bonus tally
+    const bannerY = geom.topY + (geom.hitY - geom.topY) * 0.42;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#facc15';
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = '#fef08a';
+    ctx.font = '700 28px "Oswald", sans-serif';
+    ctx.fillText('⚡ BIG ROCK ENDING · FREESTYLE! ⚡', geom.cx, bannerY);
+
+    ctx.shadowColor = '#fb923c';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 18px "JetBrains Mono", monospace';
+    ctx.fillText(
+      breBonusPoints > 0 ? `+${breBonusPoints.toLocaleString()} BRE BONUS` : 'MASH ANY FRETS FOR ENCORE BONUS!',
+      geom.cx,
+      bannerY + 30
+    );
+    ctx.restore();
   }
 
   drawParticles(ctx) {
@@ -1499,9 +2221,9 @@ export class RhythmCanvas {
     ctx.restore();
   }
 
-  drawCallouts(ctx, geom) {
-    if (this.judgementPopup) {
-      const j = this.judgementPopup;
+  drawCallouts(ctx, geom, ps = this.playerStates[0], showBanner = true) {
+    if (ps.judgementPopup) {
+      const j = ps.judgementPopup;
       const p = j.age / j.duration;
       const scale = p < 0.15 ? 0.82 + (p / 0.15) * 0.3 : 1.12 - ((p - 0.15) / 0.85) * 0.14;
       const alpha = p < 0.65 ? 1 : Math.max(0, 1 - (p - 0.65) / 0.35);
@@ -1511,7 +2233,7 @@ export class RhythmCanvas {
       ctx.translate(geom.cx, geom.hitY - 62 - lift);
       ctx.scale(scale, scale);
       ctx.globalAlpha = alpha;
-      ctx.font = '700 30px "Oswald", sans-serif';
+      ctx.font = '700 28px "Oswald", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.shadowColor = j.color;
@@ -1523,15 +2245,16 @@ export class RhythmCanvas {
 
     // Non-intrusive Streak Milestone & Concert Banners positioned cleanly ABOVE the highway horizon
     // so they NEVER block incoming notes!
-    if (this.bannerPopup) {
+    if (showBanner && this.bannerPopup) {
       const b = this.bannerPopup;
       const p = b.age / b.duration;
       const alpha = p < 0.14 ? p / 0.14 : p < 0.74 ? 1 : Math.max(0, 1 - (p - 0.74) / 0.26);
       const scale = p < 0.14 ? 0.9 + (p / 0.14) * 0.12 : 1.02 - ((p - 0.14) / 0.86) * 0.04;
-      const bannerY = Math.max(30, geom.topY - 26);
+      const bannerX = this.width * 0.5;
+      const bannerY = Math.max(30, geom.topY - 34);
 
       ctx.save();
-      ctx.translate(geom.cx, bannerY);
+      ctx.translate(bannerX, bannerY);
       ctx.scale(scale, scale);
       ctx.globalAlpha = alpha;
       ctx.font = '700 24px "Oswald", sans-serif';

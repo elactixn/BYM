@@ -15,7 +15,7 @@
  */
 
 import { extractSongMetadata } from './songMetadata.js';
-import { normalizeSectionType } from './audioEngine.js';
+import { normalizeSectionType, CHART_SCHEMA_VERSION } from './audioEngine.js';
 import { injectPangguloHazards } from './beatScheduler.js';
 
 const DB_NAME = 'EncoreStageLibraryDB';
@@ -1107,18 +1107,80 @@ export function buildPreauthoredBuiltinChart(track, { instrument = 'guitar', dif
   }
 
   injectPangguloHazards(notes, {
-    difficultyId,
+    difficultyId: difficulty,
     laneCount,
     sections,
     beatGrid,
     trackId: track.id,
   });
 
+  // Unified 192 PPQ [SyncTrack] + automatic HOPO tagging (<= 65 ticks) + Big Rock Ending window
+  const resolution = 192;
+  const syncTrack = [
+    { tick: 0, bpm: Number(track.bpm || 120), timeSeconds: leadInSec },
+  ];
+  const breWindow =
+    duration >= 28
+      ? {
+          startSec: Number((duration - 5.2).toFixed(3)),
+          endSec: Number((duration - 0.7).toFixed(3)),
+          label: 'BIG ROCK ENDING',
+        }
+      : null;
+
+  const finalNotes = [];
+  for (let i = 0; i < notes.length; i += 1) {
+    const n = notes[i];
+    if (breWindow && n.hitTimeSec >= breWindow.startSec - 0.08 && n.hitTimeSec <= breWindow.endSec + 0.15) {
+      continue;
+    }
+    n.tick = Math.max(0, Math.round(((n.hitTimeSec - leadInSec) / beatSec) * resolution));
+    if (!n.isHazard) {
+      n.isAccent = Boolean(n.tick % 768 < 24 || (n.isChord && n.tick % 384 < 24));
+      if (instrument === 'piano') {
+        n.pianoHand = (n.pitchNorm ?? 0.5) < 0.38 || n.lane <= 1 ? 'left' : 'right';
+      }
+    }
+    finalNotes.push(n);
+  }
+
+  for (let i = 1; i < finalNotes.length; i += 1) {
+    const prev = finalNotes[i - 1];
+    const curr = finalNotes[i];
+    if (curr.isHazard || prev.isHazard || curr.isChord || prev.isChord) continue;
+    const dtTicks = curr.tick - prev.tick;
+    if (dtTicks > 0 && dtTicks <= 65 && curr.lane !== prev.lane) {
+      curr.isHopo = true;
+    }
+  }
+
+  const style = track.style || '';
+  const genreStr = `${track.genre || ''} ${track.subtitle || ''}`.toLowerCase();
+  let ambianceType = 'ROCK_ANTHEM';
+  if (style === 'ballad' || style === 'piano-ballad' || genreStr.includes('ballad') || track.bpm <= 102) {
+    ambianceType = 'BALLAD_EMOTIONAL';
+  } else if (style === 'metal' || style === 'shred' || genreStr.includes('metal') || track.bpm >= 156) {
+    ambianceType = 'METAL_CHAOS';
+  } else if (style === 'synth-pop' || genreStr.includes('synth')) {
+    ambianceType = 'SYNTH_CYBER';
+  } else if (style === 'pop' || style === 'pop-punk' || genreStr.includes('pop')) {
+    ambianceType = 'POP_UPBEAT';
+  }
+
   return {
     bpm: track.bpm,
+    resolution,
+    syncTrack,
     beatGrid,
     sections,
-    notes,
+    breWindow,
+    trackMeta: {
+      ambianceType,
+      warmth: ambianceType === 'BALLAD_EMOTIONAL' ? 0.78 : ambianceType === 'POP_UPBEAT' ? 0.56 : 0.34,
+      avgEnergy: ambianceType === 'BALLAD_EMOTIONAL' ? 0.42 : ambianceType === 'METAL_CHAOS' ? 0.88 : 0.68,
+      bpm: Number(track.bpm || 120),
+    },
+    notes: finalNotes,
   };
 }
 
@@ -1334,7 +1396,19 @@ export async function saveHighScore(trackId, { score, grade, accuracy, maxCombo,
    Local Audio + Optional .MID File Import & Drag-and-Drop Binding
    ========================================================================== */
 
-export async function importLocalAudioFile(audioFile, audioCtx, midiFile = null, chartFile = null) {
+export function computeAudioTrackHash(fileName, byteSize, schemaVersion = 'v11_strictStemGate192') {
+  const normName = String(fileName || '').trim().toLowerCase();
+  const normSize = Number(byteSize) || 0;
+  return `${normName}::${normSize}::${schemaVersion}`;
+}
+
+export async function importLocalAudioFile(
+  audioFile,
+  audioCtx,
+  midiFile = null,
+  chartFile = null,
+  { existingTracks = null, schemaVersion = CHART_SCHEMA_VERSION } = {}
+) {
   if (!audioFile) {
     throw new Error('Please choose an audio file.');
   }
@@ -1348,6 +1422,38 @@ export async function importLocalAudioFile(audioFile, audioCtx, midiFile = null,
   }
 
   const rawBytes = await audioFile.arrayBuffer();
+  const byteSize = rawBytes.byteLength;
+  const audioHash = computeAudioTrackHash(audioFile.name, byteSize, schemaVersion);
+
+  // Instant 0ms IndexedDB replay if the same file + byteSize + schemaVersion was already analyzed
+  if (!midiFile && !chartFile) {
+    const candidates = Array.isArray(existingTracks) ? existingTracks : await loadSavedLocalTracks();
+    const matched = candidates.find((rec) => {
+      if (!rec) return false;
+      if (rec.audioHash && rec.audioHash === audioHash) return true;
+      const sameName = String(rec.fileName || '').trim().toLowerCase() === String(audioFile.name).trim().toLowerCase();
+      const sameSize = typeof rec.fileSizeBytes === 'number' && rec.fileSizeBytes === byteSize;
+      const sameSchema = !rec.workerAnalysis || rec.workerAnalysis.schemaVersion === schemaVersion;
+      return sameName && sameSize && sameSchema && !rec.midiBytes && !rec.chartText;
+    });
+    if (matched) {
+      const patch = { addedAt: Date.now(), audioHash, fileSizeBytes: byteSize };
+      if (!matched.rawBytes) patch.rawBytes = rawBytes;
+      matched.addedAt = patch.addedAt;
+      matched.audioHash = audioHash;
+      matched.fileSizeBytes = byteSize;
+      await updateLocalTrackChartCache(matched.id, null, null, matched.bpm, patch);
+      const decodedBuffer = matched.audioBuffer
+        || await audioCtx.decodeAudioData((matched.rawBytes || rawBytes).slice(0));
+      matched.audioBuffer = decodedBuffer;
+      return {
+        ...matched,
+        audioBuffer: decodedBuffer,
+        replayedFromCache: true,
+      };
+    }
+  }
+
   const [decodedBuffer, meta, midiBytes, chartText] = await Promise.all([
     audioCtx.decodeAudioData(rawBytes.slice(0)),
     extractSongMetadata(rawBytes, audioFile.name, { allowOnlineFallback: true }).catch(() => null),
@@ -1373,6 +1479,8 @@ export async function importLocalAudioFile(audioFile, audioCtx, midiFile = null,
     coverArtUrl: meta?.coverArtUrl || null,
     metadataSource: meta?.source || 'filename',
     fileName: audioFile.name,
+    fileSizeBytes: byteSize,
+    audioHash,
     midiFileName: midiFile ? midiFile.name : null,
     chartFileName: chartFile ? chartFile.name : null,
     fileSizeMb: (audioFile.size / (1024 * 1024)).toFixed(1),
@@ -1393,6 +1501,7 @@ export async function importLocalAudioFile(audioFile, audioCtx, midiFile = null,
   return {
     ...record,
     audioBuffer: decodedBuffer,
+    replayedFromCache: false,
   };
 }
 

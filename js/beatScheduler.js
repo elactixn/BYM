@@ -29,7 +29,14 @@
  *    starting right at 0.08s+ always generate crisp, beat-locked notes!
  */
 
-import { analyzeAudioInWorker, parseMidiArrayBuffer, parseCloneHeroChart } from './audioEngine.js';
+import {
+  analyzeAudioInWorker,
+  parseMidiArrayBuffer,
+  parseCloneHeroChart,
+  timeToTick,
+  tickToTime,
+  STANDARD_PPQ,
+} from './audioEngine.js';
 
 const FFT_SIZE = 512;
 const HOP_SIZE = 256;
@@ -326,19 +333,55 @@ function estimateTempoAndPhase(flux, hopSec, bpmHint = null) {
   return { bpm: bestBpm, beatSec, beatPhaseSec: bestPhase };
 }
 
-function buildBeatGrid(durationSec, beatSec, beatPhaseSec) {
+function buildBeatGrid(durationSec, beatSec, beatPhaseSec, syncTrack = null, resolution = STANDARD_PPQ) {
   const grid = [];
+  if (Array.isArray(syncTrack) && syncTrack.length > 0) {
+    let beatIdx = 0;
+    let segIdx = 0;
+    while (beatIdx < 4000) {
+      const tick = beatIdx * resolution;
+      while (segIdx + 1 < syncTrack.length && Number(syncTrack[segIdx + 1].tick || 0) <= tick) {
+        segIdx += 1;
+      }
+      const t = tickToTime(tick, syncTrack, resolution);
+      if (t > durationSec + 0.5) break;
+      if (t >= 0) {
+        const tFixed = Number(t.toFixed(4));
+        const localBpm = Number((Number(syncTrack[segIdx]?.bpm) || (60 / Math.max(0.25, beatSec))).toFixed(3));
+        grid.push({
+          tick,
+          time: tFixed,
+          timeSec: tFixed,
+          isMeasure: tick % (resolution * 4) === 0,
+          beatIndex: beatIdx,
+          localBpm,
+        });
+      }
+      beatIdx += 1;
+    }
+    return grid;
+  }
+
   let idx = 0;
   let t = beatPhaseSec;
   while (t > beatSec) t -= beatSec;
   while (t < durationSec) {
     if (t >= 0) {
-      grid.push({ time: Number(t.toFixed(4)), isMeasure: idx % 4 === 0 });
+      const tFixed = Number(t.toFixed(4));
+      const tick = idx * resolution;
+      grid.push({ tick, time: tFixed, timeSec: tFixed, isMeasure: idx % 4 === 0, beatIndex: idx });
       idx += 1;
     }
     t += beatSec;
   }
   return grid;
+}
+
+function quantizeTickTo192Subdiv(rawTick) {
+  const t = Math.max(0, rawTick);
+  const q48 = Math.round(t / 48) * 48;
+  const q64 = Math.round(t / 64) * 64;
+  return Math.abs(t - q48) <= Math.abs(t - q64) ? q48 : q64;
 }
 
 function quantizeToSubdivision(rawTime, beatPhaseSec, subdivSec, maxPullSec = 0.036) {
@@ -357,11 +400,13 @@ function markFeverNotes(notes) {
   let phraseStart = -99;
   for (let i = 0; i < notes.length; i += 1) {
     const n = notes[i];
-    if (n.hitTimeSec >= 10 && n.hitTimeSec - phraseStart >= 18) {
-      phraseStart = n.hitTimeSec;
+    const hitSec = n.hitTimeSec ?? n.timeSec ?? 0;
+    if (hitSec >= 10 && hitSec - phraseStart >= 18) {
+      phraseStart = hitSec;
     }
-    if (n.hitTimeSec >= phraseStart && n.hitTimeSec <= phraseStart + 4.2) {
+    if (hitSec >= phraseStart && hitSec <= phraseStart + 4.2) {
       n.isFever = true;
+      n.isStar = true;
     }
   }
 }
@@ -538,13 +583,17 @@ async function buildDrumsChart({ audioBuffer, stemActivity, trackId, laneCount, 
     const hatScore = b.hat;
 
     const emitHit = (lane, drumPart, isChord = false) => {
+      const hitSec = Number(b.time.toFixed(4));
       notes.push({
         id: `${trackId}_d_${notes.length}`,
         lane,
-        hitTimeSec: Number(b.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainSec: 0,
         sustainDuration: 0, // STRICTLY ZERO long sustain bars on Drums!
         isChord,
         isFever: false,
+        isStar: false,
         pitchNorm: lane / Math.max(1, laneCount - 1),
         drumPart,
         hit: false,
@@ -818,13 +867,17 @@ async function buildBassChart({ audioBuffer, stemActivity, trackId, laneCount, d
       }
     }
 
+    const hitSec = Number(ev.time.toFixed(4));
     notes.push({
       id: `${trackId}_b_${notes.length}`,
       lane,
-      hitTimeSec: Number(ev.time.toFixed(4)),
+      timeSec: hitSec,
+      hitTimeSec: hitSec,
+      sustainSec: sustainDuration,
       sustainDuration,
       isChord: false, // Authentic basslines play single root/octave grooves rather than guitar chords!
       isFever: false,
+      isStar: false,
       pitchNorm,
       drumPart: null,
       hit: false,
@@ -1050,13 +1103,17 @@ async function buildGuitarChart({ audioBuffer, stemActivity, trackId, laneCount,
       const partnerLane = lane <= laneCount - 3 ? lane + 2 : Math.max(0, lane - 2);
       const lowL = Math.min(lane, partnerLane);
       const highL = Math.max(lane, partnerLane);
+      const hitSec = Number(ev.time.toFixed(4));
       notes.push({
         id: `${trackId}_g_${notes.length}`,
         lane: lowL,
-        hitTimeSec: Number(ev.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainSec: 0,
         sustainDuration: 0,
         isChord: true,
         isFever: false,
+        isStar: false,
         pitchNorm,
         drumPart: null,
         hit: false,
@@ -1067,10 +1124,13 @@ async function buildGuitarChart({ audioBuffer, stemActivity, trackId, laneCount,
       notes.push({
         id: `${trackId}_g_${notes.length}`,
         lane: highL,
-        hitTimeSec: Number(ev.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainSec: 0,
         sustainDuration: 0,
         isChord: true,
         isFever: false,
+        isStar: false,
         pitchNorm,
         drumPart: null,
         hit: false,
@@ -1079,13 +1139,17 @@ async function buildGuitarChart({ audioBuffer, stemActivity, trackId, laneCount,
         missed: false,
       });
     } else {
+      const hitSec = Number(ev.time.toFixed(4));
       notes.push({
         id: `${trackId}_g_${notes.length}`,
         lane,
-        hitTimeSec: Number(ev.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainSec: sustainDuration,
         sustainDuration,
         isChord: false,
         isFever: false,
+        isStar: false,
         pitchNorm,
         drumPart: null,
         hit: false,
@@ -1213,13 +1277,17 @@ function buildChartFromMidiEvents({
         if (sustainDuration < 0.28) sustainDuration = 0;
       }
 
+      const hitSec = Number(cl.time.toFixed(4));
       notes.push({
         id: `${trackId}_m_${notes.length}`,
         lane,
-        hitTimeSec: Number(cl.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainSec: sustainDuration,
         sustainDuration,
         isChord,
         isFever: false,
+        isStar: false,
         pitchNorm: (item.pitchMidi - loMidi) / spanMidi,
         drumPart: instrument === 'drums' ? (lane === 0 ? 'kick' : lane === 1 ? 'snare' : lane === maxLane ? 'crash' : 'hat') : null,
         hit: false,
@@ -1235,67 +1303,6 @@ function buildChartFromMidiEvents({
   if (notes.length < 12) return null;
   markFeverNotes(notes);
   return { bpm, beatGrid, notes };
-}
-
-/**
- * Quantizes an onset timestamp to the local Dynamic Programming beat interval [beats[i], beats[i+1]]
- * supporting both 16th-note (1/4 beat) and triplet (1/3 beat) subdivisions without static-BPM drift!
- */
-function quantizeToDynamicBeatGrid(timeSec, beats, { allowSixteenths = true, allowTriplets = true, maxSnapSec = 0.044 } = {}) {
-  if (!Array.isArray(beats) || beats.length < 2) return timeSec;
-
-  // Binary search enclosing beat interval [beats[lo], beats[lo+1]]
-  let lo = 0;
-  let hi = beats.length - 2;
-  if (timeSec <= beats[0]) {
-    const dt = Math.max(0.25, beats[1] - beats[0]);
-    const steps = Math.round((timeSec - beats[0]) / (dt * 0.25));
-    const cand = beats[0] + steps * dt * 0.25;
-    return Math.abs(cand - timeSec) <= maxSnapSec ? cand : timeSec;
-  }
-  if (timeSec >= beats[beats.length - 1]) {
-    const last = beats[beats.length - 1];
-    const dt = Math.max(0.25, last - beats[beats.length - 2]);
-    const steps = Math.round((timeSec - last) / (dt * 0.25));
-    const cand = last + steps * dt * 0.25;
-    return Math.abs(cand - timeSec) <= maxSnapSec ? cand : timeSec;
-  }
-
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (beats[mid] <= timeSec && timeSec < beats[mid + 1]) {
-      lo = mid;
-      break;
-    }
-    if (beats[mid] < timeSec) lo = mid + 1;
-    else hi = mid - 1;
-  }
-
-  const b0 = beats[lo];
-  const b1 = beats[Math.min(beats.length - 1, lo + 1)];
-  const beatDur = Math.max(0.24, Math.min(1.25, b1 - b0));
-  const frac = (timeSec - b0) / beatDur;
-
-  // Candidate grid positions: straight 8th/16th + optional triplets
-  const divs = allowSixteenths ? [0, 0.25, 0.5, 0.75, 1.0] : [0, 0.5, 1.0];
-  if (allowTriplets) {
-    divs.push(1 / 3, 2 / 3);
-  }
-
-  let bestT = timeSec;
-  let bestErr = maxSnapSec + 1e-4;
-  for (let i = 0; i < divs.length; i += 1) {
-    const cand = b0 + divs[i] * beatDur;
-    const err = Math.abs(cand - timeSec);
-    // Slight preference for straight subdivisions over triplets when equidistant
-    const penalty = i >= (allowSixteenths ? 5 : 3) ? 0.006 : 0;
-    if (err + penalty < bestErr) {
-      bestErr = err + penalty;
-      bestT = cand;
-    }
-  }
-
-  return Math.abs(bestT - timeSec) <= maxSnapSec ? bestT : timeSec;
 }
 
 /**
@@ -1386,13 +1393,19 @@ function buildChartFromCloneHeroChart({ parsedChart, trackId, instrument, laneCo
     const isChord = mapped.length > 1;
     for (let i = 0; i < mapped.length; i += 1) {
       const m = mapped[i];
+      const inStar = isInStarPower(m.timeSec);
+      const sus = instrument === 'drums' || isChord ? 0 : m.sustainSec;
       notes.push({
         id: `${trackId}_ch_${notes.length}`,
+        tick: Number.isFinite(m.tick) ? m.tick : undefined,
         lane: m.lane,
+        timeSec: m.timeSec,
         hitTimeSec: m.timeSec,
-        sustainDuration: instrument === 'drums' || isChord ? 0 : m.sustainSec,
+        sustainSec: sus,
+        sustainDuration: sus,
         isChord,
-        isFever: isInStarPower(m.timeSec),
+        isFever: inStar,
+        isStar: inStar,
         pitchNorm: m.lane / Math.max(1, maxLane),
         drumPart:
           instrument === 'drums'
@@ -1433,102 +1446,137 @@ function buildGuitarChartFromWorker({
   laneCount,
   difficultyConfig,
 }) {
-  const { bpm, beatSec, beatPhaseSec, beats, dynamicBeatGrid, sections, duration, chorusEnergyFloor, guitarOnsets } = workerAnalysis;
-  const beatGrid = dynamicBeatGrid?.length ? dynamicBeatGrid : buildBeatGrid(duration, beatSec, beatPhaseSec);
+  const {
+    bpm,
+    beatSec,
+    beatPhaseSec,
+    syncTrack,
+    dynamicBeatGrid,
+    sections,
+    duration,
+    chorusEnergyFloor,
+    guitarOnsets,
+  } = workerAnalysis;
+  const resolvedSync = syncTrack?.length
+    ? syncTrack
+    : [{ tick: 0, bpm: bpm || 120, timeSec: beatPhaseSec || 0, timeSeconds: beatPhaseSec || 0 }];
+  const beatGrid = dynamicBeatGrid?.length
+    ? dynamicBeatGrid
+    : buildBeatGrid(duration, beatSec, beatPhaseSec, resolvedSync, STANDARD_PPQ);
   const diffId = difficultyConfig?.id || 'medium';
-  const minGapSec = Math.max(0.09, (difficultyConfig?.minNoteGapMs || 210) / 1000);
-  const allowSixteenths = diffId === 'expert' || diffId === 'hard';
-  const subdiv = allowSixteenths ? beatSec / 4 : beatSec / 2;
-  const strengthFloor = diffId === 'easy' ? 1.32 : diffId === 'medium' ? 1.12 : diffId === 'hard' ? 0.96 : 0.85;
+  const minGapSec = Math.max(0.08, (difficultyConfig?.minNoteGapMs || 195) / 1000);
+  const strengthFloor = diffId === 'easy' ? 1.28 : diffId === 'medium' ? 1.08 : diffId === 'hard' ? 0.94 : 0.84;
   const chordChance =
-    diffId === 'expert' ? 0.42 : diffId === 'hard' ? 0.3 : diffId === 'medium' ? 0.1 : 0;
+    diffId === 'expert' ? 0.44 : diffId === 'hard' ? 0.32 : diffId === 'medium' ? 0.12 : 0;
   const rng = createRng(hashSeed(`${trackId}_wguitar_${diffId}`));
 
-  // Keep clean intro notes even if their raw RMS is lower, quantizing to the dynamic beat grid!
   const filtered = [];
   let lastT = -1;
   for (let i = 0; i < (guitarOnsets || []).length; i += 1) {
     const ev = guitarOnsets[i];
-    const isCleanIntro = ev.sectionEnergy < chorusEnergyFloor * 0.72 && ev.hnr >= 2.8;
-    const reqStrength = isCleanIntro ? strengthFloor * 0.84 : strengthFloor;
-    if (ev.strength < reqStrength) continue;
+    if (!ev.isDensityFallback) {
+      const isQuietSection = chorusEnergyFloor > 0 && ev.sectionEnergy < chorusEnergyFloor * 0.72;
+      const isCleanIntro = isQuietSection && ev.hnr >= 2.8;
+      const reqStrength = isCleanIntro
+        ? strengthFloor * 0.72
+        : isQuietSection
+          ? strengthFloor * 0.78
+          : strengthFloor;
+      if (ev.strength < reqStrength) continue;
+    }
 
-    const qTime = beats?.length >= 2
-      ? quantizeToDynamicBeatGrid(ev.time, beats, { allowSixteenths, allowTriplets: true, maxSnapSec: 0.044 })
-      : quantizeToSubdivision(ev.time, beatPhaseSec, subdiv, 0.038);
-
-    if (qTime < 0.06 || qTime > duration - 0.12) continue;
-    if (qTime - lastT < minGapSec) continue;
-    filtered.push({ ...ev, time: qTime });
-    lastT = qTime;
+    const tick = Number.isFinite(ev.tick)
+      ? Math.max(0, Math.round(ev.tick))
+      : quantizeTickTo192Subdiv(timeToTick(ev.exactTimeSec ?? ev.time ?? 0, resolvedSync, STANDARD_PPQ));
+    const exactTime = Number(tickToTime(tick, resolvedSync, STANDARD_PPQ).toFixed(4));
+    if (exactTime < 0.04 || exactTime > duration - 0.12) continue;
+    if (exactTime - lastT < minGapSec) continue;
+    filtered.push({ ...ev, tick, time: exactTime, exactTimeSec: exactTime });
+    lastT = exactTime;
   }
 
   // Dynamic pitch span (10th..90th percentile) across the guitar's true melodic range
   const pitches = filtered.map((o) => o.pitchHz).sort((a, b) => a - b);
-  const loHz = pitches.length >= 6 ? pitches[Math.floor(pitches.length * 0.1)] : 280;
-  const hiHz = pitches.length >= 6 ? pitches[Math.floor(pitches.length * 0.9)] : 1850;
-  const logLo = Math.log2(Math.max(140, loHz));
+  const loHz = pitches.length >= 6 ? pitches[Math.floor(pitches.length * 0.1)] : 220;
+  const hiHz = pitches.length >= 6 ? pitches[Math.floor(pitches.length * 0.9)] : 1650;
+  const logLo = Math.log2(Math.max(120, loHz));
   const logSpan = Math.max(1.0, Math.log2(Math.max(loHz + 100, hiHz)) - logLo);
 
   const notes = [];
   let prevLane = Math.floor(laneCount / 2);
-  let prevLogPitch = logLo + logSpan * 0.5;
+  let prevHz = 0;
+  let lastSingleTick = -9999;
 
   for (let i = 0; i < filtered.length; i += 1) {
     const ev = filtered[i];
     const nextEv = filtered[i + 1];
-    const gapToNext = nextEv ? nextEv.time - ev.time : duration - ev.time;
+    const tick = ev.tick;
+    const hitSec = ev.exactTimeSec;
+    const nextTick = nextEv ? nextEv.tick : tick + 768;
+    const gapTicks = Math.max(0, nextTick - tick);
 
-    const logPitch = Math.log2(Math.max(140, ev.pitchHz));
+    const hz = Math.max(120, ev.pitchHz || (loHz + hiHz) * 0.5);
+    const logPitch = Math.log2(hz);
     const pitchNorm = Math.max(0, Math.min(1, (logPitch - logLo) / logSpan));
-    const deltaLog = logPitch - prevLogPitch;
 
-    let lane = Math.min(laneCount - 1, Math.max(0, Math.floor(pitchNorm * laneCount)));
-    if (Math.abs(deltaLog) < 0.055) {
-      lane = prevLane;
-    } else if (deltaLog > 0.075 && lane <= prevLane && prevLane < laneCount - 1) {
-      lane = prevLane + 1;
-    } else if (deltaLog < -0.075 && lane >= prevLane && prevLane > 0) {
-      lane = prevLane - 1;
+    let lane = Math.min(laneCount - 1, Math.max(0, Math.round(pitchNorm * (laneCount - 1))));
+    if (prevHz > 0) {
+      const semitones = 12 * Math.log2(hz / prevHz);
+      if (Math.abs(semitones) < 0.85) {
+        lane = prevLane;
+      } else if (semitones >= 0.85 && lane <= prevLane && prevLane < laneCount - 1) {
+        lane = Math.min(laneCount - 1, prevLane + (semitones > 4.5 && laneCount >= 4 ? 2 : 1));
+      } else if (semitones <= -0.85 && lane >= prevLane && prevLane > 0) {
+        lane = Math.max(0, prevLane - (semitones < -4.5 && laneCount >= 4 ? 2 : 1));
+      } else if (Math.abs(lane - prevLane) > 2 && tick - lastSingleTick < 96) {
+        lane = prevLane + Math.sign(lane - prevLane) * 2;
+      }
     }
-    prevLogPitch = logPitch;
+    prevHz = hz;
 
-    let sustainDuration = 0;
-    if (ev.sustainSec >= 0.28 && gapToNext >= 0.42) {
-      sustainDuration = Number(Math.min(2.4, ev.sustainSec, gapToNext - 0.15).toFixed(3));
-      if (sustainDuration < 0.26) sustainDuration = 0;
-    }
+    const rawSusTicks =
+      ev.sustainSec > 0
+        ? Math.round((Math.min(2.6, ev.sustainSec) / Math.max(0.25, beatSec)) * STANDARD_PPQ)
+        : 0;
+    const clampedSusTicks = Math.min(rawSusTicks, Math.max(0, gapTicks - 48));
+    const sustainTicks = clampedSusTicks > 240 ? Math.round(clampedSusTicks / 48) * 48 : 0;
+    const sustainDuration =
+      sustainTicks > 0
+        ? Number(Math.max(0, tickToTime(tick + sustainTicks, resolvedSync, STANDARD_PPQ) - hitSec).toFixed(4))
+        : 0;
 
-    const sec = getSongSectionAt(sections, ev.time);
-    const beatFloat = (ev.time - beatPhaseSec) / beatSec;
-    const beatInBar = ((Math.round(beatFloat * 2) / 2) % 4 + 4) % 4;
-    const isStrongDownbeat =
-      Math.abs(beatInBar) < 0.18 ||
-      Math.abs(beatInBar - 4) < 0.18 ||
-      Math.abs(beatInBar - 2) < 0.18;
+    const sec = getSongSectionAt(sections, hitSec);
+    const isStrongDownbeat = tick % 384 === 0;
     const isHighEnergyChorus =
-      sec.type === 'CHORUS' || ev.sectionEnergy >= chorusEnergyFloor * 0.92;
+      sec.type === 'CHORUS' || ev.sectionEnergy >= chorusEnergyFloor * 0.85;
 
     const makeChord =
       chordChance > 0 &&
+      laneCount >= 4 &&
       isStrongDownbeat &&
       isHighEnergyChorus &&
       sec.type !== 'GUITAR_SOLO' &&
-      sustainDuration === 0 &&
+      sustainTicks === 0 &&
       rng() < chordChance;
 
     if (makeChord) {
-      const partner = lane <= laneCount - 3 ? lane + 2 : Math.max(0, lane - 2);
-      const lowL = Math.min(lane, partner);
-      const highL = Math.max(lane, partner);
+      // Authentic Clone Hero 2-note Power Chords: [0,2] Green+Yellow or [1,3] Red+Blue
+      const pair = lane <= 1 ? [0, 2] : [1, Math.min(laneCount - 1, 3)];
+      const lowL = pair[0];
+      const highL = pair[1];
       [lowL, highL].forEach((l) => {
         notes.push({
           id: `${trackId}_wg_${notes.length}`,
+          tick,
           lane: l,
-          hitTimeSec: Number(ev.time.toFixed(4)),
+          timeSec: hitSec,
+          hitTimeSec: hitSec,
+          sustainTicks: 0,
+          sustainSec: 0,
           sustainDuration: 0,
           isChord: true,
           isFever: false,
+          isStar: false,
           pitchNorm,
           drumPart: null,
           hit: false,
@@ -1537,14 +1585,20 @@ function buildGuitarChartFromWorker({
           missed: false,
         });
       });
+      lastSingleTick = -9999;
     } else {
       notes.push({
         id: `${trackId}_wg_${notes.length}`,
+        tick,
         lane,
-        hitTimeSec: Number(ev.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainTicks,
+        sustainSec: sustainDuration,
         sustainDuration,
         isChord: false,
         isFever: false,
+        isStar: false,
         pitchNorm,
         drumPart: null,
         hit: false,
@@ -1552,18 +1606,20 @@ function buildGuitarChartFromWorker({
         holdCompleted: false,
         missed: false,
       });
+      lastSingleTick = tick;
     }
 
     prevLane = lane;
   }
 
+  notes.sort((a, b) => a.tick - b.tick || a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
   markFeverNotes(notes);
   return { bpm, beatGrid, sections, notes };
 }
 
 /**
- * Maps sub-second Web Worker bass onsets (40–220Hz fundamental pitch + autocorrelation)
- * locked to the Dynamic Programming beat grid with sustain holds.
+ * Maps sub-second Web Worker bass onsets (45–210Hz fundamental pitch + autocorrelation)
+ * locked strictly to the 192 PPQ beat grid with quantized >240-tick sustain holds.
  */
 function buildBassChartFromWorker({
   workerAnalysis,
@@ -1571,27 +1627,33 @@ function buildBassChartFromWorker({
   laneCount,
   difficultyConfig,
 }) {
-  const { bpm, beatSec, beatPhaseSec, beats, dynamicBeatGrid, sections, duration, bassOnsets } = workerAnalysis;
-  const beatGrid = dynamicBeatGrid?.length ? dynamicBeatGrid : buildBeatGrid(duration, beatSec, beatPhaseSec);
+  const { bpm, beatSec, beatPhaseSec, syncTrack, dynamicBeatGrid, sections, duration, chorusEnergyFloor, bassOnsets } = workerAnalysis;
+  const resolvedSync = syncTrack?.length
+    ? syncTrack
+    : [{ tick: 0, bpm: bpm || 120, timeSec: beatPhaseSec || 0, timeSeconds: beatPhaseSec || 0 }];
+  const beatGrid = dynamicBeatGrid?.length
+    ? dynamicBeatGrid
+    : buildBeatGrid(duration, beatSec, beatPhaseSec, resolvedSync, STANDARD_PPQ);
   const diffId = difficultyConfig?.id || 'medium';
   const minGapSec = Math.max(0.11, (difficultyConfig?.minNoteGapMs || 220) / 1000);
-  const allowSixteenths = diffId === 'expert' || diffId === 'hard';
-  const subdiv = allowSixteenths ? beatSec / 4 : beatSec / 2;
   const strengthFloor = diffId === 'easy' ? 1.32 : diffId === 'medium' ? 1.12 : diffId === 'hard' ? 0.98 : 0.88;
 
   const filtered = [];
   let lastT = -1;
   for (let i = 0; i < (bassOnsets || []).length; i += 1) {
     const ev = bassOnsets[i];
-    if (ev.strength < strengthFloor) continue;
-    const qTime = beats?.length >= 2
-      ? quantizeToDynamicBeatGrid(ev.time, beats, { allowSixteenths, allowTriplets: true, maxSnapSec: 0.046 })
-      : quantizeToSubdivision(ev.time, beatPhaseSec, subdiv, 0.042);
-
-    if (qTime < 0.06 || qTime > duration - 0.12) continue;
-    if (qTime - lastT < minGapSec) continue;
-    filtered.push({ ...ev, time: qTime });
-    lastT = qTime;
+    if (!ev.isDensityFallback) {
+      const isQuietBridge = chorusEnergyFloor > 0 && ev.sectionEnergy < chorusEnergyFloor * 0.72;
+      if (ev.strength < (isQuietBridge ? strengthFloor * 0.72 : strengthFloor)) continue;
+    }
+    const tick = Number.isFinite(ev.tick)
+      ? Math.max(0, Math.round(ev.tick))
+      : quantizeTickTo192Subdiv(timeToTick(ev.exactTimeSec ?? ev.time ?? 0, resolvedSync, STANDARD_PPQ));
+    const exactTime = Number(tickToTime(tick, resolvedSync, STANDARD_PPQ).toFixed(4));
+    if (exactTime < 0.04 || exactTime > duration - 0.12) continue;
+    if (exactTime - lastT < minGapSec) continue;
+    filtered.push({ ...ev, tick, time: exactTime, exactTimeSec: exactTime });
+    lastT = exactTime;
   }
 
   const pitches = filtered.map((o) => o.pitchHz).sort((a, b) => a - b);
@@ -1602,40 +1664,56 @@ function buildBassChartFromWorker({
 
   const notes = [];
   let prevLane = 0;
-  let prevLogPitch = logLo;
+  let prevHz = 0;
 
   for (let i = 0; i < filtered.length; i += 1) {
     const ev = filtered[i];
     const nextEv = filtered[i + 1];
-    const gapToNext = nextEv ? nextEv.time - ev.time : duration - ev.time;
+    const tick = ev.tick;
+    const hitSec = ev.exactTimeSec;
+    const nextTick = nextEv ? nextEv.tick : tick + 768;
+    const gapTicks = Math.max(0, nextTick - tick);
 
-    const logPitch = Math.log2(Math.max(40, ev.pitchHz));
+    const hz = Math.max(40, ev.pitchHz || 82);
+    const logPitch = Math.log2(hz);
     const pitchNorm = Math.max(0, Math.min(1, (logPitch - logLo) / logSpan));
-    const deltaLog = logPitch - prevLogPitch;
 
-    let lane = Math.min(laneCount - 1, Math.max(0, Math.floor(pitchNorm * laneCount)));
-    if (Math.abs(deltaLog) < 0.06) {
-      lane = prevLane;
-    } else if (deltaLog > 0.09 && lane <= prevLane && prevLane < laneCount - 1) {
-      lane = prevLane + 1;
-    } else if (deltaLog < -0.09 && lane >= prevLane && prevLane > 0) {
-      lane = prevLane - 1;
+    let lane = Math.min(laneCount - 1, Math.max(0, Math.round(pitchNorm * (laneCount - 1))));
+    if (prevHz > 0) {
+      const semitones = 12 * Math.log2(hz / prevHz);
+      if (Math.abs(semitones) < 0.85) {
+        lane = prevLane;
+      } else if (semitones >= 0.85 && lane <= prevLane && prevLane < laneCount - 1) {
+        lane = prevLane + 1;
+      } else if (semitones <= -0.85 && lane >= prevLane && prevLane > 0) {
+        lane = prevLane - 1;
+      }
     }
-    prevLogPitch = logPitch;
+    prevHz = hz;
 
-    let sustainDuration = 0;
-    if (ev.sustainSec >= 0.3 && gapToNext >= 0.44) {
-      sustainDuration = Number(Math.min(2.6, ev.sustainSec, gapToNext - 0.15).toFixed(3));
-      if (sustainDuration < 0.28) sustainDuration = 0;
-    }
+    const rawSusTicks =
+      ev.sustainSec > 0
+        ? Math.round((Math.min(2.6, ev.sustainSec) / Math.max(0.25, beatSec)) * STANDARD_PPQ)
+        : 0;
+    const clampedSusTicks = Math.min(rawSusTicks, Math.max(0, gapTicks - 48));
+    const sustainTicks = clampedSusTicks > 240 ? Math.round(clampedSusTicks / 48) * 48 : 0;
+    const sustainDuration =
+      sustainTicks > 0
+        ? Number(Math.max(0, tickToTime(tick + sustainTicks, resolvedSync, STANDARD_PPQ) - hitSec).toFixed(4))
+        : 0;
 
     notes.push({
       id: `${trackId}_wb_${notes.length}`,
+      tick,
       lane,
-      hitTimeSec: Number(ev.time.toFixed(4)),
+      timeSec: hitSec,
+      hitTimeSec: hitSec,
+      sustainTicks,
+      sustainSec: sustainDuration,
       sustainDuration,
       isChord: false,
       isFever: false,
+      isStar: false,
       pitchNorm,
       drumPart: null,
       hit: false,
@@ -1646,13 +1724,14 @@ function buildBassChartFromWorker({
     prevLane = lane;
   }
 
+  notes.sort((a, b) => a.tick - b.tick || a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
   markFeverNotes(notes);
   return { bpm, beatGrid, sections, notes };
 }
 
 /**
- * Maps sub-second Web Worker percussive drum events locked to the Dynamic Programming
- * beat grid (strictly ZERO drum notes during drumless intros, ZERO drum sustains).
+ * Maps sub-second Web Worker percussive drum events locked strictly to 192 PPQ
+ * subdivisions of the master beat grid (strictly ZERO drum notes during drumless intros).
  */
 function buildDrumsChartFromWorker({
   workerAnalysis,
@@ -1660,38 +1739,42 @@ function buildDrumsChartFromWorker({
   laneCount,
   difficultyConfig,
 }) {
-  const { bpm, beatSec, beatPhaseSec, beats, dynamicBeatGrid, sections, duration, drumEvents } = workerAnalysis;
-  const beatGrid = dynamicBeatGrid?.length ? dynamicBeatGrid : buildBeatGrid(duration, beatSec, beatPhaseSec);
+  const { bpm, beatSec, beatPhaseSec, syncTrack, dynamicBeatGrid, sections, duration, drumEvents } = workerAnalysis;
+  const resolvedSync = syncTrack?.length
+    ? syncTrack
+    : [{ tick: 0, bpm: bpm || 120, timeSec: beatPhaseSec || 0, timeSeconds: beatPhaseSec || 0 }];
+  const beatGrid = dynamicBeatGrid?.length
+    ? dynamicBeatGrid
+    : buildBeatGrid(duration, beatSec, beatPhaseSec, resolvedSync, STANDARD_PPQ);
   const diffId = difficultyConfig?.id || 'medium';
   const maxLane = Math.max(2, laneCount - 1);
   const minGapSec = Math.max(0.085, (difficultyConfig?.minNoteGapMs || 195) / 1000);
-  const allowSixteenths = diffId === 'expert' || diffId === 'hard';
-  const subdiv = allowSixteenths ? beatSec / 4 : beatSec / 2;
   const allowFlams = diffId === 'hard' || diffId === 'expert';
 
   const clusters = [];
   for (let i = 0; i < (drumEvents || []).length; i += 1) {
     const ev = drumEvents[i];
-    if (diffId === 'easy' && ev.part === 'hihat' && ev.strength < 0.015) continue;
+    if (!ev.isDensityFallback && diffId === 'easy' && ev.part === 'hihat' && ev.strength < 0.015) continue;
 
-    const qTime = beats?.length >= 2
-      ? quantizeToDynamicBeatGrid(ev.time, beats, { allowSixteenths, allowTriplets: true, maxSnapSec: 0.042 })
-      : quantizeToSubdivision(ev.time, beatPhaseSec, subdiv, 0.038);
-
-    if (qTime < 0.06 || qTime > duration - 0.12) continue;
+    const tick = Number.isFinite(ev.tick)
+      ? Math.max(0, Math.round(ev.tick))
+      : quantizeTickTo192Subdiv(timeToTick(ev.exactTimeSec ?? ev.time ?? 0, resolvedSync, STANDARD_PPQ));
+    const exactTime = Number(tickToTime(tick, resolvedSync, STANDARD_PPQ).toFixed(4));
+    if (exactTime < 0.04 || exactTime > duration - 0.12) continue;
 
     const prev = clusters[clusters.length - 1];
-    if (prev && Math.abs(qTime - prev.time) <= 0.036) {
-      prev.items.push(ev);
+    if (prev && Math.abs(tick - prev.tick) <= 12) {
+      prev.items.push({ ...ev, tick });
     } else {
-      clusters.push({ time: qTime, items: [ev] });
+      clusters.push({ tick, time: exactTime, items: [{ ...ev, tick }] });
     }
   }
 
-  const partPriority = { crash: 4, kick: 3, snare: 2, hihat: 1 };
+  const partPriority = { crash: 5, kick: 4, snare: 3, tom: 2, hihat: 1 };
   const partToLane = (part) => {
     if (part === 'kick') return 0;
     if (part === 'snare') return 1;
+    if (part === 'tom') return laneCount >= 4 ? Math.min(maxLane, 3) : Math.min(maxLane, 2);
     if (part === 'crash') return maxLane;
     return Math.min(maxLane, 2);
   };
@@ -1718,21 +1801,28 @@ function buildDrumsChartFromWorker({
       const lane = partToLane(ev.part);
       if (!usedLanes.includes(lane)) {
         usedLanes.push(lane);
-        chosen.push({ lane, part: ev.part });
+        chosen.push({ lane, part: ev.part, tick: cl.tick, strength: ev.strength || 0 });
       }
       if (chosen.length >= maxHits) break;
     }
 
     const isChord = chosen.length > 1;
+    const hitSec = cl.time;
     for (let k = 0; k < chosen.length; k += 1) {
       const item = chosen[k];
       notes.push({
         id: `${trackId}_wd_${notes.length}`,
+        tick: item.tick,
         lane: item.lane,
-        hitTimeSec: Number(cl.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainTicks: 0,
+        sustainSec: 0,
         sustainDuration: 0,
         isChord,
         isFever: false,
+        isStar: false,
+        isAccent: item.part === 'crash' || item.strength >= 2.1,
         pitchNorm: item.lane / Math.max(1, laneCount - 1),
         drumPart: item.part,
         hit: false,
@@ -1744,13 +1834,14 @@ function buildDrumsChartFromWorker({
     lastT = cl.time;
   }
 
+  notes.sort((a, b) => a.tick - b.tick || a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
   markFeverNotes(notes);
   return { bpm, beatGrid, sections, notes };
 }
 
 /**
  * Maps sub-second Web Worker Piano/Keys harmonic onsets (130Hz–2.2kHz / MIDI 48–84)
- * into expressive sustained chord voicings & cascading arpeggio runs!
+ * locked strictly to the 192 PPQ beat grid with quantized chord voicings & arpeggio runs!
  */
 function buildPianoChartFromWorker({
   workerAnalysis,
@@ -1762,7 +1853,7 @@ function buildPianoChartFromWorker({
     bpm,
     beatSec,
     beatPhaseSec,
-    beats,
+    syncTrack,
     dynamicBeatGrid,
     sections,
     duration,
@@ -1770,12 +1861,17 @@ function buildPianoChartFromWorker({
     pianoOnsets,
     guitarOnsets,
   } = workerAnalysis;
-  const sourceOnsets = pianoOnsets?.length >= 10 ? pianoOnsets : guitarOnsets || [];
-  const beatGrid = dynamicBeatGrid?.length ? dynamicBeatGrid : buildBeatGrid(duration, beatSec, beatPhaseSec);
+  const resolvedSync = syncTrack?.length
+    ? syncTrack
+    : [{ tick: 0, bpm: bpm || 120, timeSec: beatPhaseSec || 0, timeSeconds: beatPhaseSec || 0 }];
+  const sourceOnsets = workerAnalysis?.analysisEngine
+    ? (pianoOnsets || [])
+    : (pianoOnsets?.length >= 10 ? pianoOnsets : guitarOnsets || []);
+  const beatGrid = dynamicBeatGrid?.length
+    ? dynamicBeatGrid
+    : buildBeatGrid(duration, beatSec, beatPhaseSec, resolvedSync, STANDARD_PPQ);
   const diffId = difficultyConfig?.id || 'medium';
   const minGapSec = Math.max(0.09, (difficultyConfig?.minNoteGapMs || 205) / 1000);
-  const allowSixteenths = diffId === 'expert' || diffId === 'hard';
-  const subdiv = allowSixteenths ? beatSec / 4 : beatSec / 2;
   const strengthFloor = diffId === 'easy' ? 1.28 : diffId === 'medium' ? 1.08 : diffId === 'hard' ? 0.94 : 0.84;
   const chordChance =
     diffId === 'expert' ? 0.56 : diffId === 'hard' ? 0.42 : diffId === 'medium' ? 0.24 : 0;
@@ -1785,18 +1881,20 @@ function buildPianoChartFromWorker({
   let lastT = -1;
   for (let i = 0; i < sourceOnsets.length; i += 1) {
     const ev = sourceOnsets[i];
-    const isIntroPiano = ev.sectionEnergy < chorusEnergyFloor * 0.72;
-    const reqStrength = isIntroPiano ? strengthFloor * 0.84 : strengthFloor;
-    if (ev.strength < reqStrength) continue;
+    if (!ev.isDensityFallback) {
+      const isIntroPiano = chorusEnergyFloor > 0 && ev.sectionEnergy < chorusEnergyFloor * 0.72;
+      const reqStrength = isIntroPiano ? strengthFloor * 0.72 : strengthFloor;
+      if (ev.strength < reqStrength) continue;
+    }
 
-    const qTime = beats?.length >= 2
-      ? quantizeToDynamicBeatGrid(ev.time, beats, { allowSixteenths, allowTriplets: true, maxSnapSec: 0.044 })
-      : quantizeToSubdivision(ev.time, beatPhaseSec, subdiv, 0.038);
-
-    if (qTime < 0.06 || qTime > duration - 0.12) continue;
-    if (qTime - lastT < minGapSec) continue;
-    filtered.push({ ...ev, time: qTime });
-    lastT = qTime;
+    const tick = Number.isFinite(ev.tick)
+      ? Math.max(0, Math.round(ev.tick))
+      : quantizeTickTo192Subdiv(timeToTick(ev.exactTimeSec ?? ev.time ?? 0, resolvedSync, STANDARD_PPQ));
+    const exactTime = Number(tickToTime(tick, resolvedSync, STANDARD_PPQ).toFixed(4));
+    if (exactTime < 0.04 || exactTime > duration - 0.12) continue;
+    if (exactTime - lastT < minGapSec) continue;
+    filtered.push({ ...ev, tick, time: exactTime, exactTimeSec: exactTime });
+    lastT = exactTime;
   }
 
   const pitches = filtered.map((o) => o.pitchHz).sort((a, b) => a - b);
@@ -1812,50 +1910,74 @@ function buildPianoChartFromWorker({
   for (let i = 0; i < filtered.length; i += 1) {
     const ev = filtered[i];
     const nextEv = filtered[i + 1];
-    const gapToNext = nextEv ? nextEv.time - ev.time : duration - ev.time;
+    const tick = ev.tick;
+    const hitSec = ev.exactTimeSec;
+    const nextTick = nextEv ? nextEv.tick : tick + 768;
+    const gapTicks = Math.max(0, nextTick - tick);
 
     const logPitch = Math.log2(Math.max(120, ev.pitchHz));
     const pitchNorm = Math.max(0, Math.min(1, (logPitch - logLo) / logSpan));
-    let lane = Math.min(laneCount - 1, Math.max(0, Math.floor(pitchNorm * laneCount)));
+    let lane = Math.min(laneCount - 1, Math.max(0, Math.round(pitchNorm * (laneCount - 1))));
 
     // Cascading piano arpeggio runs when consecutive notes flow quickly!
-    if (gapToNext < beatSec * 0.62 && lane === prevLane) {
+    if (gapTicks <= 144 && lane === prevLane) {
       if (prevLane + arpeggioDir < 0 || prevLane + arpeggioDir >= laneCount) {
         arpeggioDir = -arpeggioDir;
       }
       lane = Math.max(0, Math.min(laneCount - 1, prevLane + arpeggioDir));
     }
 
-    let sustainDuration = 0;
-    if (ev.sustainSec >= 0.26 && gapToNext >= 0.4) {
-      sustainDuration = Number(Math.min(2.8, ev.sustainSec, gapToNext - 0.14).toFixed(3));
-      if (sustainDuration < 0.25) sustainDuration = 0;
-    }
+    const rawSusTicks =
+      ev.sustainSec > 0
+        ? Math.round((Math.min(2.8, ev.sustainSec) / Math.max(0.25, beatSec)) * STANDARD_PPQ)
+        : 0;
+    const clampedSusTicks = Math.min(rawSusTicks, Math.max(0, gapTicks - 48));
+    const sustainTicks = clampedSusTicks > 240 ? Math.round(clampedSusTicks / 48) * 48 : 0;
+    const sustainDuration =
+      sustainTicks > 0
+        ? Number(Math.max(0, tickToTime(tick + sustainTicks, resolvedSync, STANDARD_PPQ) - hitSec).toFixed(4))
+        : 0;
 
-    const beatFloat = (ev.time - beatPhaseSec) / beatSec;
-    const beatInBar = ((Math.round(beatFloat * 2) / 2) % 4 + 4) % 4;
-    const isStrongBeat =
-      Math.abs(beatInBar) < 0.18 ||
-      Math.abs(beatInBar - 4) < 0.18 ||
-      Math.abs(beatInBar - 2) < 0.18;
-
+    const isStrongBeat = tick % 384 === 0;
     const makeChord =
       chordChance > 0 &&
       (ev.isPolyphonic || isStrongBeat) &&
       rng() < (ev.isPolyphonic ? chordChance : chordChance * 0.68);
 
     if (makeChord && laneCount >= 3) {
-      const partner = lane <= laneCount - 3 ? lane + 2 : Math.max(0, lane - 2);
-      const lowL = Math.min(lane, partner);
-      const highL = Math.max(lane, partner);
-      [lowL, highL].forEach((l) => {
+      const isTriad = laneCount >= 4 && ev.chromaVoices?.length >= 3 && (diffId === 'hard' || diffId === 'expert');
+      let chordLanes;
+      if (isTriad) {
+        const l0 = Math.max(0, Math.min(laneCount - 3, lane - 1));
+        chordLanes = [l0, l0 + 1, l0 + 2];
+      } else {
+        const partner = lane <= laneCount - 3 ? lane + 2 : Math.max(0, lane - 2);
+        chordLanes = [Math.min(lane, partner), Math.max(lane, partner)];
+      }
+      const leftSusTicks =
+        sustainTicks > 240 ? sustainTicks : gapTicks >= 336 ? 288 : 0;
+      const leftSustain =
+        leftSusTicks > 0
+          ? Number(Math.max(0, tickToTime(tick + leftSusTicks, resolvedSync, STANDARD_PPQ) - hitSec).toFixed(4))
+          : 0;
+      chordLanes.forEach((l, chordIdx) => {
+        const hand = chordIdx === 0 ? 'left' : 'right';
+        const noteSusTicks = hand === 'left' ? leftSusTicks : sustainTicks > 240 ? sustainTicks : 0;
+        const noteSus = hand === 'left' ? leftSustain : sustainTicks > 240 ? sustainDuration : 0;
         notes.push({
           id: `${trackId}_wp_${notes.length}`,
+          tick,
           lane: l,
-          hitTimeSec: Number(ev.time.toFixed(4)),
-          sustainDuration: sustainDuration >= 0.35 ? sustainDuration : 0,
+          timeSec: hitSec,
+          hitTimeSec: hitSec,
+          sustainTicks: noteSusTicks,
+          sustainSec: noteSus,
+          sustainDuration: noteSus,
           isChord: true,
           isFever: false,
+          isStar: false,
+          isAccent: Boolean(isStrongBeat || ev.strength >= 2.1),
+          pianoHand: hand,
           pitchNorm,
           drumPart: null,
           hit: false,
@@ -1865,13 +1987,21 @@ function buildPianoChartFromWorker({
         });
       });
     } else {
+      const hand = ev.pianoHand || (ev.pitchHz < 270 || lane <= 1 ? 'left' : 'right');
       notes.push({
         id: `${trackId}_wp_${notes.length}`,
+        tick,
         lane,
-        hitTimeSec: Number(ev.time.toFixed(4)),
+        timeSec: hitSec,
+        hitTimeSec: hitSec,
+        sustainTicks,
+        sustainSec: sustainDuration,
         sustainDuration,
         isChord: false,
         isFever: false,
+        isStar: false,
+        isAccent: Boolean(isStrongBeat || ev.strength >= 2.15),
+        pianoHand: hand,
         pitchNorm,
         drumPart: null,
         hit: false,
@@ -1884,6 +2014,7 @@ function buildPianoChartFromWorker({
     prevLane = lane;
   }
 
+  notes.sort((a, b) => a.tick - b.tick || a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
   markFeverNotes(notes);
   return { bpm, beatGrid, sections, notes };
 }
@@ -1907,12 +2038,14 @@ export async function analyzeAndBuildChart({
   laneCount = 4,
   difficultyConfig,
   bpmHint = null,
+  jobId = null,
 }) {
   // 1. Sub-second Web Worker DP Beat Tracker + Song-Section + FFT pass (runs once per song!)
   let workerAnalysis = cachedWorkerAnalysis;
   if (!workerAnalysis) {
     workerAnalysis = await analyzeAudioInWorker(audioBuffer, {
       bpmHint,
+      jobId,
       onProgress,
     });
   } else {
@@ -1937,16 +2070,33 @@ export async function analyzeAndBuildChart({
         difficultyConfig,
       });
       if (chChart && chChart.notes.length >= 10) {
+        const chSyncTrack = parsedCh.syncTrack?.length
+          ? parsedCh.syncTrack
+          : [{ tick: 0, bpm: chChart.bpm || estimatedBpm, timeSec: 0, timeSeconds: 0 }];
+        stamp192TicksAndHopos(chChart.notes, {
+          syncTrack: chSyncTrack,
+          resolution: STANDARD_PPQ,
+          instrument,
+          bpm: chChart.bpm || estimatedBpm,
+          minSustainTicks: 48,
+        });
+        const chBre = computeBigRockEndingWindow(chChart.notes, audioBuffer.duration, resolvedSections);
         injectPangguloHazards(chChart.notes, {
           difficultyId: difficultyConfig?.id || 'medium',
           laneCount,
           sections: resolvedSections,
           beatGrid: chChart.beatGrid,
+          syncTrack: chSyncTrack,
+          resolution: STANDARD_PPQ,
           trackId,
+          excludeAfterSec: chBre ? chBre.startSec - 1.2 : Infinity,
         });
         onProgress(1, 'Clone Hero chart ready!');
         return {
           ...chChart,
+          resolution: STANDARD_PPQ,
+          syncTrack: chSyncTrack,
+          breWindow: chBre,
           sections: resolvedSections,
           stemActivity: activity,
           workerAnalysis,
@@ -1980,16 +2130,34 @@ export async function analyzeAndBuildChart({
           const finalBeatGrid = workerAnalysis.dynamicBeatGrid?.length
             ? workerAnalysis.dynamicBeatGrid
             : midiChart.beatGrid;
+          const phaseSec = workerAnalysis?.beatPhaseSec || 0;
+          const midiSyncTrack = workerAnalysis?.syncTrack?.length
+            ? workerAnalysis.syncTrack
+            : [{ tick: 0, bpm: estimatedBpm, timeSec: phaseSec, timeSeconds: phaseSec }];
+          stamp192TicksAndHopos(midiChart.notes, {
+            syncTrack: midiSyncTrack,
+            resolution: STANDARD_PPQ,
+            instrument,
+            bpm: estimatedBpm,
+            minSustainTicks: 48,
+          });
+          const midiBre = computeBigRockEndingWindow(midiChart.notes, audioBuffer.duration, resolvedSections);
           injectPangguloHazards(midiChart.notes, {
             difficultyId: difficultyConfig?.id || 'medium',
             laneCount,
             sections: resolvedSections,
             beatGrid: finalBeatGrid,
+            syncTrack: midiSyncTrack,
+            resolution: STANDARD_PPQ,
             trackId,
+            excludeAfterSec: midiBre ? midiBre.startSec - 1.2 : Infinity,
           });
           onProgress(1, 'MIDI chart ready!');
           return {
             ...midiChart,
+            resolution: STANDARD_PPQ,
+            syncTrack: midiSyncTrack,
+            breWindow: midiBre,
             beatGrid: finalBeatGrid,
             sections: resolvedSections,
             stemActivity: activity,
@@ -2001,14 +2169,14 @@ export async function analyzeAndBuildChart({
     }
   }
 
-  // 3. Build Instrument-Distinct Chart directly from Sub-Second Web Worker Dynamic Beat & FFT Analysis
+  // 3. Build Instrument-Distinct Chart directly from Offline 4-Stem + Stem-Locked 192 PPQ Worker Analysis
   onProgress(
-    0.92,
+    0.96,
     instrument === 'drums'
-      ? 'Mapping Kick, Snare & Cymbal hits…'
+      ? 'Stage 5/5: Mapping Kick, Snare, Tom & Cymbal hits to 192 PPQ (96%)...'
       : instrument === 'piano'
-        ? 'Voicing Piano/Keys chords & melodic runs…'
-        : 'Quantizing to dynamic beat grid…'
+        ? 'Stage 5/5: Voicing 12-TET Piano chords & arpeggios (96%)...'
+        : 'Stage 5/5: Mapping sample-accurate 192 PPQ stems to highway (96%)...'
   );
   let result;
   if (instrument === 'drums') {
@@ -2041,8 +2209,8 @@ export async function analyzeAndBuildChart({
     });
   }
 
-  // Graceful fallback to legacy offline pass only if a song had virtually zero worker detections
-  if (!result || result.notes.length < 8) {
+  // Graceful fallback to legacy offline pass only if the 4-stem worker did not run
+  if (!workerAnalysis?.analysisEngine && (!result || result.notes.length < 8)) {
     if (instrument === 'drums') {
       result = await buildDrumsChart({
         audioBuffer,
@@ -2074,21 +2242,175 @@ export async function analyzeAndBuildChart({
   }
 
   const finalSections = result.sections?.length ? result.sections : resolvedSections;
+  const phaseSec = workerAnalysis?.firstBeatSec ?? workerAnalysis?.beatPhaseSec ?? 0;
+  const resolvedSyncTrack =
+    workerAnalysis?.syncTrack?.length
+      ? workerAnalysis.syncTrack
+      : [{ tick: 0, bpm: estimatedBpm, timeSec: phaseSec, timeSeconds: phaseSec }];
+
+  stamp192TicksAndHopos(result.notes, {
+    syncTrack: resolvedSyncTrack,
+    resolution: STANDARD_PPQ,
+    instrument,
+    bpm: result.bpm || estimatedBpm,
+  });
+
+  const breWindow = computeBigRockEndingWindow(result.notes, audioBuffer.duration, finalSections);
+  if (breWindow) {
+    // Clear regular notes inside the final Big Rock Ending freestyle zone so the player gets a pure BRE lane blast!
+    for (let i = result.notes.length - 1; i >= 0; i -= 1) {
+      if (result.notes[i].hitTimeSec >= breWindow.startSec && result.notes[i].hitTimeSec <= breWindow.endSec) {
+        result.notes.splice(i, 1);
+      }
+    }
+  }
+
   injectPangguloHazards(result.notes, {
     difficultyId: difficultyConfig?.id || 'medium',
     laneCount,
     sections: finalSections,
     beatGrid: result.beatGrid,
+    syncTrack: resolvedSyncTrack,
+    resolution: STANDARD_PPQ,
     trackId,
+    excludeAfterSec: breWindow ? breWindow.startSec - 1.2 : Infinity,
   });
 
-  onProgress(1, 'Ready to take the stage!');
+  result.notes.sort((a, b) => (a.tick ?? 0) - (b.tick ?? 0) || a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
+  onProgress(1, 'Ready — Cached to IndexedDB!');
   return {
     ...result,
+    resolution: STANDARD_PPQ,
+    firstBeatSec: phaseSec,
+    syncTrack: resolvedSyncTrack,
+    breWindow,
     sections: finalSections,
+    trackMeta: workerAnalysis?.trackMeta || null,
     stemActivity: activity,
     workerAnalysis,
-    chartSource: workerAnalysis?.analysisEngine || 'worker-hpss-fft',
+    chartSource: workerAnalysis?.analysisEngine || 'cpu-dsp-4stem-hpss-192ppq',
+  };
+}
+
+/**
+ * Stamps unified 192 PPQ integer tick positions, recomputes hitTimeSec/timeSec EXCLUSIVELY from
+ * [SyncTrack] via tickToTime(tick), sets sustainTicks (>240 ticks on DSP charts), accent flags,
+ * and automatic Clone Hero-style HOPO flags (dtTicks > 0 && dtTicks <= 48 on different lanes).
+ */
+function stamp192TicksAndHopos(
+  notes,
+  { syncTrack = [], resolution = STANDARD_PPQ, instrument = 'guitar', bpm = 120, minSustainTicks = 240 } = {}
+) {
+  if (!Array.isArray(notes) || notes.length === 0) return;
+  const allowHopos = instrument !== 'drums';
+  const hasSync = Array.isArray(syncTrack) && syncTrack.length > 0;
+  const secPerTick = 60 / (Math.max(55, bpm) * resolution);
+
+  // First pass: lock every note strictly onto a 192-PPQ integer tick & tickToTime() timestamp
+  for (let i = 0; i < notes.length; i += 1) {
+    const n = notes[i];
+    const rawHitSec = Number(n.hitTimeSec ?? n.timeSec ?? 0);
+    const tick =
+      Number.isFinite(n.tick) && n.tick >= 0
+        ? Math.round(n.tick)
+        : quantizeTickTo192Subdiv(Math.max(0, timeToTick(rawHitSec, syncTrack, resolution)));
+    n.tick = tick;
+    const exactSec = hasSync
+      ? Number(tickToTime(tick, syncTrack, resolution).toFixed(4))
+      : Number(rawHitSec.toFixed(4));
+    n.hitTimeSec = exactSec;
+    n.timeSec = exactSec;
+  }
+
+  // Group simultaneous ticks to identify chords reliably
+  const tickCounts = new Map();
+  for (let i = 0; i < notes.length; i += 1) {
+    const tk = notes[i].tick;
+    tickCounts.set(tk, (tickCounts.get(tk) || 0) + 1);
+  }
+
+  let prevSingleTick = -9999;
+  let prevSingleLane = -1;
+
+  for (let i = 0; i < notes.length; i += 1) {
+    const n = notes[i];
+    const tick = n.tick;
+    const exactSec = n.hitTimeSec;
+    const rawSusDur = Number(n.sustainDuration ?? n.sustainSec ?? 0);
+    let susTicks = 0;
+    if (instrument !== 'drums' && !n.isHazard && rawSusDur > 0.08) {
+      susTicks =
+        Number.isFinite(n.sustainTicks) && n.sustainTicks > 0
+          ? Math.round(n.sustainTicks)
+          : Math.round(rawSusDur / secPerTick);
+      if (susTicks <= minSustainTicks) {
+        susTicks = 0;
+      }
+    }
+    const susDur =
+      susTicks > 0
+        ? hasSync
+          ? Number(Math.max(0, tickToTime(tick + susTicks, syncTrack, resolution) - exactSec).toFixed(4))
+          : Number((susTicks * secPerTick).toFixed(4))
+        : 0;
+    n.sustainTicks = susTicks;
+    n.sustainDuration = susDur;
+    n.sustainSec = susDur;
+
+    n.isStar = Boolean(n.isStar || n.isFever);
+    n.isFever = n.isStar;
+
+    const isSimultaneous = n.isChord || (tickCounts.get(tick) || 0) > 1;
+    if (!n.isHazard && n.isAccent === undefined) {
+      n.isAccent = Boolean(tick % 768 === 0 || (isSimultaneous && tick % 384 === 0));
+    }
+    if (instrument === 'piano' && !n.isHazard && !n.pianoHand) {
+      n.pianoHand = (n.pitchNorm ?? 0.5) < 0.38 || n.lane <= 1 ? 'left' : 'right';
+    }
+    if (allowHopos && !isSimultaneous && !n.isHazard) {
+      const dtTicks = tick - prevSingleTick;
+      n.isHopo = dtTicks > 0 && dtTicks <= 48 && n.lane !== prevSingleLane;
+      prevSingleTick = tick;
+      prevSingleLane = n.lane;
+    } else {
+      n.isHopo = false;
+      if (isSimultaneous) {
+        prevSingleTick = -9999;
+        prevSingleLane = -1;
+      }
+    }
+  }
+}
+
+/**
+ * Computes a classic 4.2s–5.2s "Big Rock Ending" (BRE) freestyle finale window near the end of
+ * energetic songs (> 32s duration with active outro notes).
+ */
+function computeBigRockEndingWindow(notes, durationSec, sections = []) {
+  if (!Array.isArray(notes) || notes.length < 30 || !Number.isFinite(durationSec) || durationSec < 32) {
+    return null;
+  }
+  const lastNote = notes[notes.length - 1];
+  const lastActiveSec = Math.min(durationSec - 0.6, lastNote.hitTimeSec + (lastNote.sustainDuration || 0));
+  if (lastActiveSec < 22) return null;
+
+  const breDur = Math.min(5.2, Math.max(4.0, durationSec * 0.032));
+  const endSec = Number(Math.min(durationSec - 0.45, lastActiveSec + 0.35).toFixed(3));
+  const startSec = Number(Math.max(12, endSec - breDur).toFixed(3));
+
+  // Verify the outro region has real musical energy (at least 4 notes in the final 10s)
+  let tailNotes = 0;
+  for (let i = notes.length - 1; i >= 0; i -= 1) {
+    if (notes[i].hitTimeSec < startSec - 4.0) break;
+    tailNotes += 1;
+  }
+  if (tailNotes < 4) return null;
+
+  const outroSec = sections.find((s) => s.type === 'OUTRO');
+  return {
+    startSec,
+    endSec,
+    label: outroSec?.label || 'BIG ROCK ENDING!',
   };
 }
 
@@ -2099,10 +2421,21 @@ export async function analyzeAndBuildChart({
  */
 export function injectPangguloHazards(
   notes,
-  { difficultyId = 'medium', laneCount = 4, sections = [], beatGrid = [], trackId = 'track' } = {}
+  {
+    difficultyId = 'medium',
+    laneCount = 4,
+    sections = [],
+    beatGrid = [],
+    syncTrack = null,
+    resolution = STANDARD_PPQ,
+    trackId = 'track',
+    excludeAfterSec = Infinity,
+  } = {}
 ) {
   if (!Array.isArray(notes) || notes.length < 18) return notes;
   if (difficultyId === 'easy' || laneCount < 3) return notes;
+
+  const hasSync = Array.isArray(syncTrack) && syncTrack.length > 0;
 
   // Deterministic pseudo-random seed from trackId so hazards feel handcrafted & repeatable per song
   let seed = 2166136261;
@@ -2119,19 +2452,28 @@ export function injectPangguloHazards(
   const spacingSec = difficultyId === 'expert' ? 4.4 : difficultyId === 'hard' ? 6.2 : 8.5;
   const maxHazards = difficultyId === 'expert' ? 20 : difficultyId === 'hard' ? 13 : 8;
   const firstNoteTime = notes[0].hitTimeSec;
-  const lastNoteTime = notes[notes.length - 1].hitTimeSec;
+  const lastNoteTime = Math.min(excludeAfterSec, notes[notes.length - 1].hitTimeSec);
   const span = Math.max(10, lastNoteTime - firstNoteTime);
 
-  // Build candidate off-beat / energetic timestamps
+  // Build candidate off-beat / energetic timestamps locked to 192-PPQ half-beats (tick + 96)
   const candidates = [];
   if (Array.isArray(beatGrid) && beatGrid.length >= 8) {
     for (let i = 3; i < beatGrid.length - 2; i += 1) {
       const b0 = beatGrid[i];
       const b1 = beatGrid[i + 1];
-      const t0 = typeof b0 === 'number' ? b0 : b0?.timeSec;
-      const t1 = typeof b1 === 'number' ? b1 : b1?.timeSec;
+      const t0 = typeof b0 === 'number' ? b0 : (b0?.timeSec ?? b0?.time);
+      const t1 = typeof b1 === 'number' ? b1 : (b1?.timeSec ?? b1?.time);
       if (!Number.isFinite(t0) || !Number.isFinite(t1)) continue;
-      const midOffBeat = (t0 + t1) * 0.5;
+      const tick =
+        Number.isFinite(b0?.tick) && hasSync
+          ? Math.round(b0.tick) + 96
+          : hasSync
+            ? Math.round(timeToTick((t0 + t1) * 0.5, syncTrack, resolution) / 96) * 96
+            : undefined;
+      const midOffBeat =
+        hasSync && Number.isFinite(tick)
+          ? tickToTime(tick, syncTrack, resolution)
+          : (t0 + t1) * 0.5;
       if (midOffBeat < firstNoteTime + 5.0 || midOffBeat > lastNoteTime - 3.0) continue;
       const sec = getSongSectionAt(sections, midOffBeat);
       const secType = sec?.type || '';
@@ -2141,7 +2483,7 @@ export function injectPangguloHazards(
         secType === 'OUTRO' ||
         (!secType && midOffBeat > firstNoteTime + span * 0.22 && midOffBeat < lastNoteTime - span * 0.12);
       if (isHotSection) {
-        candidates.push(midOffBeat);
+        candidates.push({ timeSec: midOffBeat, tick });
       }
     }
   }
@@ -2151,7 +2493,7 @@ export function injectPangguloHazards(
     for (let i = 4; i < notes.length - 4; i += 3) {
       const t = notes[i].hitTimeSec;
       if (t > firstNoteTime + 5.0 && t < lastNoteTime - 3.0) {
-        candidates.push(t);
+        candidates.push({ timeSec: t, tick: notes[i].tick });
       }
     }
   }
@@ -2160,7 +2502,8 @@ export function injectPangguloHazards(
   let lastHazardTime = -99;
 
   for (let c = 0; c < candidates.length && hazards.length < maxHazards; c += 1) {
-    const t = candidates[c];
+    const cand = candidates[c];
+    const t = cand.timeSec;
     if (t - lastHazardTime < spacingSec) continue;
 
     // Inspect nearby normal notes to find lanes that are 100% clear (including sustains!)
@@ -2192,14 +2535,30 @@ export function injectPangguloHazards(
     const adjFree = freeLanes.filter((l) => busyLanes.has(l - 1) || busyLanes.has(l + 1));
     const pool = adjFree.length > 0 ? adjFree : freeLanes;
     const lane = pool[Math.floor(nextRand() * pool.length)];
+    const tick = Number.isFinite(cand.tick)
+      ? Math.round(cand.tick)
+      : hasSync
+        ? Math.round(timeToTick(t, syncTrack, resolution) / 48) * 48
+        : undefined;
+    const hitSec =
+      hasSync && Number.isFinite(tick)
+        ? Number(tickToTime(tick, syncTrack, resolution).toFixed(4))
+        : Number(t.toFixed(4));
 
     hazards.push({
       id: `${trackId}_haz_${hazards.length}`,
+      tick,
       lane,
-      hitTimeSec: Number(t.toFixed(4)),
+      timeSec: hitSec,
+      hitTimeSec: hitSec,
+      sustainTicks: 0,
+      sustainSec: 0,
       sustainDuration: 0,
       isChord: false,
+      isHopo: false,
       isFever: false,
+      isStar: false,
+      isAccent: false,
       isHazard: true,
       pitchNorm: lane / Math.max(1, laneCount - 1),
       drumPart: null,
@@ -2209,12 +2568,12 @@ export function injectPangguloHazards(
       missed: false,
       dodged: false,
     });
-    lastHazardTime = t;
+    lastHazardTime = hitSec;
   }
 
   if (hazards.length > 0) {
     for (let i = 0; i < hazards.length; i += 1) notes.push(hazards[i]);
-    notes.sort((a, b) => a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
+    notes.sort((a, b) => (a.tick ?? 0) - (b.tick ?? 0) || a.hitTimeSec - b.hitTimeSec || a.lane - b.lane);
   }
 
   return notes;
@@ -2230,3 +2589,224 @@ export function cloneFreshNotes(notes) {
     dodged: false,
   }));
 }
+
+/**
+ * Pure helper evaluating 192-PPQ rhythmic phases (beatPhase, sixteenthPhase, barPhase, phraseProgress)
+ * from a song timestamp + dynamic [SyncTrack] tempo curve.
+ */
+export function evaluateBeatSyncState(songTimeSec, syncTrack, fallbackBpm = 120, resolution = STANDARD_PPQ) {
+  const safeRes = Math.max(48, Number(resolution) || STANDARD_PPQ);
+  const safeBpm = Math.max(55, Math.min(220, Number(fallbackBpm) || 120));
+  const hasTrack = Array.isArray(syncTrack) && syncTrack.length > 0;
+
+  let currentTick = 0;
+  let currentBpm = safeBpm;
+
+  if (hasTrack) {
+    currentTick = timeToTick(songTimeSec, syncTrack, safeRes);
+    // Locate active [SyncTrack] segment via binary search
+    let lo = 0;
+    let hi = syncTrack.length - 1;
+    let segIdx = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const segT = Number(syncTrack[mid].timeSec ?? syncTrack[mid].timeSeconds ?? 0);
+      if (segT <= songTimeSec) {
+        segIdx = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    currentBpm = Math.max(55, Math.min(220, Number(syncTrack[segIdx]?.bpm) || safeBpm));
+  } else {
+    currentTick = songTimeSec * (safeBpm / 60) * safeRes;
+  }
+
+  const beatsFloat = currentTick / safeRes;
+  const beatIndex = Math.floor(beatsFloat);
+  const barIndex = Math.floor(beatsFloat / 4);
+  const beatPhase = ((beatsFloat % 1) + 1) % 1;
+  const sixteenthPhase = (((beatsFloat * 4) % 1) + 1) % 1;
+  const barPhase = (((beatsFloat / 4) % 1) + 1) % 1;
+  const phraseProgress = (((beatsFloat / 32) % 1) + 1) % 1; // 8-bar concert phrase
+  const beatInBar = ((beatIndex % 4) + 4) % 4;
+  const beatInPhrase = ((beatIndex % 32) + 32) % 32;
+  const tickRounded = Math.round(currentTick);
+
+  return {
+    tick: tickRounded,
+    currentTick: tickRounded,
+    beatIndex,
+    barIndex,
+    beatPhase,
+    sixteenthPhase,
+    barPhase,
+    phraseProgress,
+    isDownbeat: beatInBar === 0 && beatPhase < 0.22,
+    isPhraseBoundary: beatInPhrase === 0 && beatPhase < 0.25,
+    currentBpm,
+  };
+}
+
+/**
+ * Zero-Allocation Real-Time Beat-Sync Lock & Dynamic Calibration Clock.
+ * Drives the highway pulse, 3D musicians, articulated moving-head lights, subwoofer kick cones,
+ * and concert cameras in sample-accurate unison while tracking rolling player timing drift.
+ */
+export function createBeatSyncClock() {
+  const state = {
+    tick: 0,
+    currentTick: 0,
+    beatIndex: 0,
+    barIndex: 0,
+    beatPhase: 0,
+    sixteenthPhase: 0,
+    barPhase: 0,
+    phraseProgress: 0,
+    isDownbeat: false,
+    isPhraseBoundary: false,
+    currentBpm: 120,
+    songAmbiance: 'ROCK_ANTHEM',
+    currentSection: null,
+    syncLocked: false,
+    outputLatencyMs: 0,
+    dynamicOffsetMs: 0,
+    sampleCount: 0,
+    transientEnergy: {
+      drums: 0,
+      bass: 0,
+      guitar: 0,
+      piano: 0,
+      kick: 0,
+      snare: 0,
+      harmonic: 0,
+      combined: 0,
+    },
+  };
+
+  let emaDeviationMs = 0;
+  let lastSongTime = -999;
+
+  return {
+    reset() {
+      state.tick = 0;
+      state.currentTick = 0;
+      state.beatIndex = 0;
+      state.barIndex = 0;
+      state.beatPhase = 0;
+      state.sixteenthPhase = 0;
+      state.barPhase = 0;
+      state.phraseProgress = 0;
+      state.isDownbeat = false;
+      state.isPhraseBoundary = false;
+      state.currentSection = null;
+      state.syncLocked = false;
+      state.dynamicOffsetMs = 0;
+      state.sampleCount = 0;
+      state.transientEnergy.drums = 0;
+      state.transientEnergy.bass = 0;
+      state.transientEnergy.guitar = 0;
+      state.transientEnergy.piano = 0;
+      state.transientEnergy.kick = 0;
+      state.transientEnergy.snare = 0;
+      state.transientEnergy.harmonic = 0;
+      state.transientEnergy.combined = 0;
+      emaDeviationMs = 0;
+      lastSongTime = -999;
+    },
+
+    recordHitDeviation(deltaMs) {
+      if (!Number.isFinite(deltaMs) || Math.abs(deltaMs) > 135) return state.dynamicOffsetMs;
+      state.sampleCount += 1;
+      const alpha = state.sampleCount <= 8 ? 0.25 : 0.1;
+      emaDeviationMs += (deltaMs - emaDeviationMs) * alpha;
+      state.dynamicOffsetMs = Math.max(-35, Math.min(35, Math.round(emaDeviationMs * 10) / 10));
+      return state.dynamicOffsetMs;
+    },
+
+    update({
+      songTime = 0,
+      syncTrack = null,
+      fallbackBpm = 120,
+      resolution = STANDARD_PPQ,
+      outputLatencySec = 0,
+      playing = false,
+      telemetry = null,
+      sections = null,
+      trackMeta = null,
+    }) {
+      const evaluated = evaluateBeatSyncState(songTime, syncTrack, fallbackBpm, resolution);
+      state.tick = evaluated.tick;
+      state.currentTick = evaluated.currentTick;
+      state.beatIndex = evaluated.beatIndex;
+      state.barIndex = evaluated.barIndex;
+      state.beatPhase = evaluated.beatPhase;
+      state.sixteenthPhase = evaluated.sixteenthPhase;
+      state.barPhase = evaluated.barPhase;
+      state.phraseProgress = evaluated.phraseProgress;
+      state.isDownbeat = evaluated.isDownbeat;
+      state.isPhraseBoundary = evaluated.isPhraseBoundary;
+      state.currentBpm = evaluated.currentBpm;
+
+      if (Array.isArray(sections) && sections.length > 0) {
+        state.currentSection = getSongSectionAt(sections, songTime);
+      }
+      if (trackMeta?.ambianceType) {
+        state.songAmbiance = trackMeta.ambianceType;
+      }
+
+      const rawLatency = Number(outputLatencySec);
+      state.outputLatencyMs = Number.isFinite(rawLatency) && rawLatency >= 0 ? Math.round(rawLatency * 1000) : 0;
+
+      const monotonic = lastSongTime === -999 || (songTime >= lastSongTime - 0.025 && songTime - lastSongTime < 0.25);
+      lastSongTime = songTime;
+      state.syncLocked = Boolean(playing && songTime >= -0.05 && monotonic);
+
+      const kick = Math.min(
+        1,
+        Math.max(Number(telemetry?.kickTransient || 0), Number(telemetry?.kickEnergy || telemetry?.bassEnergy || 0) * 0.85)
+      );
+      const snare = Math.min(
+        1,
+        Math.max(Number(telemetry?.snareTransient || 0), Number(telemetry?.snareEnergy || telemetry?.drumEnergy || 0) * 0.72)
+      );
+      const drums = Math.min(
+        1,
+        Math.max(Number(telemetry?.drumTransient || 0), kick * 0.9, snare * 0.85, Number(telemetry?.drumEnergy || 0) * 0.78)
+      );
+      const bass = Math.min(
+        1,
+        Math.max(Number(telemetry?.bassTransient || 0), Number(telemetry?.bassEnergy || 0))
+      );
+      const guitar = Math.min(
+        1,
+        Math.max(Number(telemetry?.guitarTransient || 0), Number(telemetry?.guitarEnergy || 0))
+      );
+      const piano = Math.min(
+        1,
+        Math.max(Number(telemetry?.pianoTransient || 0), Number(telemetry?.pianoEnergy || 0))
+      );
+      const harmonic = Math.min(
+        1,
+        Number(telemetry?.harmonicEnergy || telemetry?.guitarEnergy || telemetry?.overallEnergy || 0)
+      );
+      state.transientEnergy.drums = drums;
+      state.transientEnergy.bass = bass;
+      state.transientEnergy.guitar = guitar;
+      state.transientEnergy.piano = piano;
+      state.transientEnergy.kick = kick;
+      state.transientEnergy.snare = snare;
+      state.transientEnergy.harmonic = harmonic;
+      state.transientEnergy.combined = Math.min(1, drums * 0.42 + snare * 0.25 + guitar * 0.18 + piano * 0.15);
+
+      return state;
+    },
+
+    getState() {
+      return state;
+    },
+  };
+}
+
+

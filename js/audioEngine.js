@@ -21,6 +21,60 @@
 
 export const LEAD_IN_SEC = 2.0;
 export const WALK_ON_LEAD_IN_SEC = 4.5; // 2.5s Stage Walk-On & Gear Setup + 2.0s Highway Approach
+export const STANDARD_PPQ = 192;
+export const CHART_SCHEMA_VERSION = 'v16_multiAnchor192';
+
+/**
+ * Zero-drift O(log N) time-to-tick converter against a 192 PPQ [SyncTrack] tempo map.
+ * Supports both `timeSec` (MIR Stage 3) and legacy `timeSeconds` segment keys.
+ */
+export function timeToTick(timeSec, syncTrack, resolution = STANDARD_PPQ) {
+  if (!Array.isArray(syncTrack) || syncTrack.length === 0) {
+    return (timeSec * 120 * resolution) / 60;
+  }
+  let lo = 0;
+  let hi = syncTrack.length - 1;
+  let idx = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const segTime = Number(syncTrack[mid].timeSec ?? syncTrack[mid].timeSeconds ?? 0);
+    if (segTime <= timeSec) {
+      idx = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  const seg = syncTrack[idx];
+  const segTime = Number(seg.timeSec ?? seg.timeSeconds ?? 0);
+  const bpm = Math.max(40, Number(seg.bpm) || 120);
+  return Number(seg.tick || 0) + ((timeSec - segTime) * bpm * resolution) / 60;
+}
+
+/**
+ * Inverse zero-drift O(log N) tick-to-time converter against a 192 PPQ [SyncTrack] tempo map.
+ */
+export function tickToTime(tick, syncTrack, resolution = STANDARD_PPQ) {
+  if (!Array.isArray(syncTrack) || syncTrack.length === 0) {
+    return (tick / resolution) * 0.5;
+  }
+  let lo = 0;
+  let hi = syncTrack.length - 1;
+  let idx = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (Number(syncTrack[mid].tick || 0) <= tick) {
+      idx = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  const seg = syncTrack[idx];
+  const segTime = Number(seg.timeSec ?? seg.timeSeconds ?? 0);
+  const bpm = Math.max(40, Number(seg.bpm) || 120);
+  return segTime + ((tick - Number(seg.tick || 0)) / resolution) * (60 / bpm);
+}
 
 export class AudioEngine {
   constructor({ onTrackEnded }) {
@@ -36,7 +90,10 @@ export class AudioEngine {
     // Exact AudioContext clock lock anchors (supports negative preroll time -4.5s -> 0.0s)
     this.offsetSec = 0;
     this.startCtxTime = 0;
+    this.playbackStartTime = 0;
+    this.audioOffsetMs = 0;
     this.endNotified = false;
+    this._lastMonotonicSongTime = -999;
 
     // Loaded audio buffers (either { mode:'local', buffer } or { mode:'stems', drums, bass, guitar })
     this.mediaSource = null;
@@ -61,15 +118,50 @@ export class AudioEngine {
     // Live per-band audio telemetry for 3D Roblox band, crowd lightsticks & horizon spectrum
     this.speakerFreqData = new Uint8Array(256);
     this.liveDrumEnergy = 0;
+    this.liveKickEnergy = 0;
+    this.liveSnareEnergy = 0;
+    this.liveKickTransient = 0;
+    this.liveSnareTransient = 0;
+    this.liveDrumTransient = 0;
+    this.liveBassTransient = 0;
+    this.liveGuitarTransient = 0;
+    this.livePianoTransient = 0;
+    this.liveHarmonicEnergy = 0;
     this.liveBassEnergy = 0;
     this.liveGuitarEnergy = 0;
     this.livePianoEnergy = 0;
     this.liveVocalEnergy = 0;
     this.liveOverallEnergy = 0;
     this.liveSpectrumBins = new Float32Array(24);
+    this._prevKickRaw = 0;
+    this._prevSnareRaw = 0;
+    this._prevBassRaw = 0;
+    this._prevGuitarRaw = 0;
+    this._prevPianoRaw = 0;
 
     // Per-stem activity gate timeline ({ hopSec, duration, drums, bass, guitar, piano })
     this.stemActivity = null;
+    // Practice Mode stem focus: 'full' | 'boost' | 'solo'
+    this.practiceStemFocus = 'full';
+    this.stemMutedByMiss = false;
+    // Unified 192 PPQ [SyncTrack] tempo map for zero-drift tick-clock synchronization
+    this.syncTrack = null;
+    this.syncResolution = STANDARD_PPQ;
+  }
+
+  setSyncTrack(syncTrack, resolution = STANDARD_PPQ) {
+    this.syncTrack = Array.isArray(syncTrack) && syncTrack.length > 0 ? syncTrack : null;
+    this.syncResolution = Math.max(48, Number(resolution) || STANDARD_PPQ);
+  }
+
+  setAudioOffsetMs(offsetMs = 0) {
+    const parsed = Number(offsetMs);
+    this.audioOffsetMs = Number.isFinite(parsed) ? Math.max(-200, Math.min(200, parsed)) : 0;
+  }
+
+  getCurrentTick(audioOffsetSec = 0) {
+    const tSec = this.getPreciseSongTime() + audioOffsetSec;
+    return timeToTick(tSec, this.syncTrack, this.syncResolution);
   }
 
   ensureContext() {
@@ -292,23 +384,91 @@ export class AudioEngine {
         : mediaSource.buffer.duration;
     this.endNotified = false;
     this.whammyAmount = 0;
+    this.stemMutedByMiss = false;
 
     this.buildParallelMixer(instrument);
     const delaySec = useLeadIn && startOffsetSec <= 0.01 ? leadInSec : 0.05;
     this.spawnBufferSourcesAt(startOffsetSec, delaySec);
+    this.applyStemGainTargets(0.02);
 
     this.isPlaying = true;
     this.isPaused = false;
+  }
+
+  /**
+   * Converts OLA-reconstructed 22.05kHz Float32Array stem buffers from audioWorker
+   * into WebAudio AudioBuffers for isolated stem playback & Practice Mode soloing.
+   */
+  buildSeparatedStemBuffers(separatedStems) {
+    if (
+      !separatedStems ||
+      !separatedStems.drums ||
+      !separatedStems.bass ||
+      !separatedStems.guitar ||
+      !separatedStems.piano
+    ) {
+      return null;
+    }
+    const ctx = this.ensureContext();
+    const sr = Math.max(16000, Math.min(48000, Number(separatedStems.sampleRate) || 22050));
+    const toAudioBuffer = (pcm) => {
+      const len = Math.max(1, pcm.length);
+      const buf = ctx.createBuffer(1, len, sr);
+      buf.getChannelData(0).set(pcm);
+      return buf;
+    };
+    const drums = toAudioBuffer(separatedStems.drums);
+    const bass = toAudioBuffer(separatedStems.bass);
+    const guitar = toAudioBuffer(separatedStems.guitar);
+    const piano = toAudioBuffer(separatedStems.piano);
+    return {
+      mode: 'stems',
+      drums,
+      bass,
+      guitar,
+      piano,
+      duration: drums.duration,
+    };
+  }
+
+  setPracticeStemFocus(mode = 'full') {
+    const valid = mode === 'solo' || mode === 'boost' ? mode : 'full';
+    this.practiceStemFocus = valid;
+    this.applyStemGainTargets(0.06);
+  }
+
+  applyStemGainTargets(tauOverride = null) {
+    if (!this.ctx || !this.busGains) return;
+    const now = this.ctx.currentTime;
+    const tau = tauOverride ?? (this.stemMutedByMiss ? 0.028 : 0.045);
+    const otherGain =
+      this.practiceStemFocus === 'solo'
+        ? 0.22
+        : this.practiceStemFocus === 'boost'
+          ? 0.56
+          : 1.0;
+
+    ['drums', 'bass', 'guitar', 'piano'].forEach((role) => {
+      if (!this.busGains[role]) return;
+      let target = role === this.instrument ? 1.0 : otherGain;
+      if (role === this.instrument && this.stemMutedByMiss) {
+        target = 0.08;
+      }
+      this.busGains[role].gain.setTargetAtTime(target, now, tau);
+    });
   }
 
   spawnBufferSourcesAt(offsetSec, delaySec = 0.04) {
     this.teardownSources();
     const ctx = this.ctx;
     const clampedOffset = Math.max(0, Math.min(Math.max(0, this.duration - 0.05), offsetSec));
-    const startAt = ctx.currentTime + delaySec;
+    const syncCtxNow = ctx.currentTime;
+    const startAt = delaySec > 0 ? syncCtxNow + delaySec : syncCtxNow;
 
     this.offsetSec = clampedOffset;
     this.startCtxTime = startAt;
+    this.playbackStartTime = startAt;
+    this._lastMonotonicSongTime = -999;
 
     if (this.mediaSource.mode === 'stems') {
       ['drums', 'bass', 'guitar', 'piano'].forEach((role) => {
@@ -317,7 +477,7 @@ export class AudioEngine {
         src.buffer = this.mediaSource[role];
         src.playbackRate.setValueAtTime(this.playbackRate, startAt);
         src.connect(this.busGains[role]);
-        src.start(startAt, clampedOffset);
+        src.start(delaySec > 0 ? startAt : 0, clampedOffset);
         src._role = role;
         this.activeSources.push(src);
       });
@@ -331,7 +491,7 @@ export class AudioEngine {
       if (this.instrument === 'piano') {
         src.connect(this.busInputs.piano);
       }
-      src.start(startAt, clampedOffset);
+      src.start(delaySec > 0 ? startAt : 0, clampedOffset);
       src._role = 'local';
       this.activeSources.push(src);
     }
@@ -340,18 +500,11 @@ export class AudioEngine {
   /**
    * True Instrument-Only Muting:
    * Ducks ONLY the selected instrument's parallel bus gain to 0.08 while
-   * keeping all other buses at 1.0 full volume and leaving Master untouched!
+   * keeping all other buses at their practice/full mix level and leaving Master untouched!
    */
   setInstrumentStemMuted(muted) {
-    if (!this.ctx || !this.busGains) return;
-    const now = this.ctx.currentTime;
-    const tau = muted ? 0.028 : 0.04;
-
-    ['drums', 'bass', 'guitar', 'piano'].forEach((role) => {
-      if (!this.busGains[role]) return;
-      const target = role === this.instrument && muted ? 0.08 : 1.0;
-      this.busGains[role].gain.setTargetAtTime(target, now, tau);
-    });
+    this.stemMutedByMiss = Boolean(muted);
+    this.applyStemGainTargets();
   }
 
   /**
@@ -414,12 +567,13 @@ export class AudioEngine {
       const currentSongTime = this.getSongTime();
       this.playbackRate = clamped;
       if (currentSongTime < 0) {
-        // Still inside 2.0s visual preroll: reschedule start cleanly at new rate
+        // Still inside visual preroll: reschedule start cleanly at new rate
         const remainingCtx = Math.max(0.02, -currentSongTime / clamped);
         this.spawnBufferSourcesAt(0, remainingCtx);
       } else {
         this.offsetSec = currentSongTime;
         this.startCtxTime = this.ctx.currentTime;
+        this.playbackStartTime = this.startCtxTime;
         this.activeSources.forEach((src) => {
           src.playbackRate.setValueAtTime(clamped, this.ctx.currentTime);
         });
@@ -439,13 +593,104 @@ export class AudioEngine {
   }
 
   /**
-   * Exact AudioContext.currentTime-locked song timestamp in seconds.
+   * Returns reported hardware DAC output latency in seconds (clamped to [0, 0.25s]).
+   * Uses native audioCtx.outputLatency || audioCtx.baseLatency || 0 without artificial bias.
+   */
+  getOutputLatencySec() {
+    if (!this.ctx) return 0;
+    const raw = Number(this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    return Math.min(0.25, raw);
+  }
+
+  /**
+   * Zero-Latency Hardware DAC Playback Clock (Single Source of Truth).
+   * Reads `audioCtx.getOutputTimestamp()` when valid & monotonic (falling back cleanly to
+   * `audioCtx.currentTime`), compensates hardware DAC `outputLatency` without double-counting,
+   * adds user `audioOffsetMs`, and projects instant `keydown` `eventTimeStampMs` accurately.
+   */
+  getPreciseSongTime(eventTimeStampMs = null) {
+    if (!this.ctx || !this.isPlaying) return this.offsetSec;
+
+    const hardwareLatencySec = this.getOutputLatencySec();
+    const audioOffsetSec = (this.audioOffsetMs || 0) / 1000;
+    const nowPerf = typeof performance !== 'undefined' ? performance.now() : 0;
+    const isInputQuery =
+      typeof eventTimeStampMs === 'number' &&
+      Number.isFinite(eventTimeStampMs) &&
+      nowPerf > 0 &&
+      Math.abs(nowPerf - eventTimeStampMs) < 250;
+    const targetPerf = isInputQuery ? eventTimeStampMs : nowPerf;
+
+    const eventDeltaSec =
+      isInputQuery && nowPerf > 0
+        ? Math.max(-0.12, Math.min(0.05, (targetPerf - nowPerf) / 1000))
+        : 0;
+
+    const startAnchor = this.playbackStartTime || this.startCtxTime;
+    const fallbackCtxAtTarget = this.ctx.currentTime + eventDeltaSec;
+    let exactAudioTimeSec;
+
+    const ts =
+      typeof this.ctx.getOutputTimestamp === 'function'
+        ? this.ctx.getOutputTimestamp()
+        : null;
+
+    if (
+      ts &&
+      Number.isFinite(ts.contextTime) &&
+      ts.contextTime > 0 &&
+      Number.isFinite(ts.performanceTime) &&
+      ts.performanceTime > 0 &&
+      targetPerf > 0
+    ) {
+      const perfDeltaSec = Math.max(-0.15, Math.min(0.15, (targetPerf - ts.performanceTime) / 1000));
+      const hwCtxTime = ts.contextTime + perfDeltaSec;
+      const measuredPipelineSec = fallbackCtxAtTarget - hwCtxTime;
+
+      // Validate that hardware output timestamp tracks audioCtx.currentTime cleanly without stale jump
+      if (measuredPipelineSec >= -0.04 && measuredPipelineSec <= 0.32) {
+        // Only subtract any residual outputLatency not already reflected by getOutputTimestamp()
+        const residualLatencySec = Math.max(0, hardwareLatencySec - Math.max(0, measuredPipelineSec));
+        const elapsedHw = hwCtxTime - startAnchor;
+        exactAudioTimeSec = this.offsetSec + elapsedHw * this.playbackRate - residualLatencySec + audioOffsetSec;
+      } else {
+        const elapsedCtx = fallbackCtxAtTarget - startAnchor;
+        exactAudioTimeSec = this.offsetSec + elapsedCtx * this.playbackRate - hardwareLatencySec + audioOffsetSec;
+      }
+    } else {
+      const elapsedCtx = fallbackCtxAtTarget - startAnchor;
+      exactAudioTimeSec = this.offsetSec + elapsedCtx * this.playbackRate - hardwareLatencySec + audioOffsetSec;
+    }
+
+    // Preserve rock-solid frame monotonicity for render queries (ignore <12ms hardware DAC jitter)
+    if (!isInputQuery) {
+      if (
+        this._lastMonotonicSongTime > -900 &&
+        exactAudioTimeSec < this._lastMonotonicSongTime &&
+        this._lastMonotonicSongTime - exactAudioTimeSec < 0.012
+      ) {
+        return this._lastMonotonicSongTime;
+      }
+      this._lastMonotonicSongTime = exactAudioTimeSec;
+    }
+
+    return exactAudioTimeSec;
+  }
+
+  /**
+   * Captures the exact playback timestamp (in song seconds) for an input event timestamp.
+   */
+  getExactPlaybackTime(eventTimeStampMs = null) {
+    return this.getPreciseSongTime(eventTimeStampMs);
+  }
+
+  /**
+   * Exact AudioContext-locked song timestamp in seconds (delegates to hardware output timestamp).
    * Runs smoothly from -2.0s (visual lead-in preroll) -> 0.0s -> duration.
    */
   getSongTime() {
-    if (!this.ctx || !this.isPlaying) return this.offsetSec;
-    const elapsedCtx = this.ctx.currentTime - this.startCtxTime;
-    return this.offsetSec + elapsedCtx * this.playbackRate;
+    return this.getPreciseSongTime();
   }
 
   getDuration() {
@@ -454,12 +699,12 @@ export class AudioEngine {
 
   /**
    * Updates live per-band speaker telemetry for the 4 3D Roblox musicians,
-   * crowd lightsticks, and horizon spectrum, and detects track completion.
+   * crowd lightsticks, subwoofer kick excursion, and horizon spectrum, and detects track completion.
    */
   updateTelemetry() {
     if (!this.isPlaying || this.isPaused || !this.ctx) return;
 
-    const t = this.getSongTime();
+    const t = this.getPreciseSongTime();
     if (!this.endNotified && t >= this.duration + 0.15) {
       this.endNotified = true;
       this.onTrackEnded();
@@ -482,12 +727,21 @@ export class AudioEngine {
         return count > 0 ? sum / (count * 255) : 0;
       };
 
-      // Drums: kick punch (<110Hz) + snare/cymbal snap (>5kHz)
-      const kick = bandAvg(35, 115);
+      // Drums: dedicated 40-110Hz sub-bass kick + snare body/crack (180-450Hz + 2.5-6kHz)
+      const kickRaw = bandAvg(40, 110);
+      const snareBodyRaw = bandAvg(180, 450);
+      const snareCrackRaw = bandAvg(2500, 6000);
+      const snareRaw = Math.min(1, snareBodyRaw * 0.48 + snareCrackRaw * 0.72);
       const snap = bandAvg(4800, 11000);
-      const drumNorm = Math.min(1, kick * 0.72 + snap * 0.65);
+      const drumNorm = Math.min(1, kickRaw * 0.72 + snap * 0.65);
 
-      // Bass: 90Hz - 320Hz
+      // Sharp positive transient spikes for cardioid subwoofer excursion & beat-sync clock
+      const kickSpike = Math.min(1, Math.max(0, kickRaw - this._prevKickRaw) * 4.4 + Math.max(0, kickRaw - 0.56) * 0.9);
+      const snareSpike = Math.min(1, Math.max(0, snareRaw - this._prevSnareRaw) * 4.2);
+      this._prevKickRaw = kickRaw;
+      this._prevSnareRaw = snareRaw;
+
+      // Bass: 85Hz - 320Hz
       const bassNorm = bandAvg(85, 320);
 
       // Lead Guitar: 250Hz - 4.2kHz
@@ -498,6 +752,23 @@ export class AudioEngine {
 
       // Vocal presence: 450Hz - 2.6kHz
       const vocalNorm = bandAvg(450, 2600);
+
+      const bassSpike = Math.min(1, Math.max(0, bassNorm - this._prevBassRaw) * 3.8);
+      const guitarSpike = Math.min(1, Math.max(0, guitarNorm - this._prevGuitarRaw) * 3.6);
+      const pianoSpike = Math.min(1, Math.max(0, pianoNorm - this._prevPianoRaw) * 3.6);
+      this._prevBassRaw = bassNorm;
+      this._prevGuitarRaw = guitarNorm;
+      this._prevPianoRaw = pianoNorm;
+
+      this.liveKickEnergy += (kickRaw - this.liveKickEnergy) * 0.52;
+      this.liveSnareEnergy += (snareRaw - this.liveSnareEnergy) * 0.48;
+      this.liveKickTransient = Math.max(kickSpike, this.liveKickTransient * 0.78);
+      this.liveSnareTransient = Math.max(snareSpike, this.liveSnareTransient * 0.76);
+      this.liveDrumTransient = Math.max(this.liveKickTransient, this.liveSnareTransient);
+      this.liveBassTransient = Math.max(bassSpike, this.liveBassTransient * 0.78);
+      this.liveGuitarTransient = Math.max(guitarSpike, this.liveGuitarTransient * 0.78);
+      this.livePianoTransient = Math.max(pianoSpike, this.livePianoTransient * 0.78);
+      this.liveHarmonicEnergy += (Math.min(1, guitarNorm * 0.6 + pianoNorm * 0.4) - this.liveHarmonicEnergy) * 0.36;
 
       this.liveDrumEnergy += (drumNorm - this.liveDrumEnergy) * 0.42;
       this.liveBassEnergy += (bassNorm - this.liveBassEnergy) * 0.36;
@@ -557,11 +828,25 @@ export class AudioEngine {
     this.teardownMixer();
     this.offsetSec = 0;
     this.liveDrumEnergy = 0;
+    this.liveKickEnergy = 0;
+    this.liveSnareEnergy = 0;
+    this.liveKickTransient = 0;
+    this.liveSnareTransient = 0;
+    this.liveDrumTransient = 0;
+    this.liveBassTransient = 0;
+    this.liveGuitarTransient = 0;
+    this.livePianoTransient = 0;
+    this.liveHarmonicEnergy = 0;
     this.liveBassEnergy = 0;
     this.liveGuitarEnergy = 0;
     this.livePianoEnergy = 0;
     this.liveVocalEnergy = 0;
     this.liveOverallEnergy = 0;
+    this._prevKickRaw = 0;
+    this._prevSnareRaw = 0;
+    this._prevBassRaw = 0;
+    this._prevGuitarRaw = 0;
+    this._prevPianoRaw = 0;
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
@@ -942,8 +1227,41 @@ let workerJobSeq = 0;
 const pendingWorkerJobs = new Map();
 
 /**
+ * Fast mono downmix at native sampleRate (decimating 2x only if > 50kHz) for 2048-pt STFT in worker.
+ */
+export function extractMonoNative(audioBuffer) {
+  const srcRate = audioBuffer.sampleRate || 44100;
+  const srcLen = audioBuffer.length;
+  const numCh = audioBuffer.numberOfChannels;
+  const ch0 = audioBuffer.getChannelData(0);
+  const ch1 = numCh > 1 ? audioBuffer.getChannelData(1) : null;
+
+  const stride = srcRate > 50000 ? 2 : 1;
+  const effectiveRate = srcRate / stride;
+  const outLen = Math.max(2048, Math.floor(srcLen / stride));
+  const out = new Float32Array(outLen);
+
+  if (stride === 1) {
+    if (ch1) {
+      for (let i = 0; i < outLen; i += 1) {
+        out[i] = (ch0[i] + ch1[i]) * 0.5;
+      }
+    } else {
+      out.set(ch0.subarray(0, outLen));
+    }
+  } else {
+    for (let i = 0; i < outLen; i += 1) {
+      const j = i * 2;
+      out[i] = ch1 ? ((ch0[j] + ch1[j] + ch0[j + 1] + ch1[j + 1]) * 0.25) : ((ch0[j] + ch0[j + 1]) * 0.5);
+    }
+  }
+
+  return { mono: out, sampleRate: effectiveRate };
+}
+
+/**
  * Ultra-fast (~12ms for a 4-minute song) anti-aliased mono 22.05kHz downsampler
- * running purely in typed arrays without OfflineAudioContext overhead.
+ * preserved for compatibility.
  */
 export function downsampleToMono22k(audioBuffer) {
   const srcRate = audioBuffer.sampleRate;
@@ -956,7 +1274,6 @@ export function downsampleToMono22k(audioBuffer) {
   const outLen = Math.max(1024, Math.floor(srcLen / ratio));
   const out = new Float32Array(outLen);
 
-  // Box-car anti-aliasing average over each downsampling window to prevent high-freq aliasing
   const winHalf = Math.max(1, Math.floor(ratio * 0.5));
   for (let i = 0; i < outLen; i += 1) {
     const center = Math.floor(i * ratio);
@@ -981,6 +1298,27 @@ export function downsampleToMono22k(audioBuffer) {
 
 export const downsampleToMono16k = downsampleToMono22k;
 
+function cancelPendingAudioAnalyses(exceptJobId = null) {
+  for (const [id, job] of pendingWorkerJobs.entries()) {
+    if (exceptJobId !== null && job.jobId === exceptJobId) continue;
+    pendingWorkerJobs.delete(id);
+    if (sharedAudioWorker) {
+      try {
+        sharedAudioWorker.postMessage({ type: 'cancel', id, jobId: job.jobId });
+      } catch {
+        // Ignore post errors on closing worker
+      }
+    }
+    const err = new Error('JOB_CANCELLED');
+    err.isCancelled = true;
+    job.reject(err);
+  }
+}
+
+export function cancelAllAudioAnalyses() {
+  cancelPendingAudioAnalyses(null);
+}
+
 function getOrCreateAudioWorker() {
   if (typeof Worker === 'undefined') return null;
   if (sharedAudioWorker) return sharedAudioWorker;
@@ -988,15 +1326,20 @@ function getOrCreateAudioWorker() {
   try {
     const worker = new Worker(new URL('./audioWorker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (event) => {
-      const { id, type, pct, analysis, elapsedMs, error } = event.data || {};
+      const { id, type, pct, stage, percent, message, analysis, elapsedMs, error } = event.data || {};
       const job = pendingWorkerJobs.get(id);
       if (!job) return;
 
       if (type === 'progress') {
-        job.onProgress(pct);
+        job.onProgress({ pct, stage, percent, message });
       } else if (type === 'result') {
         pendingWorkerJobs.delete(id);
         job.resolve({ ...analysis, elapsedMs });
+      } else if (type === 'cancelled') {
+        pendingWorkerJobs.delete(id);
+        const err = new Error('JOB_CANCELLED');
+        err.isCancelled = true;
+        job.reject(err);
       } else if (type === 'error') {
         pendingWorkerJobs.delete(id);
         job.reject(new Error(error || 'Audio worker failed'));
@@ -1020,30 +1363,54 @@ function getOrCreateAudioWorker() {
 }
 
 /**
- * Runs the client-side WASM AI (Essentia.js) + 22.05kHz Median-Filtered HPSS Radix-2 FFT
- * analysis inside a background Web Worker (with transparent main-thread fallback).
+ * Runs the offline multi-pass 4-stem separation (22.05kHz stereo decimation + 2048-pt STFT hop=256
+ * + 17x15 2D HPSS + OLA iSTFT + 192 PPQ [SyncTrack]) inside a background Web Worker.
  */
-export async function analyzeAudioInWorker(audioBuffer, { bpmHint = null, onProgress = () => {} } = {}) {
-  onProgress(0.05, 'Preparing 22.05kHz waveform for HPSS & AI beat tracking…');
-  const mono22k = downsampleToMono22k(audioBuffer);
+export async function analyzeAudioInWorker(audioBuffer, { bpmHint = null, jobId = null, onProgress = () => {} } = {}) {
+  const activeJobId = jobId ?? ++workerJobSeq;
+  cancelPendingAudioAnalyses(activeJobId);
+  onProgress(0.03, 'Stage 1/5: Preparing stereo MIR DSP worker (0%)...');
+
+  const srcRate = audioBuffer.sampleRate || 44100;
   const duration = Math.max(0.5, audioBuffer.duration);
+  const ch0 = audioBuffer.getChannelData(0);
+  const ch1 = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : null;
+
+  const formatStageFallback = (rawPct, stagePct) => {
+    if (rawPct >= 0.90) return `Stage 5/5: Magnetic Waveform Snapping & 192 PPQ Charts (${stagePct}%)...`;
+    if (rawPct >= 0.80) return `Stage 4/5: 4-Phase Chromagram & Downbeat Alignment (${stagePct}%)...`;
+    if (rawPct >= 0.62) return `Stage 3/5: Sliding Comb Tempogram & Viterbi 192 PPQ Solver (${stagePct}%)...`;
+    if (rawPct >= 0.25) return `Stage 2/5: 2D HPSS Stem Separation & OLA Reconstruction (${stagePct}%)...`;
+    return `Stage 1/5: Stereo STFT & SuperFlux Spectral Flux (${stagePct}%)...`;
+  };
 
   const worker = getOrCreateAudioWorker();
   if (worker) {
     try {
       const id = ++workerJobSeq;
+      // Copy into transferable Float32Arrays so WebAudio's playback AudioBuffer never detaches
+      const pcmLeft = new Float32Array(ch0);
+      const pcmRight = ch1 ? new Float32Array(ch1) : null;
+      const transferList = pcmRight ? [pcmLeft.buffer, pcmRight.buffer] : [pcmLeft.buffer];
+
       const result = await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           pendingWorkerJobs.delete(id);
           reject(new Error('Audio worker timeout'));
-        }, 16000);
+        }, 240000);
 
         pendingWorkerJobs.set(id, {
-          onProgress: (pct) => {
-            onProgress(
-              0.08 + Math.max(0, Math.min(1, pct)) * 0.88,
-              pct >= 0.62 ? 'Refining beats & pitch contours…' : 'Separating harmonic & percussive stems…'
-            );
+          jobId: activeJobId,
+          onProgress: (prog) => {
+            const rawPct = typeof prog === 'object' && prog !== null ? Number(prog.pct) || 0 : Number(prog) || 0;
+            const stage = typeof prog === 'object' && prog !== null ? prog.stage : null;
+            const stagePct =
+              typeof prog === 'object' && prog !== null && Number.isFinite(prog.percent)
+                ? prog.percent
+                : Math.round(rawPct * 100);
+            const fallbackMsg = formatStageFallback(rawPct, stagePct);
+            const msg = (typeof prog === 'object' && prog !== null && prog.message) || fallbackMsg;
+            onProgress(0.04 + Math.max(0, Math.min(1, rawPct)) * 0.92, msg, stage, stagePct);
           },
           resolve: (val) => {
             clearTimeout(timeout);
@@ -1055,27 +1422,38 @@ export async function analyzeAudioInWorker(audioBuffer, { bpmHint = null, onProg
           },
         });
 
-        // Transfer mono22k Float32Array zero-copy to the background Web Worker!
         worker.postMessage(
-          { id, mono22k, sampleRate: WORKER_SAMPLE_RATE, bpmHint, duration },
-          [mono22k.buffer]
+          { id, jobId: activeJobId, pcmLeft, pcmRight, sampleRate: srcRate, bpmHint, duration },
+          transferList
         );
       });
-      onProgress(0.98, 'Quantizing beat-locked chart…');
+      onProgress(0.97, 'Stage 5/5: Finalizing 192 PPQ Chart & Stems (100%)...');
       return result;
-    } catch {
-      // Fall through cleanly to direct import fallback on a fresh mono buffer
+    } catch (err) {
+      if (err?.isCancelled || err?.message === 'JOB_CANCELLED') {
+        throw err;
+      }
+      // Fall through cleanly to direct stereo import fallback
     }
   }
 
   // Fallback if Worker is unavailable in the environment
-  const { analyzeMono22k } = await import('./audioWorker.js');
-  const fallbackMono = mono22k.byteLength > 0 ? mono22k : downsampleToMono22k(audioBuffer);
+  const { analyzeStereo, decimateTo22050Stereo } = await import('./audioWorker.js');
+  const decimated = decimateTo22050Stereo(ch0, ch1, srcRate);
   const t0 = performance.now();
-  const analysis = await analyzeMono22k(fallbackMono, {
+  const analysis = await analyzeStereo(decimated.left, decimated.right, {
+    sampleRate: decimated.sampleRate,
     bpmHint,
     duration,
-    onProgress: (pct) => onProgress(0.08 + pct * 0.88, 'Separating harmonic & percussive stems…'),
+    synthesizeStemAudio: true,
+    onProgress: (prog) => {
+      const rawPct = typeof prog === 'object' && prog !== null ? Number(prog.pct) || 0 : Number(prog) || 0;
+      const stagePct = Math.round(rawPct * 100);
+      const msg =
+        (typeof prog === 'object' && prog !== null && prog.message) ||
+        formatStageFallback(rawPct, stagePct);
+      onProgress(0.04 + rawPct * 0.92, msg, prog?.stage, prog?.percent);
+    },
   });
   return { ...analysis, elapsedMs: Math.round(performance.now() - t0) };
 }
@@ -1545,9 +1923,12 @@ export function parseCloneHeroChart(chartText, durationHint = 0) {
         break;
       }
     }
-    beats.push(Number(tSec.toFixed(4)));
+    const roundedBeatTime = Number(tSec.toFixed(4));
+    beats.push(roundedBeatTime);
     dynamicBeatGrid.push({
-      timeSec: Number(tSec.toFixed(4)),
+      tick: Math.round((beatTick * STANDARD_PPQ) / resolution),
+      timeSec: roundedBeatTime,
+      time: roundedBeatTime,
       isMeasure: beatIdx % tsNum === 0,
       beatIndex: beatIdx,
     });
@@ -1555,9 +1936,21 @@ export function parseCloneHeroChart(chartText, durationHint = 0) {
     beatIdx += 1;
   }
 
+  const syncTrack = tempos.map((t) => {
+    const roundedSec = Number((t.timeSec || 0).toFixed(4));
+    return {
+      tick: Math.round((t.tick * STANDARD_PPQ) / resolution),
+      bpm: Number(t.bpm.toFixed(3)),
+      timeSec: roundedSec,
+      timeSeconds: roundedSec,
+    };
+  });
+
   return {
     title,
     artist,
+    resolution: STANDARD_PPQ,
+    syncTrack,
     bpm: Math.round(tempos[0]?.bpm || 120),
     beats,
     dynamicBeatGrid,

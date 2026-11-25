@@ -18,7 +18,7 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildVenueEnvironment } from './venues.js';
+import { buildVenueEnvironment, getStageOverlayById } from './venues.js';
 import {
   getBandLineupById,
   buildCustomGuitarMesh,
@@ -27,6 +27,7 @@ import {
   buildCustomKeyboardMesh,
   getStarLookById,
   createAmpGrilleSkinTexture,
+  createPerforatedSteelMaps,
 } from './bandGearCatalog.js';
 import { CameraDirector } from './cameraDirector.js';
 import { LightingProfileController } from './lightingProfiles.js';
@@ -42,12 +43,340 @@ const THEME_COLORS = {
 };
 
 const FIREWORK_PALETTES = [
-  [0xfacc15, 0xfef08a, 0xf97316],
-  [0x38bdf8, 0x06b6d4, 0xe0f2fe],
-  [0xf43f5e, 0xf472b6, 0xfde047],
-  [0xa855f7, 0xc084fc, 0x38bdf8],
-  [0x4ade80, 0x22d3ee, 0xfef9c3],
+  // 0: 24k Sodium Gold & Brocade Amber
+  [0xfef08a, 0xfacc15, 0xd97706],
+  // 1: Electric Magenta -> Deep Violet Chrysanthemum
+  [0xf472b6, 0xd946ef, 0x6d28d9],
+  // 2: Copper Electric Azure & Ice Cyan
+  [0xe0f2fe, 0x38bdf8, 0x0284c7],
+  // 3: Strontium Crimson -> Rose Gold
+  [0xfda4af, 0xf43f5e, 0xbe123c],
+  // 4: Barium Emerald & Mint Spark
+  [0xdcfce7, 0x4ade80, 0x059669],
+  // 5: Neon Cyber Gold & Cyan
+  [0xfef08a, 0x22d3ee, 0x818cf8],
+  // 6: Patriot / Stadium R-W-B Pearl
+  [0xff3355, 0xf8fafc, 0x38bdf8],
+  // 7: Royal Ultraviolet & Champagne Silver
+  [0xf5d0fe, 0xa855f7, 0x38bdf8],
 ];
+
+/**
+ * Procedural 128x64 velocity-aligned glowing firework streak texture (zero external image assets).
+ * Head sits near u = 0.84 with an incandescent core; plasma trail tapers smoothly back to u = 0.04.
+ */
+function createFireworkStreakTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 128, 64);
+
+  // Horizontal tapering luminous plasma body
+  const tailGrad = ctx.createLinearGradient(4, 32, 118, 32);
+  tailGrad.addColorStop(0.0, 'rgba(255,255,255,0.0)');
+  tailGrad.addColorStop(0.22, 'rgba(255,255,255,0.22)');
+  tailGrad.addColorStop(0.62, 'rgba(255,255,255,0.72)');
+  tailGrad.addColorStop(0.84, 'rgba(255,255,255,1.0)');
+  tailGrad.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(4, 32);
+  ctx.quadraticCurveTo(64, 16, 108, 22);
+  ctx.quadraticCurveTo(122, 26, 122, 32);
+  ctx.quadraticCurveTo(122, 38, 108, 42);
+  ctx.quadraticCurveTo(64, 48, 4, 32);
+  ctx.closePath();
+  ctx.fillStyle = tailGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // Soft vertical radial glow around the bright streak spine
+  const spineGrad = ctx.createRadialGradient(104, 32, 1.5, 96, 32, 28);
+  spineGrad.addColorStop(0.0, 'rgba(255,255,255,1.0)');
+  spineGrad.addColorStop(0.32, 'rgba(255,255,255,0.85)');
+  spineGrad.addColorStop(0.65, 'rgba(255,255,255,0.25)');
+  spineGrad.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+  ctx.fillStyle = spineGrad;
+  ctx.fillRect(0, 0, 128, 64);
+
+  // Tight white-hot center filament along streak axis
+  const coreGrad = ctx.createLinearGradient(18, 32, 114, 32);
+  coreGrad.addColorStop(0.0, 'rgba(255,255,255,0.0)');
+  coreGrad.addColorStop(0.55, 'rgba(255,255,255,0.55)');
+  coreGrad.addColorStop(0.86, 'rgba(255,255,255,1.0)');
+  coreGrad.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+  ctx.fillStyle = coreGrad;
+  ctx.fillRect(18, 28, 96, 8);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Procedural 128x128 incandescent star-core sprite with subtle 4-point optical diffraction spikes & radial bloom.
+ */
+function createFireworkStarCoreTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 128, 128);
+
+  const cx = 64;
+  const cy = 64;
+
+  // Outer radial bloom halo
+  const halo = ctx.createRadialGradient(cx, cy, 2, cx, cy, 62);
+  halo.addColorStop(0.0, 'rgba(255,255,255,1.0)');
+  halo.addColorStop(0.16, 'rgba(255,255,255,0.94)');
+  halo.addColorStop(0.36, 'rgba(255,255,255,0.44)');
+  halo.addColorStop(0.68, 'rgba(255,255,255,0.12)');
+  halo.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, 128, 128);
+
+  // Crisp 4-point optical diffraction flare spikes
+  const drawSpike = (angle, len, halfWidth, alpha) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    const g = ctx.createLinearGradient(-len, 0, len, 0);
+    g.addColorStop(0.0, 'rgba(255,255,255,0.0)');
+    g.addColorStop(0.38, `rgba(255,255,255,${alpha * 0.45})`);
+    g.addColorStop(0.5, `rgba(255,255,255,${alpha})`);
+    g.addColorStop(0.62, `rgba(255,255,255,${alpha * 0.45})`);
+    g.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-len, 0);
+    ctx.quadraticCurveTo(0, -halfWidth, len, 0);
+    ctx.quadraticCurveTo(0, halfWidth, -len, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+  drawSpike(0, 60, 4.5, 0.9);
+  drawSpike(Math.PI * 0.5, 60, 4.5, 0.9);
+  drawSpike(Math.PI * 0.25, 34, 2.8, 0.42);
+  drawSpike(-Math.PI * 0.25, 34, 2.8, 0.42);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Procedural 128x128 soft multi-lobe volumetric smoke cloud puff texture (zero hard edges).
+ */
+function createFireworkSmokeTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 128, 128);
+
+  const lobes = [
+    [64, 64, 48, 0.46],
+    [48, 56, 34, 0.34],
+    [80, 58, 32, 0.32],
+    [58, 78, 35, 0.3],
+    [74, 46, 28, 0.26],
+    [42, 72, 26, 0.22],
+  ];
+  for (let i = 0; i < lobes.length; i += 1) {
+    const [lx, ly, lr, la] = lobes[i];
+    const g = ctx.createRadialGradient(lx, ly, 2, lx, ly, lr);
+    g.addColorStop(0.0, `rgba(255,255,255,${la})`);
+    g.addColorStop(0.45, `rgba(240,244,255,${la * 0.55})`);
+    g.addColorStop(0.8, `rgba(210,220,238,${la * 0.14})`);
+    g.addColorStop(1.0, 'rgba(200,210,230,0.0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+const FW_STREAK_VERTEX_SHADER = /* glsl */ `
+  attribute vec3 aPos;
+  attribute vec3 aVel;
+  attribute vec3 aColor;
+  attribute vec4 aMeta; // x: size, y: alpha, z: stretchFactor, w: spriteMode (0=streak, 1=star, 2=crackle, 3=halo)
+
+  uniform float uAspect;
+  uniform float uProjScale;
+
+  varying vec2 vUv;
+  varying vec3 vColor;
+  varying float vAlpha;
+  varying float vMode;
+
+  void main() {
+    vUv = uv;
+    vColor = aColor;
+    vAlpha = aMeta.y;
+    vMode = aMeta.w;
+
+    if (aMeta.x <= 0.001 || aMeta.y <= 0.002) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+
+    vec4 mvCur = modelViewMatrix * vec4(aPos, 1.0);
+    if (mvCur.z > -0.35) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+
+    vec4 clipCur = projectionMatrix * mvCur;
+    vec2 ndcCur = clipCur.xy / max(0.0001, clipCur.w);
+
+    // Project velocity vector into aspect-corrected screen space for razor-sharp velocity streaks
+    vec4 mvNext = modelViewMatrix * vec4(aPos + aVel * 0.055, 1.0);
+    mvNext.z = min(mvNext.z, -0.25);
+    vec4 clipNext = projectionMatrix * mvNext;
+    vec2 ndcNext = clipNext.xy / max(0.0001, clipNext.w);
+
+    vec2 velScreen = (ndcNext - ndcCur) * vec2(uAspect, 1.0);
+    float velLen = length(velScreen);
+
+    vec2 dir = vec2(1.0, 0.0);
+    vec2 perp = vec2(0.0, 1.0);
+    float streakLen = 0.0;
+
+    float baseNdc = (aMeta.x * uProjScale) / max(1.6, -mvCur.z);
+    if (velLen > 0.0004 && aMeta.z > 0.01) {
+      dir = velScreen / velLen;
+      perp = vec2(-dir.y, dir.x);
+      streakLen = clamp(velLen * aMeta.z * 2.8, 0.0, baseNdc * 18.0);
+    }
+
+    // Anchor leading head near aPos (+0.5) and stretch luminous tail behind along -dir (-0.5)
+    float headExt = baseNdc * 0.56;
+    float tailExt = baseNdc * 0.56 + streakLen;
+    float along = position.x > 0.0 ? headExt : -tailExt;
+    float widthScale = aMeta.w < 0.5 ? 0.84 : 1.0;
+    float across = position.y * baseNdc * widthScale;
+
+    vec2 offsetNdc = dir * along + perp * across;
+    offsetNdc.x /= max(0.25, uAspect);
+
+    clipCur.xy += offsetNdc * clipCur.w;
+    gl_Position = clipCur;
+  }
+`;
+
+const FW_STREAK_FRAGMENT_SHADER = /* glsl */ `
+  uniform sampler2D uStreakTex;
+  uniform sampler2D uStarTex;
+
+  varying vec2 vUv;
+  varying vec3 vColor;
+  varying float vAlpha;
+  varying float vMode;
+
+  void main() {
+    float mask = 0.0;
+    float coreHeat = 0.0;
+
+    if (vMode < 0.5) {
+      vec4 tex = texture2D(uStreakTex, vUv);
+      mask = tex.a;
+      coreHeat = pow(clamp(tex.a, 0.0, 1.0), 2.8) * 0.72;
+    } else if (vMode < 2.5) {
+      vec4 tex = texture2D(uStarTex, vUv);
+      mask = tex.a;
+      float boost = vMode > 1.5 ? 1.15 : 0.78;
+      coreHeat = pow(clamp(tex.a, 0.0, 1.0), 2.3) * boost;
+    } else {
+      // Volumetric soft radial bloom halo around shell detonations / Roman pearls
+      float d = length(vUv - vec2(0.5)) * 2.0;
+      mask = pow(max(0.0, 1.0 - d), 2.2);
+      coreHeat = pow(max(0.0, 1.0 - d), 4.0) * 0.55;
+    }
+
+    float a = mask * vAlpha;
+    if (a < 0.004) discard;
+
+    // Incandescent white-hot center core + saturated HDR chemical color halo for ACESFilmicToneMapping
+    vec3 col = vColor * mask + vec3(1.0, 0.98, 0.92) * coreHeat;
+    gl_FragColor = vec4(col * vAlpha, a);
+  }
+`;
+
+const FW_SMOKE_VERTEX_SHADER = /* glsl */ `
+  attribute vec3 aPos;
+  attribute vec4 aMeta; // x: size, y: alpha, z: rotRad, w: baseGrey
+
+  uniform float uAspect;
+  uniform float uProjScale;
+  uniform vec3 uFlashPos[6];
+  uniform vec3 uFlashCol[6];
+
+  varying vec2 vUv;
+  varying vec3 vLitColor;
+  varying float vAlpha;
+
+  void main() {
+    vUv = uv;
+    vAlpha = aMeta.y;
+
+    if (aMeta.x <= 0.01 || aMeta.y <= 0.002) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+
+    vec4 mvCur = modelViewMatrix * vec4(aPos, 1.0);
+    if (mvCur.z > -1.0) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+
+    // Dynamic proximity illumination: smoke clouds catch colored light of neighboring firework explosions!
+    vec3 lit = vec3(aMeta.w * 0.24, aMeta.w * 0.27, aMeta.w * 0.36);
+    for (int i = 0; i < 6; i++) {
+      vec3 diff = aPos - uFlashPos[i];
+      float d2 = dot(diff, diff);
+      float atten = 1.0 / (1.0 + d2 * 0.0018);
+      lit += uFlashCol[i] * atten * 0.95;
+    }
+    vLitColor = min(lit, vec3(2.2));
+
+    float c = cos(aMeta.z);
+    float s = sin(aMeta.z);
+    vec2 rotPos = vec2(position.x * c - position.y * s, position.x * s + position.y * c);
+
+    float ndcSize = (aMeta.x * uProjScale) / max(2.2, -mvCur.z);
+    vec4 clipCur = projectionMatrix * mvCur;
+    vec2 offsetNdc = rotPos * ndcSize;
+    offsetNdc.x /= max(0.25, uAspect);
+    clipCur.xy += offsetNdc * clipCur.w;
+    gl_Position = clipCur;
+  }
+`;
+
+const FW_SMOKE_FRAGMENT_SHADER = /* glsl */ `
+  uniform sampler2D uSmokeTex;
+
+  varying vec2 vUv;
+  varying vec3 vLitColor;
+  varying float vAlpha;
+
+  void main() {
+    vec4 tex = texture2D(uSmokeTex, vUv);
+    float a = tex.a * vAlpha;
+    if (a < 0.003) discard;
+    gl_FragColor = vec4(vLitColor, a);
+  }
+`;
 
 const CONFETTI_COLORS = [0xfacc15, 0x38bdf8, 0xf43f5e, 0xc084fc, 0x4ade80, 0xf8fafc, 0xfb923c];
 
@@ -57,9 +386,22 @@ const CROWD_SHIRT_COLORS = [
 ];
 
 const CROWD_PANTS_COLORS = [0x0f172a, 0x1e293b, 0x1f2937, 0x172554, 0x27272a, 0x312e81];
+
+const STAGE_DECK_TOP_Y = 0;
+const DRUM_RISER_TOP_Y = 0.8;
+const KEYS_RISER_TOP_Y = 0.5;
+
+function setHierarchyFrustumCulled(root, culled = false) {
+  if (!root) return;
+  root.frustumCulled = culled;
+  root.traverse((obj) => {
+    obj.frustumCulled = culled;
+  });
+}
 const CROWD_HAIR_COLORS = [0x111827, 0x27272a, 0x451a03, 0x78350f, 0x0f172a, 0x3f3f46, 0x1e1b4b];
 const CROWD_CAP_COLORS = [0xef4444, 0x0284c7, 0xf59e0b, 0x111827, 0x7c3aed, 0x10b981, 0xf43f5e];
 const CROWD_SKIN_TONES = [0xf4c79a, 0xe8b587, 0xd69e72, 0xf9d8b8, 0xc68b59, 0xf0be91];
+const CROWD_STICK_COLORS = [0x38bdf8, 0xf472b6, 0xfacc15, 0xa855f7, 0x34d399, 0xfb923c, 0x22d3ee, 0xfef08a];
 
 /**
  * Builds an authentic beveled/rounded Roblox cylindrical head using LatheGeometry
@@ -222,6 +564,7 @@ function createGlowParticleTexture() {
 function createRobloxFaceTexture({
   skin = '#f4c79a',
   shocked = false,
+  expression = null, // 'grin' | 'belt' | 'intense' | 'closed' | 'shocked'
   sunglasses = false,
   sunglassesTint = null,
   smile = 'grin',
@@ -231,14 +574,46 @@ function createRobloxFaceTexture({
   lipColor = null,
   starMakeup = false,
   mustache = false,
+  buckTeeth = false,
+  visorLed = false,
+  fangs = false,
 }) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
 
+  const resolvedExpr = shocked || expression === 'shocked' ? 'shocked' : expression || 'grin';
+  const isShocked = resolvedExpr === 'shocked';
+  const isBelt = resolvedExpr === 'belt';
+  const isIntense = resolvedExpr === 'intense';
+  const isClosed = resolvedExpr === 'closed';
+
   ctx.fillStyle = skin;
   ctx.fillRect(0, 0, 256, 256);
+
+  if (visorLed) {
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(22, 62, 212, 128);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(22, 62, 212, 128);
+
+    const bars = isShocked ? [16, 48, 22, 54, 18, 52, 20, 44]
+      : isBelt || isIntense ? [26, 44, 58, 38, 60, 42, 48, 30]
+        : [18, 30, 44, 34, 48, 36, 28, 18];
+    for (let i = 0; i < bars.length; i += 1) {
+      const h = bars[i];
+      const bx = 42 + i * 22;
+      const by = 126 - h * 0.5;
+      ctx.fillStyle = isShocked ? '#ef4444' : i % 2 === 0 ? '#22d3ee' : '#38bdf8';
+      ctx.fillRect(bx, by, 14, h);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  }
 
   const grad = ctx.createRadialGradient(128, 128, 24, 128, 128, 150);
   grad.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
@@ -246,7 +621,7 @@ function createRobloxFaceTexture({
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 256, 256);
 
-  if (blush && !shocked) {
+  if (blush && !isShocked) {
     ctx.fillStyle = blush;
     ctx.beginPath();
     ctx.ellipse(58, 142, 26, 15, 0, 0, Math.PI * 2);
@@ -254,7 +629,7 @@ function createRobloxFaceTexture({
     ctx.fill();
   }
 
-  if (starMakeup && !shocked) {
+  if (starMakeup && !isShocked) {
     ctx.fillStyle = '#fde047';
     [
       [48, 142, 7],
@@ -276,7 +651,7 @@ function createRobloxFaceTexture({
     });
   }
 
-  if (shocked) {
+  if (isShocked) {
     ctx.strokeStyle = '#18181b';
     ctx.lineWidth = 10;
     ctx.lineCap = 'round';
@@ -354,37 +729,68 @@ function createRobloxFaceTexture({
         ctx.globalAlpha = 1;
       }
 
-      [82, 174].forEach((ex, i) => {
-        ctx.fillStyle = '#111827';
-        ctx.beginPath();
-        ctx.ellipse(ex, 110, 14, 18, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(ex - 4, 103, 5, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (eyeliner) {
-          ctx.strokeStyle = '#09090b';
-          ctx.lineWidth = 5;
-          ctx.lineCap = 'round';
+      if (isClosed) {
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        [82, 174].forEach((ex) => {
           ctx.beginPath();
-          const dir = i === 0 ? -1 : 1;
-          ctx.moveTo(ex - dir * 14, 101);
-          ctx.quadraticCurveTo(ex, 92, ex + dir * 24, 96);
+          ctx.moveTo(ex - 16, 110);
+          ctx.quadraticCurveTo(ex, 123, ex + 16, 110);
           ctx.stroke();
-        }
-      });
+        });
+      } else {
+        [82, 174].forEach((ex, i) => {
+          ctx.fillStyle = '#111827';
+          ctx.beginPath();
+          if (isBelt) {
+            // Expressive squeezed emotion eyes during big vocal/ballad sustain holds
+            ctx.ellipse(ex, 111, 14, 11, 0, 0, Math.PI * 2);
+          } else {
+            ctx.ellipse(ex, 110, 14, isIntense ? 15 : 18, 0, 0, Math.PI * 2);
+          }
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(ex - 4, 104, isBelt ? 4 : 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (eyeliner) {
+            ctx.strokeStyle = '#09090b';
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            const dir = i === 0 ? -1 : 1;
+            ctx.moveTo(ex - dir * 14, 101);
+            ctx.quadraticCurveTo(ex, 92, ex + dir * 24, 96);
+            ctx.stroke();
+          }
+        });
+      }
 
       ctx.strokeStyle = '#18181b';
       ctx.lineWidth = eyeliner ? 6 : 8;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(58, 82);
-      ctx.lineTo(104, 86);
-      ctx.moveTo(198, 82);
-      ctx.lineTo(152, 86);
+      if (isIntense) {
+        // Fierce rock / solo angled eyebrows
+        ctx.moveTo(56, 76);
+        ctx.lineTo(106, 92);
+        ctx.moveTo(200, 76);
+        ctx.lineTo(150, 92);
+      } else if (isBelt || isClosed) {
+        // Expressive empathetic raised inner eyebrows
+        ctx.moveTo(56, 86);
+        ctx.quadraticCurveTo(82, 72, 106, 78);
+        ctx.moveTo(200, 86);
+        ctx.quadraticCurveTo(174, 72, 150, 78);
+      } else {
+        ctx.moveTo(58, 82);
+        ctx.lineTo(104, 86);
+        ctx.moveTo(198, 82);
+        ctx.lineTo(152, 86);
+      }
       ctx.stroke();
     }
 
@@ -398,7 +804,36 @@ function createRobloxFaceTexture({
       ctx.fill();
     }
 
-    if (lipColor) {
+    if (isBelt || isClosed) {
+      // Wide passionate belt / ballad sustain mouth
+      ctx.fillStyle = '#27131a';
+      ctx.beginPath();
+      ctx.ellipse(128, 178, isClosed ? 22 : 28, isClosed ? 15 : 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = lipColor || '#18181b';
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(110, 163, 36, 7);
+    } else if (isIntense) {
+      // Gritted teeth rock solo intensity
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(86, 162, 84, 26, 8) : ctx.rect(86, 162, 84, 26);
+      ctx.fill();
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = '#18181b';
+      ctx.stroke();
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(88, 175);
+      ctx.lineTo(168, 175);
+      ctx.moveTo(114, 163);
+      ctx.lineTo(114, 187);
+      ctx.moveTo(142, 163);
+      ctx.lineTo(142, 187);
+      ctx.stroke();
+    } else if (lipColor) {
       ctx.fillStyle = lipColor;
       ctx.beginPath();
       ctx.moveTo(92, 174);
@@ -434,6 +869,31 @@ function createRobloxFaceTexture({
       ctx.lineWidth = 7;
       ctx.strokeStyle = '#18181b';
       ctx.stroke();
+    }
+
+    if (buckTeeth && !isBelt) {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#18181b';
+      ctx.lineWidth = 3;
+      ctx.fillRect(112, 170, 14, 16);
+      ctx.strokeRect(112, 170, 14, 16);
+      ctx.fillRect(130, 170, 14, 16);
+      ctx.strokeRect(130, 170, 14, 16);
+    }
+
+    if (fangs) {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#18181b';
+      ctx.lineWidth = 2.5;
+      [98, 150].forEach((fx) => {
+        ctx.beginPath();
+        ctx.moveTo(fx - 6, 168);
+        ctx.lineTo(fx, 189);
+        ctx.lineTo(fx + 6, 168);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      });
     }
   }
 
@@ -542,6 +1002,249 @@ function populateHairGroup(hairGroup, hairStyle, hairColor, accentMat, extras = 
     pomp.scale.set(1.08, 0.72, 1.18);
     pomp.position.set(0, 0.84, 0.08);
     hairGroup.add(base, pomp);
+  } else if (hairStyle === 'opm-shag') {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.22, 0.76), hairMat);
+    cap.position.set(0, 0.69, -0.02);
+    const frontSwept = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.16, 0.16), hairMat);
+    frontSwept.position.set(0.06, 0.57, 0.34);
+    frontSwept.rotation.z = -0.14;
+    const mulletBack = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.74, 0.22), hairMat);
+    mulletBack.position.set(0, 0.32, -0.36);
+    const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.28), hairMat);
+    sideL.position.set(-0.37, 0.38, -0.04);
+    const sideR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.28), hairMat);
+    sideR.position.set(0.37, 0.38, -0.04);
+    hairGroup.add(cap, frontSwept, mulletBack, sideL, sideR);
+  } else if (hairStyle === 'anime-spiky') {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.2, 0.72), hairMat);
+    cap.position.set(0, 0.68, -0.02);
+    hairGroup.add(cap);
+    const spikeCoords = [
+      [0, 0.94, 0.02, 0, 0, 0.24, 0.44],
+      [-0.28, 0.86, 0.08, 0.15, 0.42, 0.2, 0.42],
+      [0.28, 0.86, 0.08, 0.15, -0.42, 0.2, 0.42],
+      [-0.36, 0.64, -0.06, 0, 0.78, 0.18, 0.38],
+      [0.36, 0.64, -0.06, 0, -0.78, 0.18, 0.38],
+      [0, 0.78, -0.34, -0.62, 0, 0.22, 0.44],
+      [-0.22, 0.56, 0.32, 0.58, 0.24, 0.12, 0.32],
+    ];
+    spikeCoords.forEach(([x, y, z, rx, rz, r, h]) => {
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5), hairMat);
+      sp.position.set(x, y, z);
+      sp.rotation.set(rx, 0, rz);
+      hairGroup.add(sp);
+    });
+  } else if (hairStyle === 'glam-teased') {
+    const puffGeo = new THREE.SphereGeometry(0.28, 10, 8);
+    [
+      [0, 0.86, -0.04],
+      [-0.28, 0.74, -0.06],
+      [0.28, 0.74, -0.06],
+      [-0.42, 0.48, -0.1],
+      [0.42, 0.48, -0.1],
+      [-0.38, 0.2, -0.14],
+      [0.38, 0.2, -0.14],
+      [0, 0.52, -0.38],
+      [-0.24, 0.24, -0.36],
+      [0.24, 0.24, -0.36],
+    ].forEach(([x, y, z]) => {
+      const p = new THREE.Mesh(puffGeo, hairMat);
+      p.position.set(x, y, z);
+      hairGroup.add(p);
+    });
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.11, 0.72), accentMat);
+    band.position.set(0, 0.58, 0.01);
+    hairGroup.add(band);
+  } else if (hairStyle === 'chrome-helmet') {
+    const chromeMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      roughness: 0.12,
+      metalness: 0.96,
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.47, 18, 14), chromeMat);
+    dome.position.set(0, 0.44, -0.02);
+    dome.scale.set(0.95, 0.92, 0.96);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.18, 0.72), chromeMat);
+    brow.position.set(0, 0.64, 0.02);
+    [-1, 1].forEach((side) => {
+      const earPod = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.1, 12), chromeMat);
+      earPod.rotation.z = Math.PI * 0.5;
+      earPod.position.set(side * 0.39, 0.34, 0);
+      const podRing = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 6, 16), accentMat);
+      podRing.rotation.y = Math.PI * 0.5;
+      podRing.position.set(side * 0.44, 0.34, 0);
+      hairGroup.add(earPod, podRing);
+    });
+    hairGroup.add(dome, brow);
+  } else if (hairStyle === 'backwards-cap') {
+    const capMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.48, metalness: 0.1 });
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.24, 0.74), capMat);
+    crown.position.set(0, 0.69, -0.02);
+    const brimBack = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.06, 0.38), capMat);
+    brimBack.position.set(0, 0.58, -0.5);
+    brimBack.rotation.x = 0.12;
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.04), accentMat);
+    strap.position.set(0, 0.6, 0.36);
+    hairGroup.add(crown, brimBack, strap);
+  } else if (hairStyle === 'sombrero') {
+    const feltMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.52, metalness: 0.18 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.96, 1.02, 0.07, 24), feltMat);
+    brim.position.set(0, 0.72, -0.02);
+    const brimRim = new THREE.Mesh(new THREE.TorusGeometry(0.98, 0.035, 8, 24), accentMat);
+    brimRim.rotation.x = Math.PI * 0.5;
+    brimRim.position.set(0, 0.72, -0.02);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, 0.4, 16), feltMat);
+    crown.position.set(0, 0.94, -0.02);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.39, 0.39, 0.07, 16), accentMat);
+    band.position.set(0, 0.78, -0.02);
+    hairGroup.add(brim, brimRim, crown, band);
+  } else if (hairStyle === 'mech-visor') {
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.24, metalness: 0.88 });
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.78), brassMat);
+    crest.position.set(0, 0.78, -0.02);
+    const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.2, 0.74), brassMat);
+    helmet.position.set(0, 0.68, -0.02);
+    [-1, 1].forEach((side) => {
+      const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.32, 8), accentMat);
+      ant.position.set(side * 0.37, 0.64, -0.06);
+      hairGroup.add(ant);
+    });
+    hairGroup.add(helmet, crest);
+  } else if (hairStyle === 'dreadlocks-tam') {
+    const greenTam = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.72 });
+    const goldTam = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.65 });
+    const redTam = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.68 });
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 10), greenTam);
+    crown.scale.set(1.02, 0.74, 1.04);
+    crown.position.set(0, 0.78, -0.02);
+    const bandGold = new THREE.Mesh(new THREE.CylinderGeometry(0.41, 0.42, 0.08, 14), goldTam);
+    bandGold.position.set(0, 0.64, -0.02);
+    const bandRed = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.41, 0.08, 14), redTam);
+    bandRed.position.set(0, 0.56, -0.02);
+    hairGroup.add(crown, bandGold, bandRed);
+    const dreadGeo = new THREE.CylinderGeometry(0.06, 0.05, 0.74, 6);
+    [
+      [-0.36, 0.24, -0.14],
+      [-0.38, 0.22, 0.08],
+      [-0.24, 0.2, -0.35],
+      [0, 0.18, -0.37],
+      [0.24, 0.2, -0.35],
+      [0.38, 0.22, 0.08],
+      [0.36, 0.24, -0.14],
+    ].forEach(([dx, dy, dz]) => {
+      const dr = new THREE.Mesh(dreadGeo, hairMat);
+      dr.position.set(dx, dy, dz);
+      hairGroup.add(dr);
+    });
+  } else if (hairStyle === 'funk-pompadour') {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.22, 0.74), hairMat);
+    cap.position.set(0, 0.69, -0.02);
+    const wave = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 10), hairMat);
+    wave.scale.set(1.12, 0.76, 1.24);
+    wave.position.set(0, 0.86, 0.06);
+    const sideBurnL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.14), hairMat);
+    sideBurnL.position.set(-0.36, 0.44, 0.14);
+    const sideBurnR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.14), hairMat);
+    sideBurnR.position.set(0.36, 0.44, 0.14);
+    hairGroup.add(cap, wave, sideBurnL, sideBurnR);
+  } else if (hairStyle === 'kpop-ponytail') {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.22, 0.72), hairMat);
+    cap.position.set(0, 0.69, -0.02);
+    const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.12, 0.12), hairMat);
+    fringe.position.set(0, 0.56, 0.34);
+    const scrunchie = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.035, 8, 14), accentMat);
+    scrunchie.position.set(0.14, 0.76, -0.34);
+    const tailUpper = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.54, 0.22), hairMat);
+    tailUpper.position.set(0.18, 0.56, -0.44);
+    tailUpper.rotation.x = 0.28;
+    tailUpper.rotation.z = -0.18;
+    const tailLower = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.48, 0.18), hairMat);
+    tailLower.position.set(0.24, 0.12, -0.54);
+    tailLower.rotation.z = -0.1;
+    hairGroup.add(cap, fringe, scrunchie, tailUpper, tailLower);
+  } else if (hairStyle === 'samurai-kabuto') {
+    const armorMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.72 });
+    const hornMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.35,
+      roughness: 0.2,
+      metalness: 0.9,
+    });
+    const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 10), armorMat);
+    bowl.scale.set(1.02, 0.72, 1.04);
+    bowl.position.set(0, 0.66, -0.02);
+    const neckGuard = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.58, 0.28, 12, 1, true, Math.PI * 0.6, Math.PI * 1.8), armorMat);
+    neckGuard.position.set(0, 0.44, -0.06);
+    const crestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.08), accentMat);
+    crestPlate.position.set(0, 0.76, 0.36);
+    [-1, 1].forEach((side) => {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.44, 5), hornMat);
+      horn.position.set(side * 0.26, 0.92, 0.3);
+      horn.rotation.z = -side * 0.62;
+      horn.rotation.x = -0.18;
+      hairGroup.add(horn);
+    });
+    hairGroup.add(bowl, neckGuard, crestPlate);
+  } else if (hairStyle === 'cowboy-hat') {
+    const hatMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.62, metalness: 0.08 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.74, 0.06, 20), hatMat);
+    brim.position.set(0, 0.72, 0.01);
+    brim.rotation.x = -0.08;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.34, 16), hatMat);
+    crown.position.set(0, 0.9, -0.01);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.365, 0.365, 0.06, 16), accentMat);
+    band.position.set(0, 0.77, -0.01);
+    const backHair = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.38, 0.16), new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.6 }));
+    backHair.position.set(0, 0.42, -0.32);
+    hairGroup.add(brim, crown, band, backHair);
+  } else if (hairStyle === 'vocaloid-twintails') {
+    const aquaGlowMat = new THREE.MeshStandardMaterial({
+      color: hairColor,
+      emissive: 0x0d9488,
+      emissiveIntensity: 0.55,
+      roughness: 0.26,
+      metalness: 0.35,
+    });
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.24, 0.74), aquaGlowMat);
+    cap.position.set(0, 0.69, -0.02);
+    const bangs = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.12), aquaGlowMat);
+    bangs.position.set(0, 0.56, 0.34);
+    hairGroup.add(cap, bangs);
+  } else if (hairStyle === 'grunge-shag') {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.24, 0.76), hairMat);
+    cap.position.set(0, 0.68, -0.02);
+    const messyBack = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.68, 0.22), hairMat);
+    messyBack.position.set(0, 0.34, -0.35);
+    const strandL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.24), hairMat);
+    strandL.position.set(-0.37, 0.36, 0.04);
+    strandL.rotation.z = 0.08;
+    const strandR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.24), hairMat);
+    strandR.position.set(0.37, 0.36, 0.04);
+    strandR.rotation.z = -0.08;
+    const bang = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.16, 0.14), hairMat);
+    bang.position.set(-0.04, 0.56, 0.34);
+    bang.rotation.z = 0.12;
+    hairGroup.add(cap, messyBack, strandL, strandR, bang);
+  } else if (hairStyle === 'steampunk-goggles') {
+    const leatherHatMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.5, metalness: 0.22 });
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.24, metalness: 0.88 });
+    const lensMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.55, roughness: 0.15 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.05, 18), leatherHatMat);
+    brim.position.set(0, 0.72, 0);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.31, 0.5, 16), leatherHatMat);
+    crown.position.set(0, 0.98, 0);
+    const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.08, 16), brassMat);
+    hatBand.position.set(0, 0.8, 0);
+    [-0.14, 0.14].forEach((gx) => {
+      const gogRim = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.028, 8, 16), brassMat);
+      gogRim.position.set(gx, 0.81, 0.33);
+      const gogLens = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.03, 12), lensMat);
+      gogLens.rotation.x = Math.PI * 0.5;
+      gogLens.position.set(gx, 0.81, 0.325);
+      hairGroup.add(gogRim, gogLens);
+    });
+    hairGroup.add(brim, crown, hatBand);
   } else {
     const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.22, 0.72), hairMat);
     hairTop.position.set(0, 0.69, -0.02);
@@ -590,6 +1293,179 @@ function clearAndDisposeGroup(group) {
   });
 }
 
+function createBeveledBoxGeometry(w, h, d, bevel = 0.032) {
+  const b = Math.min(bevel, w * 0.22, h * 0.22, d * 0.22);
+  const iw = Math.max(0.01, w - b * 2);
+  const ih = Math.max(0.01, h - b * 2);
+  const id = Math.max(0.01, d - b * 2);
+  const hw = iw * 0.5;
+  const hh = ih * 0.5;
+  const r = Math.min(b * 0.65, hw * 0.45, hh * 0.45);
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw + r, -hh);
+  shape.lineTo(hw - r, -hh);
+  shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+  shape.lineTo(hw, hh - r);
+  shape.quadraticCurveTo(hw, hh, hw - r, hh);
+  shape.lineTo(-hw + r, hh);
+  shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+  shape.lineTo(-hw, -hh + r);
+  shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: id,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    steps: 1,
+    bevelSize: b,
+    bevelThickness: b,
+  });
+  geo.center();
+  return geo;
+}
+
+function createPbrClothingMaps() {
+  const makePair = (drawFn, repeatX = 2, repeatY = 2) => {
+    const albCanvas = document.createElement('canvas');
+    albCanvas.width = 256;
+    albCanvas.height = 256;
+    const aCtx = albCanvas.getContext('2d');
+
+    const bumpCanvas = document.createElement('canvas');
+    bumpCanvas.width = 256;
+    bumpCanvas.height = 256;
+    const bCtx = bumpCanvas.getContext('2d');
+
+    const roughCanvas = document.createElement('canvas');
+    roughCanvas.width = 256;
+    roughCanvas.height = 256;
+    const rCtx = roughCanvas.getContext('2d');
+
+    drawFn(aCtx, bCtx, rCtx);
+
+    const map = new THREE.CanvasTexture(albCanvas);
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.repeat.set(repeatX, repeatY);
+    map.colorSpace = THREE.SRGBColorSpace;
+
+    const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+    bumpMap.wrapS = THREE.RepeatWrapping;
+    bumpMap.wrapT = THREE.RepeatWrapping;
+    bumpMap.repeat.set(repeatX, repeatY);
+    bumpMap.colorSpace = THREE.NoColorSpace;
+
+    const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+    roughnessMap.wrapS = THREE.RepeatWrapping;
+    roughnessMap.wrapT = THREE.RepeatWrapping;
+    roughnessMap.repeat.set(repeatX, repeatY);
+    roughnessMap.colorSpace = THREE.NoColorSpace;
+
+    return { map, bumpMap, roughnessMap };
+  };
+
+  // 1. Diagonal Denim Twill Weave
+  const denim = makePair((aCtx, bCtx, rCtx) => {
+    aCtx.fillStyle = '#ebeff5';
+    aCtx.fillRect(0, 0, 256, 256);
+    bCtx.fillStyle = '#808080';
+    bCtx.fillRect(0, 0, 256, 256);
+    rCtx.fillStyle = '#c4c4c4';
+    rCtx.fillRect(0, 0, 256, 256);
+    for (let y = -256; y < 512; y += 6) {
+      aCtx.strokeStyle = y % 12 === 0 ? 'rgba(205, 214, 226, 0.72)' : 'rgba(255, 255, 255, 0.35)';
+      aCtx.lineWidth = 2.2;
+      aCtx.beginPath();
+      aCtx.moveTo(0, y);
+      aCtx.lineTo(256, y + 256);
+      aCtx.stroke();
+
+      bCtx.strokeStyle = y % 12 === 0 ? '#5c5c5c' : '#a8a8a8';
+      bCtx.lineWidth = 2.0;
+      bCtx.beginPath();
+      bCtx.moveTo(0, y);
+      bCtx.lineTo(256, y + 256);
+      bCtx.stroke();
+    }
+    // Double pocket stitch highlight
+    aCtx.strokeStyle = 'rgba(248, 224, 160, 0.35)';
+    aCtx.setLineDash([5, 4]);
+    aCtx.lineWidth = 1.6;
+    aCtx.strokeRect(10, 12, 236, 232);
+    aCtx.setLineDash([]);
+  }, 3, 3);
+
+  // 2. Concert Pebbled Leather Jacket + Lapel Stitches
+  const leather = makePair((aCtx, bCtx, rCtx) => {
+    aCtx.fillStyle = '#eef2f6';
+    aCtx.fillRect(0, 0, 256, 256);
+    bCtx.fillStyle = '#787878';
+    bCtx.fillRect(0, 0, 256, 256);
+    rCtx.fillStyle = '#747474';
+    rCtx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 420; i += 1) {
+      const px = (i * 73) % 256;
+      const py = (i * 139) % 256;
+      const rad = 2.5 + (i % 3);
+      aCtx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(148,163,184,0.2)';
+      aCtx.beginPath();
+      aCtx.arc(px, py, rad, 0, Math.PI * 2);
+      aCtx.fill();
+
+      bCtx.fillStyle = i % 2 === 0 ? '#a8a8a8' : '#585858';
+      bCtx.beginPath();
+      bCtx.arc(px, py, rad, 0, Math.PI * 2);
+      bCtx.fill();
+
+      rCtx.fillStyle = i % 2 === 0 ? '#525252' : '#909090';
+      rCtx.beginPath();
+      rCtx.arc(px, py, rad, 0, Math.PI * 2);
+      rCtx.fill();
+    }
+    // Center zipper & seam lines
+    aCtx.fillStyle = 'rgba(226, 232, 240, 0.9)';
+    aCtx.fillRect(124, 0, 8, 256);
+    bCtx.fillStyle = '#e0e0e0';
+    bCtx.fillRect(124, 0, 8, 256);
+    rCtx.fillStyle = '#282828';
+    rCtx.fillRect(124, 0, 8, 256);
+  }, 1, 1);
+
+  // 3. Stage Sequin Diamond Facets
+  const sequin = makePair((aCtx, bCtx, rCtx) => {
+    aCtx.fillStyle = '#e2e8f0';
+    aCtx.fillRect(0, 0, 256, 256);
+    bCtx.fillStyle = '#606060';
+    bCtx.fillRect(0, 0, 256, 256);
+    rCtx.fillStyle = '#8e8e8e';
+    rCtx.fillRect(0, 0, 256, 256);
+    const step = 16;
+    for (let row = 0; row < 16; row += 1) {
+      for (let col = 0; col < 16; col += 1) {
+        const cx = col * step + (row % 2 === 0 ? step * 0.5 : 0);
+        const cy = row * step + step * 0.5;
+        const bright = ((row * 7 + col * 11) % 5) === 0;
+        aCtx.fillStyle = bright ? '#ffffff' : 'rgba(226, 232, 240, 0.78)';
+        aCtx.beginPath();
+        aCtx.arc(cx, cy, 5.6, 0, Math.PI * 2);
+        aCtx.fill();
+
+        bCtx.fillStyle = bright ? '#ededed' : '#a8a8a8';
+        bCtx.beginPath();
+        bCtx.arc(cx, cy, 5.4, 0, Math.PI * 2);
+        bCtx.fill();
+
+        rCtx.fillStyle = bright ? '#1a1a1a' : '#424242';
+        rCtx.beginPath();
+        rCtx.arc(cx, cy, 5.4, 0, Math.PI * 2);
+        rCtx.fill();
+      }
+    }
+  }, 2, 2);
+
+  return { denim, leather, sequin };
+}
+
 function buildRobloxCharacter({
   torsoColor,
   pantsColor,
@@ -600,6 +1476,7 @@ function buildRobloxCharacter({
   sunglasses = false,
   smile = 'grin',
   seated = false,
+  clothingPbrMaps = null,
 }) {
   const root = new THREE.Group();
   const originalSpec = {
@@ -613,63 +1490,101 @@ function buildRobloxCharacter({
     smile,
   };
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.42, metalness: 0.05 });
-  const torsoMat = new THREE.MeshStandardMaterial({ color: torsoColor, roughness: 0.48, metalness: 0.14 });
-  const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.65, metalness: 0.08 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x0f121a, roughness: 0.55, metalness: 0.2 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.42, metalness: 0.04 });
+  const torsoMat = new THREE.MeshStandardMaterial({
+    color: torsoColor,
+    map: clothingPbrMaps?.leather?.map || null,
+    bumpMap: clothingPbrMaps?.leather?.bumpMap || null,
+    bumpScale: 0.018,
+    roughnessMap: clothingPbrMaps?.leather?.roughnessMap || null,
+    roughness: 0.52,
+    metalness: 0.16,
+  });
+  const pantsMat = new THREE.MeshStandardMaterial({
+    color: pantsColor,
+    map: clothingPbrMaps?.denim?.map || null,
+    bumpMap: clothingPbrMaps?.denim?.bumpMap || null,
+    bumpScale: 0.014,
+    roughnessMap: clothingPbrMaps?.denim?.roughnessMap || null,
+    roughness: 0.72,
+    metalness: 0.06,
+  });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x0f121a, roughness: 0.44, metalness: 0.24 });
+  const soleMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.82, metalness: 0.08 });
   const accentMat = new THREE.MeshStandardMaterial({
     color: accentColor,
     emissive: accentColor,
     emissiveIntensity: 0.55,
-    roughness: 0.3,
-    metalness: 0.3,
+    roughness: 0.28,
+    metalness: 0.35,
   });
   accentMat.userData.shared = true;
 
-  let normalTex = createRobloxFaceTexture({ skin: skinColor, shocked: false, sunglasses, smile });
-  let shockedTex = createRobloxFaceTexture({ skin: skinColor, shocked: true, sunglasses: false, smile });
-
-  const normalFaceMat = new THREE.MeshStandardMaterial({ map: normalTex, roughness: 0.4, metalness: 0.04 });
-  const shockedFaceMat = new THREE.MeshStandardMaterial({ map: shockedTex, roughness: 0.4, metalness: 0.04 });
-  const headMaterials = [skinMat, skinMat, skinMat, skinMat, normalFaceMat, skinMat];
-
-  const legGeo = new THREE.BoxGeometry(0.42, 0.94, 0.44);
-  const shoeGeo = new THREE.BoxGeometry(0.44, 0.16, 0.52);
-
-  const leftLegPivot = new THREE.Group();
-  leftLegPivot.position.set(-0.23, 0.96, 0);
-  const leftLeg = new THREE.Mesh(legGeo, pantsMat);
-  leftLeg.position.y = -0.47;
-  const leftShoe = new THREE.Mesh(shoeGeo, shoeMat);
-  leftShoe.position.set(0, -0.88, 0.04);
-  leftLegPivot.add(leftLeg, leftShoe);
-
-  const rightLegPivot = new THREE.Group();
-  rightLegPivot.position.set(0.23, 0.96, 0);
-  const rightLeg = new THREE.Mesh(legGeo, pantsMat);
-  rightLeg.position.y = -0.47;
-  const rightShoe = new THREE.Mesh(shoeGeo, shoeMat);
-  rightShoe.position.set(0, -0.88, 0.04);
-  rightLegPivot.add(rightLeg, rightShoe);
-
-  if (seated) {
-    leftLegPivot.rotation.x = -1.15;
-    rightLegPivot.rotation.x = -1.15;
-    leftLegPivot.position.y = 0.72;
-    rightLegPivot.position.y = 0.72;
+  function bakeExpressionTextures(cfg) {
+    return {
+      grin: createRobloxFaceTexture({ ...cfg, expression: 'grin', shocked: false }),
+      belt: createRobloxFaceTexture({ ...cfg, expression: 'belt', shocked: false }),
+      intense: createRobloxFaceTexture({ ...cfg, expression: 'intense', shocked: false }),
+      closed: createRobloxFaceTexture({ ...cfg, expression: 'closed', shocked: false }),
+      shocked: createRobloxFaceTexture({ ...cfg, expression: 'shocked', shocked: true, sunglasses: false }),
+    };
   }
 
+  let exprTextures = bakeExpressionTextures({ skin: skinColor, sunglasses, smile });
+  const exprMats = {
+    grin: new THREE.MeshStandardMaterial({ map: exprTextures.grin, roughness: 0.4, metalness: 0.04 }),
+    belt: new THREE.MeshStandardMaterial({ map: exprTextures.belt, roughness: 0.4, metalness: 0.04 }),
+    intense: new THREE.MeshStandardMaterial({ map: exprTextures.intense, roughness: 0.4, metalness: 0.04 }),
+    closed: new THREE.MeshStandardMaterial({ map: exprTextures.closed, roughness: 0.4, metalness: 0.04 }),
+    shocked: new THREE.MeshStandardMaterial({ map: exprTextures.shocked, roughness: 0.4, metalness: 0.04 }),
+  };
+  let activeExprId = 'grin';
+  let currentDanceStyle = 'standard';
+  const headMaterials = [skinMat, skinMat, skinMat, skinMat, exprMats.grin, skinMat];
+
+  // Beveled legs + multi-part 3D boots whose bottom lugged sole rests strictly at y = 0 when standing (pivot y = 0.96)
+  const legGeo = createBeveledBoxGeometry(0.41, 0.78, 0.42, 0.035);
+  const bootCuffGeo = createBeveledBoxGeometry(0.43, 0.14, 0.45, 0.028);
+  const bootVampGeo = createBeveledBoxGeometry(0.42, 0.11, 0.52, 0.028);
+  const bootSoleGeo = createBeveledBoxGeometry(0.44, 0.05, 0.56, 0.014);
+
+  const buildLegRig = (offsetX) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(offsetX, seated ? 0.72 : 0.96, 0);
+    const leg = new THREE.Mesh(legGeo, pantsMat);
+    leg.position.y = -0.39;
+    const cuff = new THREE.Mesh(bootCuffGeo, shoeMat);
+    cuff.position.set(0, -0.82, 0.01);
+    const vamp = new THREE.Mesh(bootVampGeo, shoeMat);
+    vamp.position.set(0, -0.885, 0.05);
+    const sole = new THREE.Mesh(bootSoleGeo, soleMat);
+    sole.position.set(0, -0.935, 0.05);
+    pivot.add(leg, cuff, vamp, sole);
+    if (seated) pivot.rotation.x = -1.15;
+    return pivot;
+  };
+
+  const leftLegPivot = buildLegRig(-0.23);
+  const rightLegPivot = buildLegRig(0.23);
   root.add(leftLegPivot, rightLegPivot);
 
   const upperBody = new THREE.Group();
   upperBody.position.set(0, seated ? 0.72 : 0.96, 0);
   root.add(upperBody);
 
-  const torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(0.92, 1.02, 0.48), torsoMat);
+  const torsoMesh = new THREE.Mesh(createBeveledBoxGeometry(0.92, 1.02, 0.48, 0.044), torsoMat);
   torsoMesh.position.y = 0.51;
   upperBody.add(torsoMesh);
 
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.12, 0.5), accentMat);
+  const collarMesh = new THREE.Mesh(createBeveledBoxGeometry(0.56, 0.11, 0.49, 0.024), torsoMat);
+  collarMesh.position.y = 1.02;
+  upperBody.add(collarMesh);
+
+  const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.14, 12), skinMat);
+  neckMesh.position.y = 1.04;
+  upperBody.add(neckMesh);
+
+  const stripe = new THREE.Mesh(createBeveledBoxGeometry(0.95, 0.12, 0.51, 0.02), accentMat);
   stripe.position.y = 0.62;
   upperBody.add(stripe);
 
@@ -688,24 +1603,48 @@ function buildRobloxCharacter({
   headGroup.add(hairGroup);
   populateHairGroup(hairGroup, hairStyle, hairColor, accentMat);
 
-  const armGeo = new THREE.BoxGeometry(0.36, 0.92, 0.38);
-  const sleeveGeo = new THREE.BoxGeometry(0.38, 0.44, 0.4);
+  // Articulated Shoulder -> Upper Arm -> Elbow -> Forearm -> Wrist -> Hand
+  const upperArmGeo = createBeveledBoxGeometry(0.34, 0.46, 0.36, 0.034);
+  const sleeveGeo = createBeveledBoxGeometry(0.38, 0.42, 0.4, 0.034);
+  const forearmGeo = createBeveledBoxGeometry(0.3, 0.4, 0.32, 0.028);
+  const wristbandGeo = createBeveledBoxGeometry(0.32, 0.09, 0.34, 0.018);
+  const handGeo = createBeveledBoxGeometry(0.27, 0.15, 0.28, 0.024);
 
-  const leftArmPivot = new THREE.Group();
-  leftArmPivot.position.set(-0.66, 0.94, 0);
-  const leftArmMesh = new THREE.Mesh(armGeo, skinMat);
-  leftArmMesh.position.y = -0.38;
-  const leftSleeve = new THREE.Mesh(sleeveGeo, torsoMat);
-  leftSleeve.position.y = -0.14;
-  leftArmPivot.add(leftArmMesh, leftSleeve);
+  const buildArticulatedArm = (offsetX) => {
+    const armPivot = new THREE.Group();
+    armPivot.position.set(offsetX, 0.94, 0);
 
-  const rightArmPivot = new THREE.Group();
-  rightArmPivot.position.set(0.66, 0.94, 0);
-  const rightArmMesh = new THREE.Mesh(armGeo, skinMat);
-  rightArmMesh.position.y = -0.38;
-  const rightSleeve = new THREE.Mesh(sleeveGeo, torsoMat);
-  rightSleeve.position.y = -0.14;
-  rightArmPivot.add(rightArmMesh, rightSleeve);
+    const upperMesh = new THREE.Mesh(upperArmGeo, skinMat);
+    upperMesh.position.y = -0.23;
+    const sleeveMesh = new THREE.Mesh(sleeveGeo, torsoMat);
+    sleeveMesh.position.y = -0.19;
+
+    const elbowPivot = new THREE.Group();
+    elbowPivot.position.set(0, -0.44, 0);
+    const forearmMesh = new THREE.Mesh(forearmGeo, skinMat);
+    forearmMesh.position.y = -0.2;
+    const wristbandMesh = new THREE.Mesh(wristbandGeo, accentMat);
+    wristbandMesh.position.y = -0.35;
+
+    const wristPivot = new THREE.Group();
+    wristPivot.position.set(0, -0.4, 0);
+    const handMesh = new THREE.Mesh(handGeo, skinMat);
+    handMesh.position.y = -0.06;
+
+    wristPivot.add(handMesh);
+    elbowPivot.add(forearmMesh, wristbandMesh, wristPivot);
+    armPivot.add(upperMesh, sleeveMesh, elbowPivot);
+    return { armPivot, elbowPivot, wristPivot };
+  };
+
+  const leftArmRig = buildArticulatedArm(-0.66);
+  const rightArmRig = buildArticulatedArm(0.66);
+  const leftArmPivot = leftArmRig.armPivot;
+  const rightArmPivot = rightArmRig.armPivot;
+  const leftElbowPivot = leftArmRig.elbowPivot;
+  const rightElbowPivot = rightArmRig.elbowPivot;
+  const leftWristPivot = leftArmRig.wristPivot;
+  const rightWristPivot = rightArmRig.wristPivot;
 
   upperBody.add(leftArmPivot, rightArmPivot);
 
@@ -714,12 +1653,17 @@ function buildRobloxCharacter({
     clearAndDisposeGroup(accessoryGroup);
 
     if (!lookSpec || lookSpec.id === 'default-band') {
+      currentDanceStyle = 'standard';
       skinMat.color.set(originalSpec.skinColor);
       torsoMat.color.set(originalSpec.torsoColor);
       torsoMat.emissive.setHex(0x000000);
       torsoMat.emissiveIntensity = 0;
-      torsoMat.roughness = 0.48;
-      torsoMat.metalness = 0.14;
+      torsoMat.map = clothingPbrMaps?.leather?.map || null;
+      torsoMat.bumpMap = clothingPbrMaps?.leather?.bumpMap || null;
+      torsoMat.roughnessMap = clothingPbrMaps?.leather?.roughnessMap || null;
+      torsoMat.roughness = 0.52;
+      torsoMat.metalness = 0.16;
+      torsoMat.needsUpdate = true;
       pantsMat.color.set(originalSpec.pantsColor);
       shoeMat.color.setHex(0x0f121a);
       accentMat.color.set(originalSpec.accentColor);
@@ -728,36 +1672,38 @@ function buildRobloxCharacter({
 
       populateHairGroup(hairGroup, originalSpec.hairStyle, originalSpec.hairColor, accentMat);
 
-      const nextNormal = createRobloxFaceTexture({
+      const nextSet = bakeExpressionTextures({
         skin: originalSpec.skinColor,
-        shocked: false,
         sunglasses: originalSpec.sunglasses,
         smile: originalSpec.smile,
       });
-      const nextShocked = createRobloxFaceTexture({
-        skin: originalSpec.skinColor,
-        shocked: true,
-        sunglasses: false,
-        smile: originalSpec.smile,
+      Object.keys(exprTextures).forEach((k) => {
+        exprTextures[k]?.dispose?.();
+        exprTextures[k] = nextSet[k];
+        exprMats[k].map = nextSet[k];
+        exprMats[k].needsUpdate = true;
       });
-      normalTex.dispose();
-      shockedTex.dispose();
-      normalTex = nextNormal;
-      shockedTex = nextShocked;
-      normalFaceMat.map = normalTex;
-      normalFaceMat.needsUpdate = true;
-      shockedFaceMat.map = shockedTex;
-      shockedFaceMat.needsUpdate = true;
       return;
     }
 
+    currentDanceStyle = lookSpec.danceStyle || 'standard';
     const skinHexStr = `#${new THREE.Color(lookSpec.skinColor).getHexString()}`;
     skinMat.color.setHex(lookSpec.skinColor);
     torsoMat.color.setHex(lookSpec.torsoColor);
     torsoMat.emissive.setHex(lookSpec.torsoEmissive || 0x000000);
     torsoMat.emissiveIntensity = lookSpec.glitter ? 0.52 : 0.24;
-    torsoMat.roughness = lookSpec.glitter ? 0.2 : 0.42;
+    const isFlatCartoon = lookSpec.customSculpt === 'sponge-rocker' || lookSpec.customSculpt === 'shrek-ogre';
+    const fabricSet = isFlatCartoon
+      ? null
+      : lookSpec.glitter
+        ? clothingPbrMaps?.sequin
+        : clothingPbrMaps?.leather;
+    torsoMat.map = fabricSet?.map || null;
+    torsoMat.bumpMap = fabricSet?.bumpMap || null;
+    torsoMat.roughnessMap = fabricSet?.roughnessMap || null;
+    torsoMat.roughness = lookSpec.glitter ? 0.24 : 0.44;
     torsoMat.metalness = lookSpec.glitter ? 0.62 : 0.18;
+    torsoMat.needsUpdate = true;
     pantsMat.color.setHex(lookSpec.legColor ?? originalSpec.pantsColor);
     shoeMat.color.setHex(lookSpec.bootColor ?? 0x0f121a);
     accentMat.color.setHex(lookSpec.accentColor ?? 0xfacc15);
@@ -802,10 +1748,313 @@ function buildRobloxCharacter({
       accessoryGroup.add(chain);
     }
 
+    // Custom 3D Cartoon / Pop-Culture Sculpt Attachments
+    if (lookSpec.customSculpt === 'shrek-ogre') {
+      const ogreSkinMat = new THREE.MeshStandardMaterial({ color: 0x84cc16, roughness: 0.44, metalness: 0.06 });
+      const vestMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.78, metalness: 0.08 });
+      const strapMat = new THREE.MeshStandardMaterial({ color: 0x3b2313, roughness: 0.7 });
+      [-1, 1].forEach((side) => {
+        const earStem = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.04, 0.24, 8), ogreSkinMat);
+        earStem.position.set(side * 0.4, 0.46, -0.02);
+        earStem.rotation.z = -side * 1.15;
+        const earBell = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.055, 0.12, 10), ogreSkinMat);
+        earBell.position.set(side * 0.52, 0.52, -0.02);
+        earBell.rotation.z = -side * 1.15;
+        hairGroup.add(earStem, earBell);
+
+        const vestPanel = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.88, 0.52), vestMat);
+        vestPanel.position.set(side * 0.28, 0.52, 0);
+        accessoryGroup.add(vestPanel);
+      });
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.15, 0.53), strapMat);
+      belt.position.set(0, 0.08, 0);
+      accessoryGroup.add(belt);
+    } else if (lookSpec.customSculpt === 'sponge-rocker') {
+      const poreMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.72, metalness: 0.05 });
+      const collarMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4, metalness: 0.06 });
+      const tieMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35, metalness: 0.1 });
+      [
+        [-0.26, 0.78, 0.245, 0.07],
+        [0.28, 0.58, 0.245, 0.06],
+        [-0.18, 0.34, 0.245, 0.055],
+      ].forEach(([px, py, pz, pr]) => {
+        const pore = new THREE.Mesh(new THREE.CylinderGeometry(pr, pr, 0.03, 10), poreMat);
+        pore.rotation.x = Math.PI * 0.5;
+        pore.position.set(px, py, pz);
+        accessoryGroup.add(pore);
+      });
+      [
+        [-0.22, 0.52, 0.335, 0.055],
+        [0.24, 0.44, -0.335, 0.06],
+      ].forEach(([hx, hy, hz, hr]) => {
+        const hp = new THREE.Mesh(new THREE.CylinderGeometry(hr, hr, 0.03, 10), poreMat);
+        hp.rotation.x = Math.PI * 0.5;
+        hp.position.set(hx, hy, hz);
+        hairGroup.add(hp);
+      });
+      const shirtBand = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.3, 0.5), collarMat);
+      shirtBand.position.set(0, 0.2, 0);
+      const tieKnot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.06), tieMat);
+      tieKnot.position.set(0, 0.74, 0.26);
+      const tieBlade = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.4, 0.05), tieMat);
+      tieBlade.position.set(0, 0.5, 0.26);
+      accessoryGroup.add(shirtBand, tieKnot, tieBlade);
+    } else if (lookSpec.customSculpt === 'dark-knight') {
+      const cowlMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.38, metalness: 0.48 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.24, metalness: 0.88 });
+      const capeMat = new THREE.MeshStandardMaterial({
+        color: 0x090d16,
+        roughness: 0.65,
+        metalness: 0.18,
+        side: THREE.DoubleSide,
+      });
+      const cowlCap = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.28, 0.74), cowlMat);
+      cowlCap.position.set(0, 0.58, -0.01);
+      const cowlBack = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.64, 0.38), cowlMat);
+      cowlBack.position.set(0, 0.34, -0.18);
+      hairGroup.add(cowlCap, cowlBack);
+      [-1, 1].forEach((side) => {
+        const batEar = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.32, 4), cowlMat);
+        batEar.position.set(side * 0.26, 0.84, 0.06);
+        batEar.rotation.z = -side * 0.08;
+        hairGroup.add(batEar);
+      });
+      const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.24, 0.06), cowlMat);
+      chestPlate.position.set(0, 0.68, 0.25);
+      const batEmblem = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.11, 0.07), goldMat);
+      batEmblem.position.set(0, 0.68, 0.26);
+      const utilBelt = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.14, 0.52), goldMat);
+      utilBelt.position.set(0, 0.08, 0);
+      const cape = new THREE.Mesh(new THREE.BoxGeometry(1.06, 1.48, 0.05), capeMat);
+      cape.position.set(0, 0.24, -0.34);
+      cape.rotation.x = 0.12;
+      accessoryGroup.add(chestPlate, batEmblem, utilBelt, cape);
+    } else if (lookSpec.customSculpt === 'cyber-idol') {
+      const cyanGlowMat = new THREE.MeshStandardMaterial({
+        color: 0x22d3ee,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.05,
+        roughness: 0.25,
+        metalness: 0.45,
+      });
+      const darkTrimMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.32, metalness: 0.72 });
+      [-1, 1].forEach((side) => {
+        const tie = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), darkTrimMat);
+        tie.position.set(side * 0.4, 0.58, -0.1);
+        const upperTail = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.66, 0.18), cyanGlowMat);
+        upperTail.position.set(side * 0.48, 0.28, -0.14);
+        upperTail.rotation.z = side * 0.18;
+        const lowerTail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.58, 0.16), cyanGlowMat);
+        lowerTail.position.set(side * 0.56, -0.22, -0.16);
+        lowerTail.rotation.z = side * 0.1;
+        hairGroup.add(tie, upperTail, lowerTail);
+      });
+      const cyberNeckTie = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.48, 0.05), cyanGlowMat);
+      cyberNeckTie.position.set(0, 0.54, 0.26);
+      const cyberBelt = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.1, 0.51), cyanGlowMat);
+      cyberBelt.position.set(0, 0.08, 0);
+      accessoryGroup.add(cyberNeckTie, cyberBelt);
+    } else if (lookSpec.customSculpt === 'opm-pinoy-rock') {
+      const teeMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.65 });
+      const teeFront = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.88, 0.06), teeMat);
+      teeFront.position.set(0, 0.52, 0.24);
+      const dogTag = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.03), accentMat);
+      dogTag.position.set(0, 0.74, 0.28);
+      accessoryGroup.add(teeFront, dogTag);
+    } else if (lookSpec.customSculpt === 'visual-kei-shredder') {
+      const strapMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.2, metalness: 0.88 });
+      const sash = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.14, 0.52), strapMat);
+      sash.position.set(0, 0.62, 0);
+      sash.rotation.z = 0.58;
+      const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, 0.52), strapMat);
+      shoulder.position.set(-0.44, 0.96, 0);
+      accessoryGroup.add(sash, shoulder);
+    } else if (lookSpec.customSculpt === 'glam-metal-80s') {
+      const zebraMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.45 });
+      for (let s = 0; s < 3; s += 1) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.11, 0.51), zebraMat);
+        stripe.position.set(0, 0.26 + s * 0.26, 0);
+        stripe.rotation.z = (s % 2 === 0 ? 1 : -1) * 0.16;
+        accessoryGroup.add(stripe);
+      }
+    } else if (lookSpec.customSculpt === 'chrome-synth-dj') {
+      const synthBelt = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.11, 0.52), accentMat);
+      synthBelt.position.set(0, 0.1, 0);
+      const chestCore = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.06), accentMat);
+      chestCore.position.set(0, 0.68, 0.25);
+      accessoryGroup.add(synthBelt, chestCore);
+    } else if (lookSpec.customSculpt === 'punk-skater-bass') {
+      const studMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.9 });
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.12, 0.51), studMat);
+      belt.position.set(0, 0.08, 0);
+      const cargoBand = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.18, 0.5), new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.8 }));
+      cargoBand.position.set(0, -0.02, 0);
+      accessoryGroup.add(belt, cargoBand);
+    } else if (lookSpec.customSculpt === 'mariachi-virtuoso') {
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.22, metalness: 0.88 });
+      const crimsonMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.42 });
+      const bowL = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.2, 4), crimsonMat);
+      bowL.position.set(-0.1, 0.9, 0.26);
+      bowL.rotation.z = Math.PI * 0.5;
+      const bowR = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.2, 4), crimsonMat);
+      bowR.position.set(0.1, 0.9, 0.26);
+      bowR.rotation.z = -Math.PI * 0.5;
+      [-0.3, 0.3].forEach((bx) => {
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.86, 0.52), goldMat);
+        trim.position.set(bx, 0.52, 0);
+        accessoryGroup.add(trim);
+      });
+      accessoryGroup.add(bowL, bowR);
+    } else if (lookSpec.customSculpt === 'golden-mech-drummer') {
+      const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.92 });
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 12), accentMat);
+      core.rotation.x = Math.PI * 0.5;
+      core.position.set(0, 0.64, 0.25);
+      [-0.56, 0.56].forEach((sx) => {
+        const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.54), chromeMat);
+        pauldron.position.set(sx, 0.96, 0);
+        accessoryGroup.add(pauldron);
+      });
+      accessoryGroup.add(core);
+    } else if (lookSpec.customSculpt === 'gothic-vampire') {
+      const crimsonMat = new THREE.MeshStandardMaterial({
+        color: 0x991b1b,
+        emissive: 0x450a0a,
+        emissiveIntensity: 0.35,
+        roughness: 0.55,
+        side: THREE.DoubleSide,
+      });
+      const velvetMat = new THREE.MeshStandardMaterial({
+        color: 0x09090b,
+        roughness: 0.65,
+        side: THREE.DoubleSide,
+      });
+      const cravatMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35 });
+      const highCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.36, 0.34, 12, 1, true, Math.PI * 0.68, Math.PI * 1.64), crimsonMat);
+      highCollar.position.set(0, 1.08, -0.06);
+      const capeOuter = new THREE.Mesh(new THREE.BoxGeometry(1.08, 1.46, 0.04), velvetMat);
+      capeOuter.position.set(0, 0.22, -0.35);
+      capeOuter.rotation.x = 0.14;
+      const capeInner = new THREE.Mesh(new THREE.BoxGeometry(1.02, 1.42, 0.02), crimsonMat);
+      capeInner.position.set(0, 0.22, -0.325);
+      capeInner.rotation.x = 0.14;
+      const cravat = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.44, 0.06), cravatMat);
+      cravat.position.set(0, 0.72, 0.25);
+      accessoryGroup.add(highCollar, capeOuter, capeInner, cravat);
+    } else if (lookSpec.customSculpt === 'reggae-legend') {
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.45 });
+      const redMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 });
+      const sash = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.14, 0.52), goldMat);
+      sash.position.set(0, 0.28, 0);
+      const stripeRed = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.12, 0.52), redMat);
+      stripeRed.position.set(0, 0.42, 0);
+      accessoryGroup.add(sash, stripeRed);
+    } else if (lookSpec.customSculpt === 'soul-funk-bassist') {
+      const jabotMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.38 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.2, metalness: 0.9 });
+      const jabot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.54, 0.07), jabotMat);
+      jabot.position.set(0, 0.68, 0.25);
+      const lapelL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.72, 0.06), goldMat);
+      lapelL.position.set(-0.22, 0.62, 0.24);
+      lapelL.rotation.z = -0.14;
+      const lapelR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.72, 0.06), goldMat);
+      lapelR.position.set(0.22, 0.62, 0.24);
+      lapelR.rotation.z = 0.14;
+      const goldBelt = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.12, 0.51), goldMat);
+      goldBelt.position.set(0, 0.08, 0);
+      accessoryGroup.add(jabot, lapelL, lapelR, goldBelt);
+    } else if (lookSpec.customSculpt === 'kpop-main-dancer') {
+      const jacketTrim = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.12, 0.52), accentMat);
+      jacketTrim.position.set(0, 0.18, 0);
+      const chestZip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.68, 0.05), accentMat);
+      chestZip.position.set(0, 0.62, 0.25);
+      accessoryGroup.add(jacketTrim, chestZip);
+    } else if (lookSpec.customSculpt === 'cyber-samurai') {
+      const armorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.28, metalness: 0.75 });
+      const glowBladeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 0.9 });
+      [-0.58, 0.58].forEach((sx) => {
+        const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.22, 0.54), armorMat);
+        pauldron.position.set(sx, 0.96, 0);
+        pauldron.rotation.z = sx < 0 ? 0.24 : -0.24;
+        accessoryGroup.add(pauldron);
+      });
+      const scabbard = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.38, 0.1), armorMat);
+      scabbard.position.set(0.1, 0.64, -0.32);
+      scabbard.rotation.z = -0.58;
+      const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, 0.12), glowBladeMat);
+      hilt.position.set(-0.34, 1.18, -0.32);
+      hilt.rotation.z = -0.58;
+      accessoryGroup.add(scabbard, hilt);
+    } else if (lookSpec.customSculpt === 'country-outlaw') {
+      const vestMat = new THREE.MeshStandardMaterial({ color: 0x5c2b0a, roughness: 0.76 });
+      const buckleMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.92 });
+      [-0.28, 0.28].forEach((vx) => {
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.84, 0.51), vestMat);
+        panel.position.set(vx, 0.54, 0);
+        accessoryGroup.add(panel);
+      });
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.14, 0.52), new THREE.MeshStandardMaterial({ color: 0x291507, roughness: 0.6 }));
+      belt.position.set(0, 0.08, 0);
+      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.08), buckleMat);
+      buckle.position.set(0, 0.08, 0.26);
+      accessoryGroup.add(belt, buckle);
+    } else if (lookSpec.customSculpt === 'jpop-vocaloid-idol') {
+      const aquaGlowMat = new THREE.MeshStandardMaterial({
+        color: 0x2dd4bf,
+        emissive: 0x14b8a6,
+        emissiveIntensity: 0.85,
+        roughness: 0.24,
+        metalness: 0.42,
+      });
+      const magMat = new THREE.MeshStandardMaterial({
+        color: 0xec4899,
+        emissive: 0xdb2777,
+        emissiveIntensity: 0.95,
+        roughness: 0.24,
+      });
+      [-1, 1].forEach((side) => {
+        const ribbon = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), magMat);
+        ribbon.position.set(side * 0.4, 0.58, -0.08);
+        const tailA = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.68, 0.18), aquaGlowMat);
+        tailA.position.set(side * 0.48, 0.28, -0.12);
+        tailA.rotation.z = side * 0.2;
+        const tailB = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.16), aquaGlowMat);
+        tailB.position.set(side * 0.58, -0.22, -0.14);
+        tailB.rotation.z = side * 0.12;
+        hairGroup.add(ribbon, tailA, tailB);
+      });
+      const cyberCollar = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.12, 0.5), magMat);
+      cyberCollar.position.set(0, 0.98, 0);
+      const idolTie = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.05), aquaGlowMat);
+      idolTie.position.set(0, 0.54, 0.26);
+      accessoryGroup.add(cyberCollar, idolTie);
+    } else if (lookSpec.customSculpt === 'grunge-flannel') {
+      const teeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.72 });
+      const darkCheckMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.78 });
+      const innerTee = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.88, 0.06), teeMat);
+      innerTee.position.set(0, 0.52, 0.23);
+      const checkA = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.1, 0.51), darkCheckMat);
+      checkA.position.set(0, 0.72, 0);
+      const checkB = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.1, 0.51), darkCheckMat);
+      checkB.position.set(0, 0.38, 0);
+      accessoryGroup.add(innerTee, checkA, checkB);
+    } else if (lookSpec.customSculpt === 'steampunk-brass') {
+      const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.22, metalness: 0.9 });
+      const strapMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.58 });
+      const harness = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.12, 0.52), strapMat);
+      harness.position.set(0, 0.58, 0);
+      harness.rotation.z = -0.52;
+      const chestGear = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.07, 8), brassMat);
+      chestGear.rotation.x = Math.PI * 0.5;
+      chestGear.position.set(0, 0.62, 0.26);
+      const coatTail = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.54, 0.08), new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.65 }));
+      coatTail.position.set(0, -0.14, -0.24);
+      accessoryGroup.add(harness, chestGear, coatTail);
+    }
+
     const face = lookSpec.face || {};
-    const nextNormal = createRobloxFaceTexture({
+    const nextSet = bakeExpressionTextures({
       skin: skinHexStr,
-      shocked: false,
       sunglasses: Boolean(face.sunglasses),
       sunglassesTint: face.sunglassesTint || null,
       smile: originalSpec.smile,
@@ -815,21 +2064,23 @@ function buildRobloxCharacter({
       lipColor: face.lipColor || null,
       starMakeup: Boolean(face.starMakeup),
       mustache: Boolean(face.mustache),
+      buckTeeth: lookSpec.customSculpt === 'sponge-rocker',
+      visorLed: Boolean(face.visorLed),
+      fangs: Boolean(face.fangs),
     });
-    const nextShocked = createRobloxFaceTexture({
-      skin: skinHexStr,
-      shocked: true,
-      sunglasses: false,
-      smile: originalSpec.smile,
+    Object.keys(exprTextures).forEach((k) => {
+      exprTextures[k]?.dispose?.();
+      exprTextures[k] = nextSet[k];
+      exprMats[k].map = nextSet[k];
+      exprMats[k].needsUpdate = true;
     });
-    normalTex.dispose();
-    shockedTex.dispose();
-    normalTex = nextNormal;
-    shockedTex = nextShocked;
-    normalFaceMat.map = normalTex;
-    normalFaceMat.needsUpdate = true;
-    shockedFaceMat.map = shockedTex;
-    shockedFaceMat.needsUpdate = true;
+  }
+
+  function setExpression(exprId = 'grin') {
+    const resolved = exprMats[exprId] ? exprId : 'grin';
+    if (activeExprId === resolved) return;
+    activeExprId = resolved;
+    headMesh.material[4] = exprMats[resolved];
   }
 
   return {
@@ -841,19 +2092,24 @@ function buildRobloxCharacter({
     accessoryGroup,
     leftArmPivot,
     rightArmPivot,
+    leftElbowPivot,
+    rightElbowPivot,
+    leftWristPivot,
+    rightWristPivot,
     leftLegPivot,
     rightLegPivot,
-    normalFaceMat,
-    shockedFaceMat,
+    normalFaceMat: exprMats.grin,
+    shockedFaceMat: exprMats.shocked,
     applyLook,
+    getDanceStyle: () => currentDanceStyle,
+    setExpression,
     setShocked(isShocked) {
-      headMesh.material[4] = isShocked ? shockedFaceMat : normalFaceMat;
+      setExpression(isShocked ? 'shocked' : 'grin');
     },
     disposeTextures() {
       clearAndDisposeGroup(hairGroup);
       clearAndDisposeGroup(accessoryGroup);
-      normalTex.dispose();
-      shockedTex.dispose();
+      Object.values(exprTextures).forEach((tex) => tex?.dispose?.());
     },
   };
 }
@@ -862,18 +2118,39 @@ function buildMicStand() {
   const group = new THREE.Group();
   const chrome = new THREE.MeshStandardMaterial({ color: 0xdbeafe, roughness: 0.2, metalness: 0.9 });
   const baseMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5, metalness: 0.5 });
+  const foamMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.88, metalness: 0.08 });
 
   const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.08, 16), baseMat);
   base.position.y = 0.04;
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, 2.02, 10), chrome);
-  pole.position.y = 1.04;
-  const micHead = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), chrome);
-  micHead.position.set(0, 2.08, -0.12);
-  const micStem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.24, 8), baseMat);
-  micStem.rotation.x = 1.1;
-  micStem.position.set(0, 2.04, -0.04);
+  const poleLower = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.034, 1.34, 10), baseMat);
+  poleLower.position.y = 0.71;
+  const clutch = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.046, 0.11, 10), chrome);
+  clutch.position.y = 1.38;
+  const poleUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.024, 0.68, 10), chrome);
+  poleUpper.position.y = 1.72;
 
-  group.add(base, pole, micHead, micStem);
+  // Telescoping boom arm + counterweight + windscreen capsule
+  const boomPivot = new THREE.Group();
+  boomPivot.position.set(0, 2.04, 0);
+  const boomKnuckle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.09, 10), baseMat);
+  boomKnuckle.rotation.z = Math.PI * 0.5;
+  const boomRod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.72, 8), chrome);
+  boomRod.rotation.x = 1.24;
+  boomRod.position.set(0, 0.04, -0.06);
+  const counterweight = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.12, 10), baseMat);
+  counterweight.rotation.x = 1.24;
+  counterweight.position.set(0, -0.06, 0.28);
+  const micClip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.022, 0.14, 8), baseMat);
+  micClip.rotation.x = 1.05;
+  micClip.position.set(0, 0.14, -0.34);
+  const micHead = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 12), foamMat);
+  micHead.position.set(0, 0.18, -0.4);
+  const chromeBand = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.01, 6, 14), chrome);
+  chromeBand.rotation.x = 0.9;
+  chromeBand.position.set(0, 0.165, -0.375);
+
+  boomPivot.add(boomKnuckle, boomRod, counterweight, micClip, micHead, chromeBand);
+  group.add(base, poleLower, clutch, poleUpper, boomPivot);
   return group;
 }
 
@@ -926,6 +2203,213 @@ function createBrushedMetalTexture() {
   tex.repeat.set(6, 4);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+function createDiamondPlateMaps() {
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = 256;
+  bumpCanvas.height = 256;
+  const bCtx = bumpCanvas.getContext('2d');
+  bCtx.fillStyle = '#383838';
+  bCtx.fillRect(0, 0, 256, 256);
+
+  const roughCanvas = document.createElement('canvas');
+  roughCanvas.width = 256;
+  roughCanvas.height = 256;
+  const rCtx = roughCanvas.getContext('2d');
+  rCtx.fillStyle = '#7a7a7a';
+  rCtx.fillRect(0, 0, 256, 256);
+
+  const step = 32;
+  for (let y = 0; y < 256; y += step) {
+    for (let x = 0; x < 256; x += step) {
+      const diagA = ((x + y) / step) % 2 === 0;
+      const cx = x + step * 0.5;
+      const cy = y + step * 0.5;
+      const ang = diagA ? Math.PI * 0.25 : -Math.PI * 0.25;
+
+      [
+        [bCtx, '#d8d8d8'],
+        [rCtx, '#3e3e3e'],
+      ].forEach(([c, col]) => {
+        c.save();
+        c.translate(cx, cy);
+        c.rotate(ang);
+        c.fillStyle = col;
+        c.beginPath();
+        c.ellipse(0, 0, 10, 3.4, 0, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      });
+    }
+  }
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(10, 7);
+  bumpMap.colorSpace = THREE.NoColorSpace;
+
+  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+  roughnessMap.wrapS = THREE.RepeatWrapping;
+  roughnessMap.wrapT = THREE.RepeatWrapping;
+  roughnessMap.repeat.set(10, 7);
+  roughnessMap.colorSpace = THREE.NoColorSpace;
+
+  return { bumpMap, roughnessMap };
+}
+
+function createPlankDeckMaps() {
+  const diffCanvas = document.createElement('canvas');
+  diffCanvas.width = 512;
+  diffCanvas.height = 512;
+  const dCtx = diffCanvas.getContext('2d');
+  dCtx.fillStyle = '#181416';
+  dCtx.fillRect(0, 0, 512, 512);
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = 512;
+  bumpCanvas.height = 512;
+  const bCtx = bumpCanvas.getContext('2d');
+  bCtx.fillStyle = '#888888';
+  bCtx.fillRect(0, 0, 512, 512);
+
+  const roughCanvas = document.createElement('canvas');
+  roughCanvas.width = 512;
+  roughCanvas.height = 512;
+  const rCtx = roughCanvas.getContext('2d');
+  rCtx.fillStyle = '#707070';
+  rCtx.fillRect(0, 0, 512, 512);
+
+  const plankH = 64;
+  for (let row = 0; row < 8; row += 1) {
+    const y0 = row * plankH;
+    const shade = 20 + ((row * 7) % 10);
+    dCtx.fillStyle = `rgb(${shade + 4}, ${shade}, ${shade + 2})`;
+    dCtx.fillRect(0, y0 + 2, 512, plankH - 4);
+
+    for (let g = 0; g < 16; g += 1) {
+      const gy = y0 + 4 + g * 3.6;
+      dCtx.strokeStyle = g % 3 === 0 ? 'rgba(0,0,0,0.28)' : 'rgba(110,92,80,0.12)';
+      dCtx.lineWidth = 1.4;
+      dCtx.beginPath();
+      dCtx.moveTo(0, gy);
+      dCtx.bezierCurveTo(170, gy + Math.sin(g + row) * 3, 340, gy - Math.cos(g) * 3, 512, gy);
+      dCtx.stroke();
+    }
+
+    // Dark recessed plank seam
+    bCtx.fillStyle = '#1c1c1c';
+    bCtx.fillRect(0, y0, 512, 3);
+    dCtx.fillStyle = '#090a0e';
+    dCtx.fillRect(0, y0, 512, 2);
+
+    // Staggered vertical plank butt-joint + roadcase scuff marks
+    const jointX = ((row * 197 + 80) % 440) + 32;
+    dCtx.fillRect(jointX, y0, 3, plankH);
+    bCtx.fillRect(jointX, y0, 3, plankH);
+
+    rCtx.fillStyle = row % 2 === 0 ? '#5c5c5c' : '#7c7c7c';
+    rCtx.fillRect(0, y0 + 3, 512, plankH - 4);
+  }
+
+  // Stage-tour wear scuffs & subtle glossy polish lanes
+  for (let s = 0; s < 36; s += 1) {
+    const sx = (s * 137) % 512;
+    const sy = (s * 211) % 512;
+    dCtx.fillStyle = 'rgba(180, 192, 215, 0.05)';
+    dCtx.fillRect(sx, sy, 28, 3);
+    rCtx.fillStyle = '#9a9a9a';
+    rCtx.fillRect(sx, sy, 28, 3);
+  }
+
+  const map = new THREE.CanvasTexture(diffCanvas);
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(5, 3.5);
+  map.colorSpace = THREE.SRGBColorSpace;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(5, 3.5);
+  bumpMap.colorSpace = THREE.NoColorSpace;
+
+  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+  roughnessMap.wrapS = THREE.RepeatWrapping;
+  roughnessMap.wrapT = THREE.RepeatWrapping;
+  roughnessMap.repeat.set(5, 3.5);
+  roughnessMap.colorSpace = THREE.NoColorSpace;
+
+  return { map, bumpMap, roughnessMap };
+}
+
+function createWoodGrainMaps() {
+  const diffCanvas = document.createElement('canvas');
+  diffCanvas.width = 256;
+  diffCanvas.height = 256;
+  const dCtx = diffCanvas.getContext('2d');
+  dCtx.fillStyle = '#3c2415';
+  dCtx.fillRect(0, 0, 256, 256);
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = 256;
+  bumpCanvas.height = 256;
+  const bCtx = bumpCanvas.getContext('2d');
+  bCtx.fillStyle = '#707070';
+  bCtx.fillRect(0, 0, 256, 256);
+
+  const roughCanvas = document.createElement('canvas');
+  roughCanvas.width = 256;
+  roughCanvas.height = 256;
+  const rCtx = roughCanvas.getContext('2d');
+  rCtx.fillStyle = '#9a9a9a';
+  rCtx.fillRect(0, 0, 256, 256);
+
+  for (let y = 0; y < 256; y += 3) {
+    const wave = Math.sin(y * 0.14) * 6;
+    const tone = (y * 17) % 5 === 0 ? 'rgba(20, 10, 4, 0.28)' : 'rgba(120, 74, 42, 0.18)';
+    dCtx.strokeStyle = tone;
+    dCtx.lineWidth = 2;
+    dCtx.beginPath();
+    dCtx.moveTo(0, y);
+    dCtx.bezierCurveTo(85, y + wave, 170, y - wave, 256, y);
+    dCtx.stroke();
+
+    bCtx.strokeStyle = (y * 11) % 3 === 0 ? '#a8a8a8' : '#4a4a4a';
+    bCtx.lineWidth = 1.6;
+    bCtx.beginPath();
+    bCtx.moveTo(0, y);
+    bCtx.bezierCurveTo(85, y + wave, 170, y - wave, 256, y);
+    bCtx.stroke();
+
+    rCtx.strokeStyle = (y * 7) % 4 === 0 ? '#6e6e6e' : '#b2b2b2';
+    rCtx.lineWidth = 1.6;
+    rCtx.beginPath();
+    rCtx.moveTo(0, y);
+    rCtx.bezierCurveTo(85, y + wave, 170, y - wave, 256, y);
+    rCtx.stroke();
+  }
+
+  const map = new THREE.CanvasTexture(diffCanvas);
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(3, 1);
+  map.colorSpace = THREE.SRGBColorSpace;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(3, 1);
+  bumpMap.colorSpace = THREE.NoColorSpace;
+
+  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+  roughnessMap.wrapS = THREE.RepeatWrapping;
+  roughnessMap.wrapT = THREE.RepeatWrapping;
+  roughnessMap.repeat.set(3, 1);
+  roughnessMap.colorSpace = THREE.NoColorSpace;
+
+  return { map, bumpMap, roughnessMap };
 }
 
 function createAmpGrillTexture() {
@@ -989,14 +2473,16 @@ function createVolumetricSpotlightMaterial(hexColor, initialOpacity = 0.1) {
   });
 }
 
-function buildAmpStack(accentColor, grillTex) {
+function buildAmpStack(accentColor, grillTex, perfMaps = null) {
   const group = new THREE.Group();
   const cabMat = new THREE.MeshStandardMaterial({ color: 0x10131b, roughness: 0.68, metalness: 0.22 });
   const grillMat = new THREE.MeshStandardMaterial({
     map: grillTex,
+    bumpMap: perfMaps?.bumpMap || null,
+    bumpScale: perfMaps ? 0.035 : 0,
     color: 0xffffff,
-    roughness: 0.82,
-    metalness: 0.15,
+    roughness: 0.56,
+    metalness: 0.45,
   });
   const goldFaceMat = new THREE.MeshStandardMaterial({ color: 0xd4a017, roughness: 0.28, metalness: 0.82 });
   const ledMat = new THREE.MeshStandardMaterial({
@@ -1037,11 +2523,18 @@ function buildAmpStack(accentColor, grillTex) {
  * Builds a towering curved hanging Line-Array Concert Speaker Stack suspended from the truss,
  * complete with dual bass-reactive pulsing woofer cones per cabinet!
  */
-function buildLineArrayStack(side, ledMat) {
+function buildLineArrayStack(side, ledMat, perfMaps = null) {
   const group = new THREE.Group();
   const woofers = [];
-  const cabMat = new THREE.MeshStandardMaterial({ color: 0x0f131d, roughness: 0.56, metalness: 0.42 });
-  const grillMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.72, metalness: 0.32 });
+  const cabMat = new THREE.MeshStandardMaterial({ color: 0x0f131d, roughness: 0.52, metalness: 0.46 });
+  const grillMat = new THREE.MeshStandardMaterial({
+    map: perfMaps?.map || null,
+    bumpMap: perfMaps?.bumpMap || null,
+    bumpScale: perfMaps ? 0.03 : 0,
+    color: 0x334155,
+    roughness: 0.46,
+    metalness: 0.68,
+  });
   const wooferMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.48, metalness: 0.55 });
   const dustCapMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3, metalness: 0.75 });
   const riggingMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.32, metalness: 0.88 });
@@ -1060,12 +2553,12 @@ function buildLineArrayStack(side, ledMat) {
   const wooferGeo = new THREE.CylinderGeometry(0.135, 0.085, 0.06, 12);
   const capGeo = new THREE.SphereGeometry(0.055, 8, 8);
 
-  // 7 curved J-array speaker cabinets descending downward
-  const count = 7;
+  // 14 curved J-array speaker cabinets descending downward (pro arena touring array)
+  const count = 14;
   for (let i = 0; i < count; i += 1) {
-    const pitch = i * 0.085;
-    const y = -0.32 - i * 0.46;
-    const zOffset = -Math.pow(i, 1.45) * 0.045;
+    const pitch = i * 0.068;
+    const y = -0.32 - i * 0.43;
+    const zOffset = -Math.pow(i, 1.38) * 0.032;
 
     const unit = new THREE.Group();
     unit.position.set(0, y, zOffset);
@@ -1097,11 +2590,274 @@ function buildLineArrayStack(side, ledMat) {
   return { group, woofers };
 }
 
+/**
+ * 100% Procedural WebAudio Stadium Crowd Sing-Along, Acoustic Clap-Along & Cheer Engine.
+ * Hosted inside StageBand and clocked by game audio context & crowd volume slider.
+ */
+export class StageCrowdAmbience {
+  constructor() {
+    this.ctx = null;
+    this.masterGain = null;
+    this.compressor = null;
+    this.noiseBuffer = null;
+    this.roarGain = null;
+    this.roarFilter = null;
+    this.roarSource = null;
+    this.choirGain = null;
+    this.choirOscA = null;
+    this.choirOscB = null;
+    this.choirFilterA = null;
+    this.choirFilterB = null;
+    this.volume = 0.75;
+    this.lastClapBeat = -999;
+    this.lastClapHalf = -999;
+    this.initialized = false;
+    this.muted = false;
+  }
+
+  attachAudioContext(ctx) {
+    if (!ctx || this.ctx === ctx) return;
+    this.dispose();
+    this.ctx = ctx;
+
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -16;
+    comp.knee.value = 18;
+    comp.ratio.value = 6;
+    comp.attack.value = 0.008;
+    comp.release.value = 0.22;
+
+    const master = ctx.createGain();
+    master.gain.value = this.muted ? 0 : this.volume * 0.34;
+    comp.connect(master);
+    master.connect(ctx.destination);
+
+    this.compressor = comp;
+    this.masterGain = master;
+
+    // 3-second seamless pink-noise buffer (reused cleanly for claps, roars & stadium air)
+    const len = Math.floor(ctx.sampleRate * 3.0);
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch += 1) {
+      const data = buf.getChannelData(ch);
+      let b0 = 0; let b1 = 0; let b2 = 0; let b3 = 0; let b4 = 0; let b5 = 0; let b6 = 0;
+      for (let i = 0; i < len; i += 1) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        const val = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.09;
+        b6 = white * 0.115926;
+        data[i] = val;
+      }
+    }
+    this.noiseBuffer = buf;
+
+    // Continuous stadium crowd roar bed (starts silent)
+    const roarSrc = ctx.createBufferSource();
+    roarSrc.buffer = buf;
+    roarSrc.loop = true;
+    const roarFilter = ctx.createBiquadFilter();
+    roarFilter.type = 'bandpass';
+    roarFilter.frequency.value = 780;
+    roarFilter.Q.value = 0.85;
+    const roarGain = ctx.createGain();
+    roarGain.gain.value = 0;
+    roarSrc.connect(roarFilter);
+    roarFilter.connect(roarGain);
+    roarGain.connect(comp);
+    roarSrc.start();
+    this.roarSource = roarSrc;
+    this.roarFilter = roarFilter;
+    this.roarGain = roarGain;
+
+    // Dual-formant "WHOA-OH" stadium sing-along choir bed
+    const oscA = ctx.createOscillator();
+    oscA.type = 'sawtooth';
+    oscA.frequency.value = 196; // G3
+    const oscB = ctx.createOscillator();
+    oscB.type = 'sawtooth';
+    oscB.frequency.value = 293.66; // D4 fifth harmony
+
+    const fA = ctx.createBiquadFilter();
+    fA.type = 'bandpass';
+    fA.frequency.value = 460;
+    fA.Q.value = 3.2;
+
+    const fB = ctx.createBiquadFilter();
+    fB.type = 'bandpass';
+    fB.frequency.value = 1120;
+    fB.Q.value = 3.5;
+
+    const choirGain = ctx.createGain();
+    choirGain.gain.value = 0;
+
+    oscA.connect(fA);
+    oscB.connect(fB);
+    fA.connect(choirGain);
+    fB.connect(choirGain);
+    choirGain.connect(comp);
+    oscA.start();
+    oscB.start();
+
+    this.choirOscA = oscA;
+    this.choirOscB = oscB;
+    this.choirFilterA = fA;
+    this.choirFilterB = fB;
+    this.choirGain = choirGain;
+    this.initialized = true;
+  }
+
+  setVolume(vol, muted = false) {
+    this.volume = Math.max(0, Math.min(1, Number(vol) || 0));
+    this.muted = Boolean(muted);
+    if (this.masterGain && this.ctx) {
+      const target = this.muted ? 0 : this.volume * 0.34;
+      this.masterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  silence() {
+    if (!this.initialized || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.roarGain?.gain.setTargetAtTime(0, now, 0.08);
+    this.choirGain?.gain.setTargetAtTime(0, now, 0.08);
+  }
+
+  triggerBeatClap(strength = 0.7, pan = 0) {
+    if (!this.initialized || !this.ctx || !this.noiseBuffer || !this.compressor) return;
+    if (this.muted || this.volume <= 0.02) return;
+    const now = this.ctx.currentTime;
+    const s = Math.max(0.15, Math.min(1.2, strength));
+    // Layer 3 staggered palm hits across arena stereo width for acoustic room realism
+    const offsets = [0, 0.015, 0.031];
+    offsets.forEach((off, idx) => {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1150 + idx * 320;
+      bp.Q.value = 1.4;
+      const g = this.ctx.createGain();
+      const peak = (0.14 * s) / (1 + idx * 0.35);
+      g.gain.setValueAtTime(0.0001, now + off);
+      g.gain.linearRampToValueAtTime(peak, now + off + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.11);
+
+      if (this.ctx.createStereoPanner) {
+        const panner = this.ctx.createStereoPanner();
+        panner.pan.value = Math.max(-0.85, Math.min(0.85, pan + (idx - 1) * 0.34));
+        src.connect(bp);
+        bp.connect(g);
+        g.connect(panner);
+        panner.connect(this.compressor);
+      } else {
+        src.connect(bp);
+        bp.connect(g);
+        g.connect(this.compressor);
+      }
+      src.start(now + off, Math.random() * 1.4, 0.14);
+    });
+  }
+
+  triggerMilestoneRoar(intensity = 1.0) {
+    if (!this.initialized || !this.ctx || !this.noiseBuffer || !this.compressor) return;
+    if (this.muted || this.volume <= 0.02) return;
+    const now = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(620, now);
+    bp.frequency.linearRampToValueAtTime(1450, now + 0.35);
+    bp.frequency.linearRampToValueAtTime(840, now + 1.5);
+    bp.Q.value = 0.9;
+    const g = this.ctx.createGain();
+    const peak = Math.min(0.45, 0.24 * Math.max(0.5, intensity));
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(peak, now + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0008, now + 1.65);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.compressor);
+    src.start(now, Math.random() * 0.8, 1.75);
+  }
+
+  update({ playing = false, songTime = 0, bpm = 120, beatPhase = 0, combo = 0, hypeNorm = 0.55, sectionType = 'VERSE', fever = false, encore = false } = {}) {
+    if (!this.initialized || !this.ctx || this.ctx.state !== 'running') return;
+    if (!playing || songTime < -0.5) {
+      this.silence();
+      return;
+    }
+
+    const now = this.ctx.currentTime;
+    const isSingSection = sectionType === 'CHORUS' || sectionType === 'OUTRO' || sectionType === 'PRE_CHORUS' || fever || encore;
+    const isClapSection =
+      sectionType === 'VERSE' ||
+      sectionType === 'PRE_CHORUS' ||
+      sectionType === 'BRIDGE' ||
+      sectionType === 'OUTRO' ||
+      encore;
+
+    // 1. Dynamic crowd ambience roar swelling smoothly with hype & combo
+    const roarLevel = Math.min(
+      0.16,
+      Math.max(0.012, (hypeNorm * 0.08 + Math.min(1, combo / 80) * 0.06) * (isSingSection || fever || encore ? 1.35 : 0.8))
+    );
+    this.roarGain?.gain.setTargetAtTime(roarLevel, now, 0.12);
+    this.roarFilter?.frequency.setTargetAtTime(720 + hypeNorm * 580 + (fever ? 240 : 0), now, 0.16);
+
+    // 2. Formant "WHOA-OH" choir swell during Choruses / High Streak / Fever / Encore
+    const choirEligible = combo >= 20 || hypeNorm >= 0.72 || fever || encore;
+    const targetChoir = choirEligible && isSingSection
+      ? Math.min(0.055, 0.016 + Math.min(1, combo / 100) * 0.025 + (fever || encore ? 0.015 : 0))
+      : 0;
+    this.choirGain?.gain.setTargetAtTime(targetChoir, now, 0.18);
+    if (targetChoir > 0.002 && this.choirFilterA && this.choirFilterB) {
+      const vowelPhase = 0.5 + 0.5 * Math.sin(songTime * (bpm / 60) * Math.PI * 0.5);
+      this.choirFilterA.frequency.setTargetAtTime(410 + vowelPhase * 150, now, 0.08);
+      this.choirFilterB.frequency.setTargetAtTime(980 + vowelPhase * 620, now, 0.08);
+    }
+
+    // 3. Rhythmic beatPhase-locked acoustic palm clap-along (strict edge-trigger once per beat!)
+    if (songTime >= 0 && isClapSection && hypeNorm >= 0.36) {
+      const beatIndex = Math.floor(songTime * (bpm / 60) + 0.04);
+      if (beatIndex > this.lastClapBeat) {
+        this.lastClapBeat = beatIndex;
+        // Double clap feel during Chorus/Outro/Encore, backbeat (2 & 4) during Verse/Bridge
+        const isBackbeat = beatIndex % 2 === 1;
+        if (sectionType === 'PRE_CHORUS' || sectionType === 'OUTRO' || encore || isBackbeat) {
+          this.triggerBeatClap(0.55 + hypeNorm * 0.45, ((beatIndex % 3) - 1) * 0.25);
+        }
+      }
+    } else if (songTime < 0) {
+      this.lastClapBeat = -999;
+    }
+  }
+
+  dispose() {
+    try { this.roarSource?.stop?.(); } catch {}
+    try { this.choirOscA?.stop?.(); } catch {}
+    try { this.choirOscB?.stop?.(); } catch {}
+    try { this.masterGain?.disconnect?.(); } catch {}
+    this.roarSource = null;
+    this.choirOscA = null;
+    this.choirOscB = null;
+    this.masterGain = null;
+    this.compressor = null;
+    this.initialized = false;
+  }
+}
+
 export class StageBand {
   constructor(
     canvas,
     {
-      venueId = 'christmas-wonderland',
+      venueId = 'philippine-arena',
+      venueOverlayId = 'STANDARD',
       cameraMode = 'on',
       bandLineupId = 'arena-4piece',
       guitarModelId = 'les-paul-sunburst',
@@ -1110,6 +2866,8 @@ export class StageBand {
       keyboardModelId = 'concert-grand',
       starLookId = 'default-band',
       instrumentSkinId = 'classic-sunburst',
+      instrumentSkins = null,
+      onFireworkLaunch = null,
       onFireworkBurst = null,
       onProjectileImpact = null,
     } = {}
@@ -1119,8 +2877,10 @@ export class StageBand {
     this.isSoftwareGl = false;
     this.clock = 0;
 
-    // Active venue, lineup, custom 3D gear, star looks, PBR skins, camera director & lighting profiles
-    this.venueId = venueId;
+    // Active venue, overlay, lineup, custom 3D gear, star looks, per-instrument PBR skins, camera director & lighting profiles
+    this.venueId = venueId || 'philippine-arena';
+    this.venueOverlayId = venueOverlayId || 'STANDARD';
+    this.overlayMeta = getStageOverlayById(this.venueOverlayId);
     this.venueEnv = null;
     this.cameraMode = cameraMode; // 'on' | 'subtle' | 'locked'
     this.bandLineupId = bandLineupId;
@@ -1131,6 +2891,13 @@ export class StageBand {
     this.keyboardModelId = keyboardModelId;
     this.starLookId = starLookId;
     this.instrumentSkinId = instrumentSkinId;
+    this.instrumentSkins = {
+      guitar: instrumentSkins?.guitar || instrumentSkinId,
+      bass: instrumentSkins?.bass || instrumentSkinId,
+      drums: instrumentSkins?.drums || instrumentSkinId,
+      piano: instrumentSkins?.piano || instrumentSkinId,
+    };
+    this.onFireworkLaunch = onFireworkLaunch;
     this.onFireworkBurst = onFireworkBurst;
     this.onProjectileImpact = onProjectileImpact;
 
@@ -1142,6 +2909,12 @@ export class StageBand {
     this.splatParticles = [];
     this.splatCursor = 0;
     this.ampGrillMats = [];
+    this.streakPyroCooldown = 0;
+    this.breActive = false;
+    this.playerGoldAura = null;
+    this.playerGoldAuraRingMat = null;
+    this.playerGoldAuraBeamMat = null;
+    this.playerGoldAuraOpacity = 0;
 
     this.guitarAsset = null;
     this.bassAsset = null;
@@ -1156,20 +2929,27 @@ export class StageBand {
     this.lightingState = null;
 
     this.activeInstrument = 'guitar';
+    this.activeInstruments = ['guitar'];
     this.feverActive = false;
     this.encorePerformanceActive = false;
     this.currentTrackTitle = 'ENCORE STAGE';
     this.missedInstrument = null;
+    this.missedInstruments = new Set();
+    this.crowdAmbience = new StageCrowdAmbience();
 
     // Encore Finale celebration state
+    this.grandEncoreActive = false;
     this.encoreFinaleActive = false;
     this.encoreGrade = 'A';
     this.finaleFireworkTimer = 0;
     this.finaleConfettiTimer = 0;
     this.feverFireworkTimer = 0;
+    this.hasActiveFireworks = false;
     this.pyroFlameIntensity = 0;
     this.pyroFlameTimer = 0;
     this.sparkEmitterTimer = 0;
+    this._encoreNightColor = new THREE.Color(0x050816);
+    this._venueSkyColor = new THREE.Color(0x050814);
 
     // Note-driven band animation impulses (deep instrument-matched performance)
     this.guitarStrumImpulse = 0;
@@ -1193,12 +2973,36 @@ export class StageBand {
     this.pianoHandPos = 0.5;
     this.pianoGlissando = 0;
     this.pianoHandAlt = 1;
+    this.lastPianoHand = 'right';
+    this.lastTrackMeta = null;
+    this.balladDustAlpha = 0;
 
     // Live LED backdrop screen + VIP Front-Row Banner update throttling + peak-hold caps
     this.ledUpdateTimer = 0;
     this.ledBarLevels = new Float32Array(24);
     this.ledPeakLevels = new Float32Array(24);
     this.cryoBurstTimer = 0;
+
+    // Deterministic Crowd Event State Machine (Zero GC)
+    this.crowdEvent = {
+      type: 'NORMAL', // 'NORMAL' | 'MOSHPIT' | 'SUNTUKAN' | 'CRYING_SWAY' | 'CROWD_SURFING' | 'STADIUM_WAVE'
+      timer: 0,
+      duration: 0,
+      cooldown: 4.5,
+      seed: 4242,
+      centerX: 0,
+      centerZ: 14.8,
+      fighterAIdx: -1,
+      fighterBIdx: -1,
+      surferX: -6.5,
+      surferZ: 12.85,
+    };
+    this.activeCrowdEvent = { type: 'NORMAL' };
+    this.crowdThrowerIdx = -1;
+    this.crowdThrowWindup = 0;
+    this.prevCrowdStreak = 0;
+    this.crowdLastSection = null;
+    this.crowdSurferDir = 1;
 
     // Dynamic Stage Roaming, Walking, Pacing, Power-Slide, Back-to-Back & Beat-Synced Jump State Machines
     const makeMotion = (x, z, rotY) => ({
@@ -1232,9 +3036,9 @@ export class StageBand {
       sustainLean: 0,
     });
     this.memberMotion = {
-      guitar: makeMotion(-3.55, -1.1, 0.24),
-      bass: makeMotion(3.55, -1.1, -0.24),
-      vocals: makeMotion(0, -0.78, 0),
+      guitar: makeMotion(-4.5, 1.0, 0.24),
+      bass: makeMotion(4.5, 1.0, -0.24),
+      vocals: makeMotion(0, 2.0, 0),
     };
     this.stageChoreoTimer = 0;
     this.stageChoreoStep = 0;
@@ -1242,25 +3046,34 @@ export class StageBand {
     this.lastChoreoSectionId = null;
     this.markovSeed = 1337;
 
-    // Pre-allocated live world positions fed to CameraDirector every frame (zero GC!)
+    // Live 30 FPS Offscreen IMAG RenderTarget & Telephoto Soloist Camera (zero per-frame heap allocations)
+    this.jumbotronTarget = null;
+    this.jumbotronCam = null;
+    this.imagMeshes = [];
+    this._imagFrameToggle = 0;
+    this._imagLookTarget = new THREE.Vector3(0, 1.5, 0);
+    this._imagLastSectionType = 'LIVE';
+    this._imagLastBannerText = '';
+
+    // Pre-allocated live world positions fed to CameraDirector & IMAG camera every frame (zero GC!)
     this.livePositions = {
-      guitar: { x: -3.55, y: 0, z: -1.1 },
-      bass: { x: 3.55, y: 0, z: -1.1 },
-      drums: { x: 0, y: 0.64, z: -3.56 },
-      piano: { x: -2.45, y: 0, z: -2.65 },
-      vocals: { x: 0, y: 0, z: -0.78 },
+      guitar: { x: -4.5, y: STAGE_DECK_TOP_Y, z: 1.0 },
+      bass: { x: 4.5, y: STAGE_DECK_TOP_Y, z: 1.0 },
+      drums: { x: 0, y: DRUM_RISER_TOP_Y, z: -2.8 },
+      piano: { x: 6.5, y: KEYS_RISER_TOP_Y, z: -1.8 },
+      vocals: { x: 0, y: STAGE_DECK_TOP_Y, z: 2.0 },
     };
 
     // Base home rig kept for immediate init framing before CameraDirector ticks
     this.cameraRig = {
       azimuth: 0,
-      radius: 11.4,
-      height: 3.9,
-      target: new THREE.Vector3(0, 1.85, -1.6),
+      radius: 17.2,
+      height: 5.2,
+      target: new THREE.Vector3(0, 2.1, -1.2),
       desiredAzimuth: 0,
-      desiredRadius: 11.4,
-      desiredHeight: 3.9,
-      desiredTarget: new THREE.Vector3(0, 1.85, -1.6),
+      desiredRadius: 17.2,
+      desiredHeight: 5.2,
+      desiredTarget: new THREE.Vector3(0, 2.1, -1.2),
       reverseSign: 1,
       modeTimer: 0,
       prevReverseActive: false,
@@ -1292,7 +3105,7 @@ export class StageBand {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.shadowMap.enabled = !this.isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.isSoftwareGl ? 1 : 1.5));
@@ -1307,10 +3120,18 @@ export class StageBand {
     this.scene.environmentIntensity = 0.72;
     pmrem.dispose();
 
-    this.camera = new THREE.PerspectiveCamera(46, 16 / 9, 0.2, 145);
+    this.camera = new THREE.PerspectiveCamera(46, 16 / 9, 0.2, 900);
     this.applyCameraRigImmediate();
 
     this.glowTex = createGlowParticleTexture();
+
+    this.jumbotronTarget = new THREE.WebGLRenderTarget(384, 216, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      depthBuffer: true,
+    });
+    this.jumbotronTarget.texture.colorSpace = THREE.SRGBColorSpace;
+    this.jumbotronCam = new THREE.PerspectiveCamera(32, 384 / 216, 0.25, 95);
 
     this.buildLights();
     this.buildConcertStage();
@@ -1318,7 +3139,7 @@ export class StageBand {
     this.buildFullBodiedCrowd3D();
     this.buildPyrotechnicsAndFX();
     this.buildCrowdProjectilePool();
-    this.setVenue(this.venueId);
+    this.setVenue(this.venueId, this.venueOverlayId);
 
     this.resize();
   }
@@ -1332,55 +3153,63 @@ export class StageBand {
   }
 
   buildLights() {
-    this.hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x0f172a, 0.82);
+    this.hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x0f172a, 0.84);
     this.scene.add(this.hemiLight);
 
-    this.frontKey = new THREE.DirectionalLight(0xe0f2fe, 0.78);
-    this.frontKey.position.set(0, 9.2, 10.5);
+    this.frontKey = new THREE.DirectionalLight(0xe0f2fe, 0.82);
+    this.frontKey.position.set(0, 13.5, 14.5);
     if (!this.isSoftwareGl) {
       this.frontKey.castShadow = true;
       this.frontKey.shadow.mapSize.set(1024, 1024);
       this.frontKey.shadow.camera.near = 2;
-      this.frontKey.shadow.camera.far = 32;
-      this.frontKey.shadow.camera.left = -10;
-      this.frontKey.shadow.camera.right = 10;
-      this.frontKey.shadow.camera.top = 10;
-      this.frontKey.shadow.camera.bottom = -6;
+      this.frontKey.shadow.camera.far = 42;
+      this.frontKey.shadow.camera.left = -16;
+      this.frontKey.shadow.camera.right = 16;
+      this.frontKey.shadow.camera.top = 14;
+      this.frontKey.shadow.camera.bottom = -8;
       this.frontKey.shadow.bias = -0.0008;
     }
     this.scene.add(this.frontKey);
 
-    // Strong rear band rim light so roaming Roblox performers pop crisply against stage haze!
-    this.bandRimLight = new THREE.DirectionalLight(0x93c5fd, 2.3);
-    this.bandRimLight.position.set(0, 7.6, -9.8);
+    // Balanced multi-angle rear & side rim lighting covering the 28m pro-touring stage
+    this.bandRimLight = new THREE.DirectionalLight(0x93c5fd, 2.35);
+    this.bandRimLight.position.set(0, 10.5, -12.5);
     this.scene.add(this.bandRimLight);
 
+    this.bandRimSideL = new THREE.DirectionalLight(0x38bdf8, 1.35);
+    this.bandRimSideL.position.set(-13.5, 8.5, -8.5);
+    this.scene.add(this.bandRimSideL);
+
+    this.bandRimSideR = new THREE.DirectionalLight(0xf59e0b, 1.35);
+    this.bandRimSideR.position.set(13.5, 8.5, -8.5);
+    this.scene.add(this.bandRimSideR);
+
     // Subtle crowd uplight so reverse behind-the-band angles showcase the 3D fans vividly!
-    this.crowdLight = new THREE.PointLight(0x38bdf8, 18, 30, 1.3);
-    this.crowdLight.position.set(0, 4.2, 9.5);
+    this.crowdLight = new THREE.PointLight(0x38bdf8, 18, 42, 1.25);
+    this.crowdLight.position.set(0, 5.5, 14.5);
     this.scene.add(this.crowdLight);
 
     this.memberSpots = {};
     const spotConfigs = [
-      { key: 'guitar', x: -3.55, z: -1.1, targetY: 1.2, color: THEME_COLORS.guitar },
-      { key: 'bass', x: 3.55, z: -1.1, targetY: 1.2, color: THEME_COLORS.bass },
-      { key: 'drums', x: 0.0, z: -3.4, targetY: 1.6, color: THEME_COLORS.drums },
-      { key: 'piano', x: -2.45, z: -2.65, targetY: 1.3, color: THEME_COLORS.piano },
-      { key: 'vocals', x: 0.0, z: -0.55, targetY: 1.3, color: 0xe2e8f0 },
+      { key: 'guitar', x: -4.5, z: 1.0, targetY: 1.2, color: THEME_COLORS.guitar },
+      { key: 'bass', x: 4.5, z: 1.0, targetY: 1.2, color: THEME_COLORS.bass },
+      { key: 'drums', x: 0.0, z: -2.8, targetY: 1.8, color: THEME_COLORS.drums },
+      { key: 'piano', x: 6.5, z: -1.8, targetY: 1.5, color: THEME_COLORS.piano },
+      { key: 'vocals', x: 0.0, z: 2.0, targetY: 1.3, color: 0xe2e8f0 },
     ];
 
-    const coneGeo = new THREE.ConeGeometry(2.45, 9.2, 24, 1, true);
-    coneGeo.translate(0, -4.6, 0);
+    const coneGeo = new THREE.ConeGeometry(3.2, 13.8, 24, 1, true);
+    coneGeo.translate(0, -6.9, 0);
 
     spotConfigs.forEach((cfg) => {
-      const spot = new THREE.SpotLight(cfg.color, 38, 28, Math.PI / 5.0, 0.62, 1.2);
-      spot.position.set(cfg.x * 1.05, 8.6, cfg.z + 1.4);
+      const spot = new THREE.SpotLight(cfg.color, 42, 36, Math.PI / 4.8, 0.62, 1.15);
+      spot.position.set(cfg.x * 1.15, 13.2, cfg.z + 2.2);
       // Strict 2-light shadow budget: frontKey + 1 primary hero spotlight ('guitar')
       if (!this.isSoftwareGl && cfg.key === 'guitar') {
         spot.castShadow = true;
         spot.shadow.mapSize.set(1024, 1024);
         spot.shadow.camera.near = 2;
-        spot.shadow.camera.far = 24;
+        spot.shadow.camera.far = 32;
         spot.shadow.bias = -0.001;
       } else {
         spot.castShadow = false;
@@ -1413,162 +3242,434 @@ export class StageBand {
 
   buildConcertStage() {
     const stageGroup = new THREE.Group();
+    this.stageExtraDisposables = [];
 
-    // Glossy dark brushed-metal concert stage deck (top surface strictly at y = 0)
+    // Scuffed dark concert timber plank stage deck + diamond plate steel riser + perforated steel grilles
     this.deckTex = createBrushedMetalTexture();
+    this.deckMaps = createDiamondPlateMaps();
+    this.plankDeckMaps = createPlankDeckMaps();
+    this.woodMaps = createWoodGrainMaps();
+    this.perforatedMaps = createPerforatedSteelMaps();
     this.ampGrillTex = createAmpGrilleSkinTexture(this.instrumentSkinId);
+
+    const maxAniso = Math.min(8, this.renderer?.capabilities?.getMaxAnisotropy?.() || 4);
+    [
+      this.deckTex,
+      this.deckMaps.bumpMap,
+      this.deckMaps.roughnessMap,
+      this.plankDeckMaps.map,
+      this.plankDeckMaps.bumpMap,
+      this.plankDeckMaps.roughnessMap,
+      this.woodMaps.map,
+      this.woodMaps.bumpMap,
+      this.woodMaps.roughnessMap,
+      this.perforatedMaps.map,
+      this.perforatedMaps.bumpMap,
+      this.ampGrillTex,
+    ].forEach((tex) => {
+      if (tex) tex.anisotropy = maxAniso;
+    });
+
+    // Main timber plank deck (top surface strictly at y = 0) with clearcoat sheen for realistic spotlight & firework reflections
+    const plankDeckMat = new THREE.MeshPhysicalMaterial({
+      map: this.plankDeckMaps.map,
+      bumpMap: this.plankDeckMaps.bumpMap,
+      bumpScale: 0.026,
+      roughnessMap: this.plankDeckMaps.roughnessMap,
+      color: 0xe2e8f0,
+      roughness: 0.38,
+      metalness: 0.16,
+      clearcoat: 0.42,
+      clearcoatRoughness: 0.28,
+      reflectivity: 0.72,
+    });
     const deckMat = new THREE.MeshStandardMaterial({
       map: this.deckTex,
+      bumpMap: this.deckMaps.bumpMap,
+      bumpScale: 0.032,
+      roughnessMap: this.deckMaps.roughnessMap,
       color: 0xdbeafe,
-      roughness: 0.24,
-      metalness: 0.68,
+      roughness: 0.34,
+      metalness: 0.72,
     });
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(16.4, 1.2, 10.8), deckMat);
-    deck.position.set(0, -0.6, -2.2);
+    // Main 28m x 16m timber plank deck (top surface strictly at y = 0, x: [-14, 14], z: [-11, 5])
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(28.0, 2.2, 16.0), plankDeckMat);
+    deck.position.set(0, -1.1, -3.0);
     deck.receiveShadow = true;
     stageGroup.add(deck);
 
-    // Lower front stage apron lip for multi-tiered stadium presence
-    const apronMat = new THREE.MeshStandardMaterial({ color: 0x0b0e18, roughness: 0.45, metalness: 0.55 });
-    const apron = new THREE.Mesh(new THREE.BoxGeometry(17.2, 0.42, 0.55), apronMat);
-    apron.position.set(0, -0.98, 3.35);
-    stageGroup.add(apron);
+    // T-Catwalk Thrust Extension (top flush at y = 0, shaft z: [5.0, 9.6], T-end x: [-3.8, 3.8], z: [9.2, 11.2])
+    const catwalkShaft = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.2, 4.6), plankDeckMat);
+    catwalkShaft.position.set(0, -1.1, 7.3);
+    catwalkShaft.receiveShadow = true;
+    const catwalkHead = new THREE.Mesh(new THREE.BoxGeometry(7.6, 2.2, 2.0), plankDeckMat);
+    catwalkHead.position.set(0, -1.1, 10.2);
+    catwalkHead.receiveShadow = true;
+    stageGroup.add(catwalkShaft, catwalkHead);
 
-    // Glowing stage LED trim (front apron + riser + speaker strips)
+    // Lower front stage apron fascia with procedural wood-grain trim
+    const apronMat = new THREE.MeshStandardMaterial({
+      map: this.woodMaps.map,
+      bumpMap: this.woodMaps.bumpMap,
+      bumpScale: 0.024,
+      roughnessMap: this.woodMaps.roughnessMap,
+      color: 0x2a1d19,
+      roughness: 0.56,
+      metalness: 0.22,
+    });
+    [-7.95, 7.95].forEach((ax) => {
+      const apronWing = new THREE.Mesh(new THREE.BoxGeometry(12.3, 0.52, 0.55), apronMat);
+      apronWing.position.set(ax, -0.96, 5.15);
+      stageGroup.add(apronWing);
+    });
+    const catwalkApron = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.52, 0.48), apronMat);
+    catwalkApron.position.set(0, -0.96, 11.35);
+    stageGroup.add(catwalkApron);
+
+    // Glowing stage LED trim (main wings + T-catwalk perimeter + apron)
     this.stageRimMat = new THREE.MeshStandardMaterial({
       color: THEME_COLORS.guitar,
       emissive: THEME_COLORS.guitar,
       emissiveIntensity: 1.7,
       roughness: 0.22,
     });
-    const frontRim = new THREE.Mesh(new THREE.BoxGeometry(16.4, 0.11, 0.12), this.stageRimMat);
-    frontRim.position.set(0, -0.02, 3.2);
-    stageGroup.add(frontRim);
+    [-7.9, 7.9].forEach((rx) => {
+      const wingRim = new THREE.Mesh(new THREE.BoxGeometry(12.2, 0.11, 0.12), this.stageRimMat);
+      wingRim.position.set(rx, -0.02, 5.0);
+      const wingApronRim = new THREE.Mesh(new THREE.BoxGeometry(12.2, 0.07, 0.09), this.stageRimMat);
+      wingApronRim.position.set(rx, -0.74, 5.43);
+      stageGroup.add(wingRim, wingApronRim);
+    });
+    [-1.82, 1.82].forEach((cx) => {
+      const shaftRim = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 4.3), this.stageRimMat);
+      shaftRim.position.set(cx, -0.02, 7.15);
+      stageGroup.add(shaftRim);
+    });
+    const tEndFrontRim = new THREE.Mesh(new THREE.BoxGeometry(7.64, 0.11, 0.12), this.stageRimMat);
+    tEndFrontRim.position.set(0, -0.02, 11.2);
+    const tEndApronRim = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.07, 0.09), this.stageRimMat);
+    tEndApronRim.position.set(0, -0.74, 11.58);
+    [-3.82, 3.82].forEach((tx) => {
+      const sideRim = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 2.04), this.stageRimMat);
+      sideRim.position.set(tx, -0.02, 10.2);
+      stageGroup.add(sideRim);
+    });
+    stageGroup.add(tEndFrontRim, tEndApronRim);
 
-    // Elevated center drum riser (top surface strictly at y = 0.64) + chrome safety rails & steps
-    const riser = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.64, 3.3), deckMat);
-    riser.position.set(0, 0.32, -3.4);
+    // Glowing Stadium Front-Row Crowd Barricade Perimeter (strictly outside 28m stage + T-catwalk)
+    const barFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.38, metalness: 0.82 });
+    const barPanelMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.75, metalness: 0.25 });
+    const addBarricadeSegment = (x1, z1, x2, z2, posts = 4) => {
+      const dx = x2 - x1;
+      const dz = z2 - z1;
+      const len = Math.hypot(dx, dz);
+      const ang = Math.atan2(dx, dz);
+      const midX = (x1 + x2) * 0.5;
+      const midZ = (z1 + z2) * 0.5;
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, len, 10), barFrameMat);
+      rail.rotation.x = Math.PI * 0.5;
+      rail.rotation.z = -ang;
+      rail.position.set(midX, -0.04, midZ);
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, len), this.stageRimMat);
+      led.rotation.y = ang;
+      led.position.set(midX, -0.08, midZ);
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.96, len), barPanelMat);
+      panel.rotation.y = ang;
+      panel.position.set(midX, -0.64, midZ);
+      stageGroup.add(rail, led, panel);
+      for (let p = 0; p < posts; p += 1) {
+        const t = posts > 1 ? p / (posts - 1) : 0.5;
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.11, 1.18, 0.14), barFrameMat);
+        post.position.set(x1 + dx * t, -0.62, z1 + dz * t);
+        stageGroup.add(post);
+      }
+    };
+    addBarricadeSegment(-14.2, 5.6, -2.2, 5.6, 5);
+    addBarricadeSegment(2.2, 5.6, 14.2, 5.6, 5);
+    addBarricadeSegment(-2.2, 5.6, -2.2, 8.9, 2);
+    addBarricadeSegment(2.2, 5.6, 2.2, 8.9, 2);
+    addBarricadeSegment(-2.2, 8.9, -4.18, 8.9, 2);
+    addBarricadeSegment(2.2, 8.9, 4.18, 8.9, 2);
+    addBarricadeSegment(-4.18, 8.9, -4.18, 11.65, 2);
+    addBarricadeSegment(4.18, 8.9, 4.18, 11.65, 2);
+    addBarricadeSegment(-4.18, 11.65, 4.18, 11.65, 4);
+
+    // Elevated center drum riser (top surface strictly at DRUM_RISER_TOP_Y = 0.8, centered at x = 0, z = -2.8)
+    const riser = new THREE.Mesh(new THREE.BoxGeometry(5.6, DRUM_RISER_TOP_Y, 3.8), deckMat);
+    riser.position.set(0, DRUM_RISER_TOP_Y * 0.5, -2.8);
     riser.receiveShadow = true;
     stageGroup.add(riser);
 
-    const riserTrim = new THREE.Mesh(new THREE.BoxGeometry(4.64, 0.09, 0.09), this.stageRimMat);
-    riserTrim.position.set(0, 0.62, -1.74);
-    stageGroup.add(riserTrim);
+    const rugMat = new THREE.MeshStandardMaterial({ color: 0x1e1b2e, roughness: 0.92, metalness: 0.04 });
+    const drumRug = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.018, 2.8), rugMat);
+    drumRug.position.set(0, DRUM_RISER_TOP_Y + 0.009, -2.82);
+    drumRug.receiveShadow = true;
+    stageGroup.add(drumRug);
+
+    // Curved transparent Perspex acrylic acoustic drum shield wrapping front-sides of kit cleanly
+    const shieldMat = new THREE.MeshPhysicalMaterial({
+      color: 0xdbeafe,
+      transparent: true,
+      opacity: 0.2,
+      roughness: 0.08,
+      metalness: 0.05,
+      clearcoat: 1.0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const shieldArcGeo = new THREE.CylinderGeometry(1.95, 1.95, 1.44, 22, 1, true, -Math.PI * 0.34, Math.PI * 0.68);
+    const drumShield = new THREE.Mesh(shieldArcGeo, shieldMat);
+    drumShield.position.set(0, DRUM_RISER_TOP_Y + 0.72, -3.12);
+    stageGroup.add(drumShield);
+
+    const riserTrim = new THREE.Mesh(new THREE.BoxGeometry(5.64, 0.09, 0.09), this.stageRimMat);
+    riserTrim.position.set(0, DRUM_RISER_TOP_Y - 0.02, -0.89);
+    const riserBackTrim = new THREE.Mesh(new THREE.BoxGeometry(5.64, 0.07, 0.08), this.stageRimMat);
+    riserBackTrim.position.set(0, DRUM_RISER_TOP_Y - 0.02, -4.71);
+    stageGroup.add(riserTrim, riserBackTrim);
 
     const chromeRailMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.18, metalness: 0.92 });
-    // Drum riser steps on left and right sides
-    [-2.58, 2.58].forEach((sx) => {
-      const stepLow = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.22, 0.96), deckMat);
-      stepLow.position.set(sx, 0.11, -2.55);
-      const stepMid = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.44, 0.64), deckMat);
-      stepMid.position.set(sx, 0.22, -3.22);
+    [-3.12, 3.12].forEach((sx) => {
+      const stepLow = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.27, 1.08), deckMat);
+      stepLow.position.set(sx, 0.135, -1.75);
+      const stepMid = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.54, 0.72), deckMat);
+      stepMid.position.set(sx, 0.27, -2.55);
       stageGroup.add(stepLow, stepMid);
     });
-    // Back & side safety chrome rails on drum riser
-    [-2.24, 0, 2.24].forEach((rx) => {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.82, 8), chromeRailMat);
-      post.position.set(rx, 1.05, -4.98);
+    [-2.72, 0, 2.72].forEach((rx) => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.84, 8), chromeRailMat);
+      post.position.set(rx, DRUM_RISER_TOP_Y + 0.42, -4.64);
       stageGroup.add(post);
     });
-    const backTopRail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 4.52, 8), chromeRailMat);
+    const backTopRail = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 5.5, 8), chromeRailMat);
     backTopRail.rotation.z = Math.PI * 0.5;
-    backTopRail.position.set(0, 1.44, -4.98);
+    backTopRail.position.set(0, DRUM_RISER_TOP_Y + 0.82, -4.64);
     stageGroup.add(backTopRail);
 
-    // Geometric Overhead Aluminum Box-Truss Rig + diagonal cross-bracing
+    // Elevated Stage-Right Piano / Keys Riser (top surface strictly at KEYS_RISER_TOP_Y = 0.5, centered at x = +6.5, z = -1.8)
+    const pianoRiser = new THREE.Mesh(new THREE.BoxGeometry(3.4, KEYS_RISER_TOP_Y, 3.0), deckMat);
+    pianoRiser.position.set(6.5, KEYS_RISER_TOP_Y * 0.5, -1.8);
+    pianoRiser.receiveShadow = true;
+    const pianoRiserTrim = new THREE.Mesh(new THREE.BoxGeometry(3.44, 0.07, 0.08), this.stageRimMat);
+    pianoRiserTrim.position.set(6.5, KEYS_RISER_TOP_Y - 0.02, -0.29);
+    const pianoStep = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.25, 0.96), deckMat);
+    pianoStep.position.set(4.52, 0.125, -1.5);
+    stageGroup.add(pianoRiser, pianoRiserTrim, pianoStep);
+
+    // 14m Pro-Touring Aluminum Box-Truss Rig + 3D Instanced Diagonal Cross-Bracing + Hydraulic Actuators
     const trussMat = new THREE.MeshStandardMaterial({
       color: 0x64748b,
+      bumpMap: this.deckMaps.bumpMap,
+      bumpScale: 0.018,
       roughness: 0.28,
       metalness: 0.9,
+      emissive: 0x000000,
+      emissiveIntensity: 0,
     });
+    this.stageTrussMat = trussMat;
 
-    [
-      [-7.6, -5.8],
-      [7.6, -5.8],
-      [-7.6, 2.2],
-      [7.6, 2.2],
-    ].forEach(([tx, tz]) => {
-      const tower = new THREE.Mesh(new THREE.BoxGeometry(0.38, 9.2, 0.38), trussMat);
-      tower.position.set(tx, 4.2, tz);
+    const towerCoords = [
+      [-13.2, -8.2],
+      [13.2, -8.2],
+      [-13.2, 3.8],
+      [13.2, 3.8],
+    ];
+    towerCoords.forEach(([tx, tz]) => {
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(0.46, 14.0, 0.46), trussMat);
+      tower.position.set(tx, 6.8, tz);
       stageGroup.add(tower);
+
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 2.3, 10), barFrameMat);
+      sleeve.position.set(tx * 1.035, 1.15, tz);
+      const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 1.8, 10), chromeRailMat);
+      piston.position.set(tx * 1.035, 2.75, tz);
+      stageGroup.add(sleeve, piston);
     });
 
-    const frontBridge = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.34, 0.38), trussMat);
-    frontBridge.position.set(0, 8.7, 2.2);
-    const midBridge = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.32, 0.36), trussMat);
-    midBridge.position.set(0, 8.7, -2.0);
-    const rearBridge = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.34, 0.38), trussMat);
-    rearBridge.position.set(0, 8.7, -5.8);
+    const frontBridge = new THREE.Mesh(new THREE.BoxGeometry(26.8, 0.42, 0.46), trussMat);
+    frontBridge.position.set(0, 13.6, 3.8);
+    const midBridge = new THREE.Mesh(new THREE.BoxGeometry(26.8, 0.4, 0.42), trussMat);
+    midBridge.position.set(0, 13.6, -2.2);
+    const rearBridge = new THREE.Mesh(new THREE.BoxGeometry(26.8, 0.42, 0.46), trussMat);
+    rearBridge.position.set(0, 13.6, -8.2);
     stageGroup.add(frontBridge, midBridge, rearBridge);
 
-    [-7.6, 7.6].forEach((sx) => {
-      const sideSpan = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 8.4), trussMat);
-      sideSpan.position.set(sx, 8.7, -1.8);
+    [-13.2, 13.2].forEach((sx) => {
+      const sideSpan = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 12.4), trussMat);
+      sideSpan.position.set(sx, 13.6, -2.2);
       stageGroup.add(sideSpan);
     });
 
+    // Instanced 3D diagonal cross-bracing struts across 14m vertical towers & 26.8m bridges
+    const braceGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.78, 6);
+    const braceInst = new THREE.InstancedMesh(braceGeo, chromeRailMat, 180);
+    braceInst.frustumCulled = false;
+    let braceIdx = 0;
+    towerCoords.forEach(([tx, tz]) => {
+      for (let b = 0; b < 13 && braceIdx < 180; b += 1) {
+        this._dummy.position.set(tx, 0.65 + b * 0.98, tz + 0.25);
+        this._dummy.rotation.set(0, 0, (b % 2 === 0 ? 1 : -1) * 0.72);
+        this._dummy.scale.set(1, 1, 1);
+        this._dummy.updateMatrix();
+        braceInst.setMatrixAt(braceIdx, this._dummy.matrix);
+        braceIdx += 1;
+      }
+    });
+    [3.8, -2.2, -8.2].forEach((bz) => {
+      for (let bx = -12.2; bx <= 12.2 && braceIdx < 180; bx += 1.15) {
+        this._dummy.position.set(bx, 13.6, bz + 0.25);
+        this._dummy.rotation.set(0, 0, ((Math.round(bx * 10) % 2 === 0) ? 1 : -1) * 0.78);
+        this._dummy.scale.set(1, 1, 1);
+        this._dummy.updateMatrix();
+        braceInst.setMatrixAt(braceIdx, this._dummy.matrix);
+        braceIdx += 1;
+      }
+    });
+    braceInst.count = braceIdx;
+    braceInst.instanceMatrix.needsUpdate = true;
+    stageGroup.add(braceInst);
+    this.stageExtraDisposables.push(braceGeo);
+
     const fixtureMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.8 });
-    [-5.2, -2.6, 0, 2.6, 5.2].forEach((fx) => {
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.38), fixtureMat);
-      head.position.set(fx, 8.42, 2.15);
-      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 10), this.stageRimMat);
-      lens.position.set(fx, 8.24, 2.15);
+    [-10.2, -6.8, -3.4, 0, 3.4, 6.8, 10.2].forEach((fx) => {
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.38, 0.44), fixtureMat);
+      head.position.set(fx, 13.28, 3.74);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.08, 10), this.stageRimMat);
+      lens.position.set(fx, 13.06, 3.74);
       stageGroup.add(head, lens);
     });
 
-    // Glowing Multi-Tier Stage Risers: rear drum riser + glowing side amp wing risers
-    const riserBackTrim = new THREE.Mesh(new THREE.BoxGeometry(4.64, 0.07, 0.08), this.stageRimMat);
-    riserBackTrim.position.set(0, 0.62, -5.04);
-    stageGroup.add(riserBackTrim);
+    // Warm Tungsten Audience Blinder Pods along front overhead 14m bridge (driven by lightState.blinderPulse)
+    this.blinderMat = new THREE.MeshStandardMaterial({
+      color: 0xfff3d1,
+      emissive: 0xffb347,
+      emissiveIntensity: 0.25,
+      roughness: 0.18,
+      metalness: 0.3,
+    });
+    [-8.4, -5.0, -1.6, 1.6, 5.0, 8.4].forEach((bx) => {
+      const podHousing = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.36, 0.24), fixtureMat);
+      podHousing.position.set(bx, 13.3, 4.02);
+      podHousing.rotation.x = 0.35;
+      const cellL = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), this.blinderMat);
+      cellL.rotation.x = Math.PI * 0.5 + 0.35;
+      cellL.position.set(bx - 0.18, 13.28, 4.13);
+      const cellR = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), this.blinderMat);
+      cellR.rotation.x = Math.PI * 0.5 + 0.35;
+      cellR.position.set(bx + 0.18, 13.28, 4.13);
+      stageGroup.add(podHousing, cellL, cellR);
+    });
+    this.blinderLight = new THREE.PointLight(0xffb85c, 0, 44, 1.35);
+    this.blinderLight.position.set(0, 12.0, 5.2);
+    this.scene.add(this.blinderLight);
 
-    [-5.7, 5.7].forEach((ax) => {
-      const sideRiser = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.24, 2.65), deckMat);
-      sideRiser.position.set(ax, 0.12, -2.25);
+    // Side Amp Wing Risers at x = ±9.8, z = -3.5
+    [-9.8, 9.8].forEach((ax) => {
+      const sideRiser = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.28, 2.8), deckMat);
+      sideRiser.position.set(ax, 0.14, -3.5);
       sideRiser.receiveShadow = true;
-      const sideRiserLed = new THREE.Mesh(new THREE.BoxGeometry(2.74, 0.06, 0.08), this.stageRimMat);
-      sideRiserLed.position.set(ax, 0.23, -0.92);
+      const sideRiserLed = new THREE.Mesh(new THREE.BoxGeometry(3.24, 0.06, 0.08), this.stageRimMat);
+      sideRiserLed.position.set(ax, 0.26, -2.09);
       stageGroup.add(sideRiser, sideRiserLed);
     });
 
-    // Lower front apron secondary glow strip for multi-tier depth
-    const apronRim = new THREE.Mesh(new THREE.BoxGeometry(17.2, 0.07, 0.09), this.stageRimMat);
-    apronRim.position.set(0, -0.78, 3.63);
-    stageGroup.add(apronRim);
-
-    // Towering Left & Right Hanging Curved Line-Array Speaker Stacks with pulsing woofers
-    const leftArrayBuilt = buildLineArrayStack(-1, this.stageRimMat);
-    leftArrayBuilt.group.position.set(-7.35, 7.1, 1.55);
-    leftArrayBuilt.group.rotation.y = 0.24;
+    // Towering Left & Right 14-Cabinet Hanging Curved Line-Array Speaker Stacks
+    const leftArrayBuilt = buildLineArrayStack(-1, this.stageRimMat, this.perforatedMaps);
+    leftArrayBuilt.group.position.set(-12.8, 11.8, 2.6);
+    leftArrayBuilt.group.rotation.y = 0.26;
     stageGroup.add(leftArrayBuilt.group);
 
-    const rightArrayBuilt = buildLineArrayStack(1, this.stageRimMat);
-    rightArrayBuilt.group.position.set(7.35, 7.1, 1.55);
-    rightArrayBuilt.group.rotation.y = -0.24;
+    const rightArrayBuilt = buildLineArrayStack(1, this.stageRimMat, this.perforatedMaps);
+    rightArrayBuilt.group.position.set(12.8, 11.8, 2.6);
+    rightArrayBuilt.group.rotation.y = -0.26;
     stageGroup.add(rightArrayBuilt.group);
 
     this.lineArrayWoofers = [...leftArrayBuilt.woofers, ...rightArrayBuilt.woofers];
 
-    // Marshall-style woven-grille amp stacks + pulsing floor subwoofers seated on glowing side risers
-    const leftAmp = buildAmpStack(THEME_COLORS.guitar, this.ampGrillTex);
-    leftAmp.group.position.set(-5.7, 0.24, -2.5);
-    leftAmp.group.rotation.y = 0.32;
+    // Marshall-style woven-grille amp stacks seated on outer wing risers (x = ±9.8, z = -3.5)
+    const leftAmp = buildAmpStack(THEME_COLORS.guitar, this.ampGrillTex, this.perforatedMaps);
+    leftAmp.group.position.set(-9.8, 0.28, -3.5);
+    leftAmp.group.rotation.y = 0.34;
     stageGroup.add(leftAmp.group);
 
-    const rightAmp = buildAmpStack(THEME_COLORS.bass, this.ampGrillTex);
-    rightAmp.group.position.set(5.7, 0.24, -2.5);
-    rightAmp.group.rotation.y = -0.32;
+    const rightAmp = buildAmpStack(THEME_COLORS.bass, this.ampGrillTex, this.perforatedMaps);
+    rightAmp.group.position.set(9.8, 0.28, -3.5);
+    rightAmp.group.rotation.y = -0.34;
     stageGroup.add(rightAmp.group);
 
     this.ampLedMats = [leftAmp.ledMat, rightAmp.ledMat];
     this.ampGrillMats = [leftAmp.grillMat, rightAmp.grillMat];
     this.subCones = [leftAmp.subCone, rightAmp.subCone];
 
-    // Stage Floor Monitor Wedges + realistic coiled stage mic cables
-    const wedgeMat = new THREE.MeshStandardMaterial({ color: 0x161b29, roughness: 0.65, metalness: 0.22 });
+    // Ground Subwoofer Walls on outer stage wings (x = ±12.8, z = 2.8)
+    const groundSubCabMat = new THREE.MeshStandardMaterial({ color: 0x0b0e16, roughness: 0.72, metalness: 0.28 });
+    const groundSubGrillMat = new THREE.MeshStandardMaterial({
+      map: this.perforatedMaps.map,
+      bumpMap: this.perforatedMaps.bumpMap,
+      bumpScale: 0.032,
+      color: 0x1e293b,
+      roughness: 0.52,
+      metalness: 0.58,
+    });
+    [-12.8, 12.8].forEach((sx) => {
+      for (let col = -1; col <= 1; col += 2) {
+        for (let stack = 0; stack < 3; stack += 1) {
+          const cx = sx + col * 0.64;
+          const subBox = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.72, 0.96), groundSubCabMat);
+          subBox.position.set(cx, 0.36 + stack * 0.74, 2.8);
+          const subGrill = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.6, 0.05), groundSubGrillMat);
+          subGrill.position.set(cx, 0.36 + stack * 0.74, 3.29);
+          stageGroup.add(subBox, subGrill);
+          this.subCones.push(subGrill);
+        }
+      }
+    });
+
+    // Low-profile glowing Guitar & Bass Pedalboards flush at wing marks + gaffer-tape cable runs
+    const pedalBoardMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5, metalness: 0.6 });
+    const gafferMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9, metalness: 0.05 });
+    [
+      { x: -4.5, z: 1.65, col: THEME_COLORS.guitar },
+      { x: 4.5, z: 1.65, col: THEME_COLORS.bass },
+    ].forEach((pb) => {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.045, 0.42), pedalBoardMat);
+      board.position.set(pb.x, 0.022, pb.z);
+      board.rotation.x = 0.08;
+      const stompMat = new THREE.MeshStandardMaterial({ color: pb.col, emissive: pb.col, emissiveIntensity: 1.6 });
+      for (let p = -1; p <= 1; p += 1) {
+        const stomp = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.035, 0.18), stompMat);
+        stomp.position.set(pb.x + p * 0.22, 0.052, pb.z);
+        stageGroup.add(stomp);
+      }
+      const gaffer = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 2.2), gafferMat);
+      gaffer.position.set(pb.x * 1.15, 0.005, pb.z - 1.15);
+      stageGroup.add(board, gaffer);
+      this.stageExtraDisposables.push(stompMat);
+    });
+
+    // Stage Floor Monitor Wedges along 28m main edge + T-catwalk thrust tip
+    const wedgeMat = new THREE.MeshStandardMaterial({
+      bumpMap: this.woodMaps.bumpMap,
+      bumpScale: 0.02,
+      roughnessMap: this.woodMaps.roughnessMap,
+      color: 0x161b29,
+      roughness: 0.68,
+      metalness: 0.18,
+    });
     const cableMat = new THREE.MeshStandardMaterial({ color: 0x090b10, roughness: 0.85, metalness: 0.1 });
-    [-3.6, -1.5, 1.5, 3.6].forEach((wx) => {
+    [
+      { x: -8.6, z: 4.35 },
+      { x: -5.4, z: 4.35 },
+      { x: -2.8, z: 4.35 },
+      { x: 2.8, z: 4.35 },
+      { x: 5.4, z: 4.35 },
+      { x: 8.6, z: 4.35 },
+      { x: -2.4, z: 10.65 },
+      { x: 0.0, z: 10.65 },
+      { x: 2.4, z: 10.65 },
+    ].forEach((wPos) => {
       const wedgeGroup = new THREE.Group();
-      wedgeGroup.position.set(wx, 0.17, 2.28);
+      wedgeGroup.position.set(wPos.x, 0.17, wPos.z);
       wedgeGroup.rotation.x = -0.34;
       const wedge = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.34, 0.5), wedgeMat);
       const wedgeLed = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.04, 0.04), this.stageRimMat);
@@ -1576,50 +3677,111 @@ export class StageBand {
       wedgeGroup.add(wedge, wedgeLed);
       stageGroup.add(wedgeGroup);
 
-      // Floor cable curving back toward amp wing
       const cableCoil = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.02, 6, 16), cableMat);
       cableCoil.rotation.x = Math.PI * 0.5;
-      cableCoil.position.set(wx * 0.85, 0.02, 1.72);
+      cableCoil.position.set(wPos.x * 0.88, 0.02, wPos.z - 0.52);
       stageGroup.add(cableCoil);
     });
 
-    // Giant Curved Rear LED Video Wall Jumbotron (concave arc facing the stadium!)
+    this.stageExtraDisposables.push(
+      plankDeckMat, deckMat, apronMat, barFrameMat, barPanelMat, rugMat,
+      shieldMat, chromeRailMat, trussMat, fixtureMat, this.blinderMat,
+      groundSubCabMat, groundSubGrillMat, pedalBoardMat, gafferMat, wedgeMat, cableMat
+    );
+
+    // Oversized Curved Center LED Video Wall + Flanking Left/Right IMAG Screens (Live 30 FPS Offscreen Camera + HUD Overlay)
     this.ledCanvas = document.createElement('canvas');
     this.ledCanvas.width = 512;
-    this.ledCanvas.height = 200;
+    this.ledCanvas.height = 288;
     this.ledCtx = this.ledCanvas.getContext('2d');
     this.ledTexture = new THREE.CanvasTexture(this.ledCanvas);
     this.ledTexture.colorSpace = THREE.SRGBColorSpace;
 
     const ledFrameMat = new THREE.MeshStandardMaterial({ color: 0x0b0f1a, roughness: 0.42, metalness: 0.78 });
-    const curveRadius = 15.2;
-    const curveSpan = 0.84;
-    const curvedFrameGeo = new THREE.CylinderGeometry(curveRadius + 0.14, curveRadius + 0.14, 4.9, 28, 1, true, Math.PI - curveSpan * 0.5, curveSpan);
+    const curveRadius = 22.0;
+    const curveSpan = 0.62;
+    const curvedFrameGeo = new THREE.CylinderGeometry(curveRadius + 0.16, curveRadius + 0.16, 8.0, 32, 1, true, Math.PI - curveSpan * 0.5, curveSpan);
     const ledFrame = new THREE.Mesh(curvedFrameGeo, ledFrameMat);
-    ledFrame.position.set(0, 4.45, curveRadius - 8.45);
+    ledFrame.position.set(0, 6.45, curveRadius - 9.45);
     stageGroup.add(ledFrame);
 
-    [-5.1, 5.1].forEach((lx) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 2.3, 0.26), trussMat);
-      leg.position.set(lx, 1.05, -7.85);
+    [-7.2, 7.2].forEach((lx) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.32, 2.8, 0.32), trussMat);
+      leg.position.set(lx, 1.4, -9.05);
       stageGroup.add(leg);
     });
 
-    const curvedScreenGeo = new THREE.CylinderGeometry(curveRadius, curveRadius, 4.5, 28, 1, true, Math.PI - (curveSpan - 0.04) * 0.5, curveSpan - 0.04);
-    // Flip horizontal UV so text reads cleanly left-to-right from the front!
+    const curvedScreenGeo = new THREE.CylinderGeometry(curveRadius, curveRadius, 7.45, 32, 1, true, Math.PI - (curveSpan - 0.02) * 0.5, curveSpan - 0.02);
     const uvAttr = curvedScreenGeo.attributes.uv;
     for (let i = 0; i < uvAttr.count; i += 1) {
       uvAttr.setX(i, 1 - uvAttr.getX(i));
     }
-    const ledPanelMat = new THREE.MeshBasicMaterial({
-      map: this.ledTexture,
+    const imagVideoTex = this.jumbotronTarget ? this.jumbotronTarget.texture : null;
+    const imagVideoMatBack = new THREE.MeshStandardMaterial({
+      map: imagVideoTex,
+      emissiveMap: imagVideoTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 1.0,
+      roughness: 0.3,
+      metalness: 0.05,
+      toneMapped: false,
       side: THREE.BackSide,
     });
-    const ledPanel = new THREE.Mesh(curvedScreenGeo, ledPanelMat);
-    ledPanel.position.set(0, 4.45, curveRadius - 8.32);
-    stageGroup.add(ledPanel);
+    const imagHudMatBack = new THREE.MeshBasicMaterial({
+      map: this.ledTexture,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      side: THREE.BackSide,
+    });
+    const centerImagVideo = new THREE.Mesh(curvedScreenGeo, imagVideoMatBack);
+    centerImagVideo.position.set(0, 6.45, curveRadius - 9.3);
+    const centerImagHud = new THREE.Mesh(curvedScreenGeo, imagHudMatBack);
+    centerImagHud.position.set(0, 6.45, curveRadius - 9.26);
+    stageGroup.add(centerImagVideo, centerImagHud);
 
-    // Glowing VIP Front-Row Stage Apron LED Shoutout Banner ("Hello Carmen, and Carmelo! 🎸✨")
+    // Flanking Left & Right 16:9 IMAG Side Screens (5.6m x 3.15m)
+    const sideScreenFrameGeo = new THREE.BoxGeometry(5.88, 3.42, 0.18);
+    const sideScreenGeo = new THREE.PlaneGeometry(5.6, 3.15);
+    const imagVideoMatFront = new THREE.MeshStandardMaterial({
+      map: imagVideoTex,
+      emissiveMap: imagVideoTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 1.0,
+      roughness: 0.3,
+      metalness: 0.05,
+      toneMapped: false,
+    });
+    const imagHudMatFront = new THREE.MeshBasicMaterial({
+      map: this.ledTexture,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+    });
+
+    this.imagMeshes = [centerImagVideo, centerImagHud];
+    [
+      { x: -10.8, rotY: 0.36 },
+      { x: 10.8, rotY: -0.36 },
+    ].forEach((sideCfg) => {
+      const wingGroup = new THREE.Group();
+      wingGroup.position.set(sideCfg.x, 7.6, -4.1);
+      wingGroup.rotation.y = sideCfg.rotY;
+
+      const sFrame = new THREE.Mesh(sideScreenFrameGeo, ledFrameMat);
+      const sVideo = new THREE.Mesh(sideScreenGeo, imagVideoMatFront);
+      sVideo.position.z = 0.1;
+      const sHud = new THREE.Mesh(sideScreenGeo, imagHudMatFront);
+      sHud.position.z = 0.12;
+
+      wingGroup.add(sFrame, sVideo, sHud);
+      stageGroup.add(wingGroup);
+      this.imagMeshes.push(sVideo, sHud);
+    });
+
+    // World Tour Front-Row Stage Apron LED Banner (mounted on T-catwalk thrust face)
     this.vipBannerCanvas = document.createElement('canvas');
     this.vipBannerCanvas.width = 1024;
     this.vipBannerCanvas.height = 96;
@@ -1629,16 +3791,22 @@ export class StageBand {
     this.drawVipBanner();
 
     const vipBannerFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(10.2, 0.62, 0.08),
-      new THREE.MeshStandardMaterial({ color: 0x0b0f1a, roughness: 0.35, metalness: 0.8 })
+      new THREE.BoxGeometry(7.2, 0.56, 0.08),
+      ledFrameMat
     );
-    vipBannerFrame.position.set(0, -0.34, 3.22);
+    vipBannerFrame.position.set(0, -0.34, 11.24);
     const vipBannerMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(9.9, 0.5),
+      new THREE.PlaneGeometry(6.95, 0.44),
       new THREE.MeshBasicMaterial({ map: this.vipBannerTex })
     );
-    vipBannerMesh.position.set(0, -0.34, 3.27);
+    vipBannerMesh.position.set(0, -0.34, 11.29);
     stageGroup.add(vipBannerFrame, vipBannerMesh);
+
+    this.stageExtraDisposables.push(
+      ledFrameMat, curvedFrameGeo, curvedScreenGeo, sideScreenFrameGeo, sideScreenGeo,
+      imagVideoMatBack, imagHudMatBack, imagVideoMatFront, imagHudMatFront,
+      vipBannerFrame.geometry, vipBannerMesh.geometry, vipBannerMesh.material
+    );
 
     this.drawLedBackdrop(0.2, 0.2, 0.2, false, false);
 
@@ -1652,62 +3820,47 @@ export class StageBand {
     const h = 96;
 
     const grad = ctx.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0, '#1e1038');
-    grad.addColorStop(0.25, '#3b0764');
-    grad.addColorStop(0.5, '#500724');
-    grad.addColorStop(0.75, '#3b0764');
-    grad.addColorStop(1, '#1e1038');
+    grad.addColorStop(0, '#091124');
+    grad.addColorStop(0.25, '#0c2742');
+    grad.addColorStop(0.5, '#1e1b4b');
+    grad.addColorStop(0.75, '#0c2742');
+    grad.addColorStop(1, '#091124');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = '#facc15';
+    ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 4;
     ctx.strokeRect(4, 4, w - 8, h - 8);
 
-    const pulse = 0.85 + Math.sin(this.clock * 4.5) * 0.15;
+    const venueName = (this.venueEnv?.meta?.name || 'WORLD TOUR ARENA').toUpperCase();
+    const songTitle = (this.currentTrackTitle || 'LIVE IN CONCERT').toUpperCase().slice(0, 26);
     ctx.save();
-    ctx.shadowColor = '#f472b6';
-    ctx.shadowBlur = 16 * pulse;
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 12;
     ctx.fillStyle = '#fef08a';
-    ctx.font = '700 40px Oswald, sans-serif';
+    ctx.font = '700 36px Oswald, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('★   HELLO CARMEN, AND CARMELO!  🎸✨   ★', w * 0.5, h * 0.52);
+    ctx.fillText(`★   ${venueName}  ·  ${songTitle}   ★`, w * 0.5, h * 0.52);
     ctx.restore();
 
     this.vipBannerTex.needsUpdate = true;
   }
 
   /**
-   * Draws live beat-reactive Canvas LED equalizer wall with mood gradients,
-   * concentric bass shockwave rings, peak-hold spectrum bars, and song title.
+   * Draws the translucent broadcast IMAG HUD overlay (static ● LIVE CAM badge, scanlines,
+   * active song/section banner, and compact bottom EQ) layered over the live 30 FPS camera feed.
    */
   drawLedBackdrop(bassE, midE, highE, feverActive, encoreActive) {
     const ctx = this.ledCtx;
     if (!ctx) return;
     const w = 512;
-    const h = 200;
-    const moodTop = this.lightingState?.ledBgTop;
+    const h = 288;
     const moodAccent = this.lightingState?.ledAccent;
 
-    // Mood-aware concert background gradient
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
-    if (encoreActive || feverActive) {
-      bgGrad.addColorStop(0, '#361a04');
-      bgGrad.addColorStop(0.55, '#180c05');
-      bgGrad.addColorStop(1, '#070910');
-    } else if (moodTop) {
-      bgGrad.addColorStop(0, moodTop);
-      bgGrad.addColorStop(0.68, '#0b1022');
-      bgGrad.addColorStop(1, '#050811');
-    } else {
-      bgGrad.addColorStop(0, '#072230');
-      bgGrad.addColorStop(1, '#060912');
-    }
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, w, h);
+    // Clear so live 30 FPS offscreen soloist video shows crisply underneath!
+    ctx.clearRect(0, 0, w, h);
 
-    // Primary color driven by Fever/Encore, active mood, or instrument
     const accent =
       encoreActive || feverActive
         ? '#facc15'
@@ -1718,30 +3871,69 @@ export class StageBand {
               ? '#f59e0b'
               : '#22d3ee');
 
-    // Beat-reactive concentric shockwave rings behind the equalizer
-    ctx.save();
-    ctx.strokeStyle = accent;
-    for (let r = 0; r < 3; r += 1) {
-      const phase = ((this.clock * 1.15 + r * 0.33) % 1);
-      const rad = 36 + phase * (165 + bassE * 65);
-      ctx.globalAlpha = (1 - phase) * (0.12 + bassE * 0.22);
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.arc(w * 0.5, h * 0.56, rad, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
+    // Top & bottom translucent broadcast scrims (keeping middle 72% wide open for live camera!)
+    const topBar = ctx.createLinearGradient(0, 0, 0, 62);
+    topBar.addColorStop(0, 'rgba(4, 8, 18, 0.84)');
+    topBar.addColorStop(1, 'rgba(4, 8, 18, 0.0)');
+    ctx.fillStyle = topBar;
+    ctx.fillRect(0, 0, w, 62);
 
-    // Animated 24-band equalizer spectrum with glowing peak-hold caps
+    const botBar = ctx.createLinearGradient(0, h - 76, 0, h);
+    botBar.addColorStop(0, 'rgba(4, 8, 18, 0.0)');
+    botBar.addColorStop(1, 'rgba(4, 8, 18, 0.88)');
+    ctx.fillStyle = botBar;
+    ctx.fillRect(0, h - 76, w, 76);
+
+    // Subtle LED scanlines
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
+    for (let y = 0; y < h; y += 6) {
+      ctx.fillRect(0, y, w, 1.5);
+    }
+
+    // Top-left static ● LIVE CAM broadcast badge (steady, never pulsing)
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+    ctx.fillRect(14, 14, 96, 26);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(14, 14, 96, 26);
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(28, 27, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '700 13px Oswald, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LIVE CAM', 39, 27);
+
+    // Top-right venue + section status tag
+    const sectionLabel = this.breActive
+      ? 'BIG ROCK ENDING'
+      : encoreActive
+        ? 'GRAND ENCORE'
+        : feverActive
+          ? 'FEVER 2X'
+          : (this.lightingState?.sectionType || 'WORLD TOUR').replace(/_/g, ' ');
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+    ctx.fillRect(w - 166, 14, 152, 26);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(w - 166, 14, 152, 26);
+    ctx.fillStyle = accent;
+    ctx.font = '700 13px Oswald, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(sectionLabel.slice(0, 18), w - 90, 27);
+
+    // Compact bottom 24-band equalizer along footer edge
     const bars = this.ledBarLevels.length;
     const gap = 4;
-    const barW = (w - 32 - gap * (bars - 1)) / bars;
+    const barW = (w - 36 - gap * (bars - 1)) / bars;
     for (let i = 0; i < bars; i += 1) {
       const distCenter = Math.abs(i - (bars - 1) * 0.5) / (bars * 0.5);
       const bandEnergy = distCenter < 0.35 ? bassE : distCenter < 0.7 ? midE : highE;
       const target = Math.min(
         1,
-        0.14 + bandEnergy * (0.88 - distCenter * 0.22) + Math.abs(Math.sin(this.clock * 6.5 + i * 0.62)) * 0.19
+        0.16 + bandEnergy * (0.84 - distCenter * 0.2) + Math.abs(Math.sin(this.clock * 6.5 + i * 0.62)) * 0.16
       );
       this.ledBarLevels[i] += (target - this.ledBarLevels[i]) * 0.38;
       if (this.ledBarLevels[i] > this.ledPeakLevels[i]) {
@@ -1750,84 +3942,93 @@ export class StageBand {
         this.ledPeakLevels[i] = Math.max(this.ledBarLevels[i], this.ledPeakLevels[i] - 0.032);
       }
 
-      const bh = Math.max(8, this.ledBarLevels[i] * (h - 70));
-      const bx = 16 + i * (barW + gap);
-      const by = h - 14 - bh;
-
-      const barGrad = ctx.createLinearGradient(0, by, 0, h - 14);
-      barGrad.addColorStop(0, '#ffffff');
-      barGrad.addColorStop(0.2, accent);
-      barGrad.addColorStop(1, 'rgba(15, 23, 42, 0.35)');
-      ctx.fillStyle = barGrad;
-      ctx.globalAlpha = 0.32 + this.ledBarLevels[i] * 0.56;
+      const bh = Math.max(4, this.ledBarLevels[i] * 36);
+      const bx = 18 + i * (barW + gap);
+      const by = h - 38 - bh;
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.36 + this.ledBarLevels[i] * 0.44;
       ctx.fillRect(bx, by, barW, bh);
 
-      // Peak-hold floating LED cap
-      const peakY = h - 14 - Math.max(8, this.ledPeakLevels[i] * (h - 70));
+      const peakY = h - 38 - Math.max(4, this.ledPeakLevels[i] * 36);
       ctx.fillStyle = '#ffffff';
-      ctx.globalAlpha = 0.88;
-      ctx.fillRect(bx, peakY - 3, barW, 3);
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(bx, peakY - 2, barW, 2);
     }
     ctx.globalAlpha = 1;
 
-    // Subtle LED scanline grid overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
-    for (let y = 0; y < h; y += 6) {
-      ctx.fillRect(0, y, w, 1.5);
-    }
-
-    // Center headline text (Song title or FINAL ENCORE banner)
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    if (encoreActive) {
-      ctx.fillStyle = '#fde047';
-      ctx.font = '700 20px Oswald, sans-serif';
-      ctx.fillText('★  FINAL ENCORE PERFORMANCE  ★', w * 0.5, 42);
-    } else if (feverActive) {
-      ctx.fillStyle = '#fde047';
-      ctx.font = '700 20px Oswald, sans-serif';
-      ctx.fillText('FEVER 2× OVERDRIVE', w * 0.5, 42);
-    } else {
-      ctx.fillStyle = 'rgba(226, 232, 240, 0.78)';
-      ctx.font = '600 14px Oswald, sans-serif';
-      ctx.fillText('LIVE IN CONCERT', w * 0.5, 38);
-    }
-
-    const title = (this.currentTrackTitle || 'ENCORE STAGE').toUpperCase().slice(0, 28);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '700 38px Oswald, sans-serif';
-    ctx.fillText(title, w * 0.5, 82);
-
-    // Glowing Friend Shoutout Ticker Ribbon across bottom of rear Jumbotron!
-    ctx.fillStyle = 'rgba(20, 8, 36, 0.84)';
-    ctx.fillRect(8, h - 38, w - 16, 30);
-    ctx.strokeStyle = '#f472b6';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(8, h - 38, w - 16, 30);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(10, h - 37, w - 20, 28);
-    ctx.clip();
-    const tickerMsg = '★  Hello Carmen, and Carmelo! 🎸✨   •   VIP FRONT ROW   •   Hello Carmen, and Carmelo! 🎸✨  ★';
-    ctx.font = '700 16px Oswald, sans-serif';
-    ctx.fillStyle = '#fde047';
-    ctx.textAlign = 'left';
-    const scrollSpan = 640;
-    const offset = ((this.clock * 46) % scrollSpan);
-    ctx.fillText(tickerMsg, 20 - offset, h - 22);
-    ctx.fillText(tickerMsg, 20 - offset + scrollSpan, h - 22);
-    ctx.restore();
-
-    // Frame border glow
+    // Bottom concert song title + venue ticker strip
+    const title = (this.currentTrackTitle || 'WORLD TOUR FINALE').toUpperCase().slice(0, 28);
+    const venueName = (this.venueEnv?.meta?.name || 'STADIUM TOUR').toUpperCase();
+    ctx.fillStyle = 'rgba(6, 10, 22, 0.88)';
+    ctx.fillRect(14, h - 34, w - 28, 22);
     ctx.strokeStyle = accent;
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(14, h - 34, w - 28, 22);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 14px Oswald, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(title, 24, h - 22);
+
+    ctx.fillStyle = '#fde047';
+    ctx.font = '700 12px Oswald, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(venueName, w - 24, h - 22);
+
+    // Outer frame border glow
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 3;
     ctx.strokeRect(2, 2, w - 4, h - 4);
 
     this.ledTexture.needsUpdate = true;
   }
 
+  /**
+   * Renders a live 30 FPS telephoto close-up of the featured soloist onto the curved LED wall
+   * and flanking IMAG screens, temporarily hiding IMAG meshes to prevent recursive feedback.
+   */
+  renderJumbotronImag(stageState, telemetry) {
+    if (!this.jumbotronTarget || !this.jumbotronCam || !this.renderer) return;
+    this._imagFrameToggle = (this._imagFrameToggle + 1) & 1;
+    if (this._imagFrameToggle !== 1) return;
+
+    const marks = this.getLineupMarks();
+    const secType = this.lightingState?.sectionType || stageState?.currentSection?.type || 'VERSE';
+    const vocalE = telemetry?.vocalEnergy || 0;
+    let featuredRole = this.activeInstrument || 'guitar';
+    if (secType === 'GUITAR_SOLO') {
+      featuredRole = 'guitar';
+    } else if (marks.vocals?.visible && (secType === 'CHORUS' || secType === 'BRIDGE' || vocalE > 0.4)) {
+      featuredRole = 'vocals';
+    }
+
+    const pos = this.livePositions?.[featuredRole] || this.livePositions.guitar;
+    const targetY = (pos.y || 0) + 1.5;
+    this._imagLookTarget.set(pos.x, targetY, pos.z);
+
+    const sideSign = featuredRole === 'guitar' ? -1 : featuredRole === 'bass' ? 1 : Math.sin(this.clock * 0.5) >= 0 ? 1 : -1;
+    const camOffX = featuredRole === 'piano' ? -1.45 : sideSign * 0.88;
+    const camOffZ = featuredRole === 'drums' ? 3.2 : 2.85;
+    this.jumbotronCam.position.set(pos.x + camOffX, targetY + 0.28, pos.z + camOffZ);
+    this.jumbotronCam.lookAt(this._imagLookTarget);
+
+    for (let i = 0; i < this.imagMeshes.length; i += 1) {
+      this.imagMeshes[i].visible = false;
+    }
+    const prevShadows = this.renderer.shadowMap.enabled;
+    this.renderer.shadowMap.enabled = false;
+    this.renderer.setRenderTarget(this.jumbotronTarget);
+    this.renderer.render(this.scene, this.jumbotronCam);
+    this.renderer.setRenderTarget(null);
+    this.renderer.shadowMap.enabled = prevShadows;
+    for (let i = 0; i < this.imagMeshes.length; i += 1) {
+      this.imagMeshes[i].visible = true;
+    }
+  }
+
   buildPerformingBand() {
+    this.clothingPbrMaps = createPbrClothingMaps();
+
     // 1. DRUMMER on elevated center riser
     this.drummer = buildRobloxCharacter({
       torsoColor: 0xd97706,
@@ -1838,21 +4039,22 @@ export class StageBand {
       accentColor: THEME_COLORS.drums,
       smile: 'grin',
       seated: true,
+      clothingPbrMaps: this.clothingPbrMaps,
     });
-    this.drummer.root.position.set(0, 0.64, -3.56);
+    this.drummer.root.position.set(0, DRUM_RISER_TOP_Y, -2.8);
     this.scene.add(this.drummer.root);
 
-    const stickMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.45 });
-    const stickGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.74, 8);
+    const stickMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.42, metalness: 0.08 });
+    const stickGeo = new THREE.CylinderGeometry(0.024, 0.03, 0.74, 8);
     this.leftDrumstick = new THREE.Mesh(stickGeo, stickMat);
-    this.leftDrumstick.position.set(0, -0.82, 0.34);
-    this.leftDrumstick.rotation.x = Math.PI * 0.45;
-    this.drummer.leftArmPivot.add(this.leftDrumstick);
+    this.leftDrumstick.position.set(0, -0.05, 0.28);
+    this.leftDrumstick.rotation.x = Math.PI * 0.44;
+    this.drummer.leftWristPivot.add(this.leftDrumstick);
 
     this.rightDrumstick = new THREE.Mesh(stickGeo, stickMat);
-    this.rightDrumstick.position.set(0, -0.82, 0.34);
-    this.rightDrumstick.rotation.x = Math.PI * 0.45;
-    this.drummer.rightArmPivot.add(this.rightDrumstick);
+    this.rightDrumstick.position.set(0, -0.05, 0.28);
+    this.rightDrumstick.rotation.x = Math.PI * 0.44;
+    this.drummer.rightWristPivot.add(this.rightDrumstick);
 
     // 2. LEAD GUITARIST (stage left or center in Singing Guitarist Power Trio)
     this.guitarist = buildRobloxCharacter({
@@ -1863,8 +4065,9 @@ export class StageBand {
       hairStyle: 'spiky',
       accentColor: THEME_COLORS.guitar,
       smile: 'grin',
+      clothingPbrMaps: this.clothingPbrMaps,
     });
-    this.guitarist.root.position.set(-3.55, 0, -1.1);
+    this.guitarist.root.position.set(-4.5, STAGE_DECK_TOP_Y, 1.0);
     this.guitarist.root.rotation.y = 0.24;
     this.scene.add(this.guitarist.root);
 
@@ -1878,8 +4081,9 @@ export class StageBand {
       accentColor: THEME_COLORS.bass,
       sunglasses: true,
       smile: 'cool',
+      clothingPbrMaps: this.clothingPbrMaps,
     });
-    this.bassist.root.position.set(3.55, 0, -1.1);
+    this.bassist.root.position.set(4.5, STAGE_DECK_TOP_Y, 1.0);
     this.bassist.root.rotation.y = -0.24;
     this.scene.add(this.bassist.root);
 
@@ -1892,20 +4096,21 @@ export class StageBand {
       hairStyle: 'long',
       accentColor: 0xf43f5e,
       smile: 'sing',
+      clothingPbrMaps: this.clothingPbrMaps,
     });
-    this.vocalist.root.position.set(0, 0, -0.78);
+    this.vocalist.root.position.set(0, STAGE_DECK_TOP_Y, 2.0);
     this.vocalistHeadsetGroup = buildVocalistHeadset();
     this.vocalist.headGroup.add(this.vocalistHeadsetGroup);
     this.scene.add(this.vocalist.root);
 
     this.micStand = buildMicStand();
-    this.micStand.position.set(0, 0, -0.18);
+    this.micStand.position.set(0, STAGE_DECK_TOP_Y, 2.6);
     this.scene.add(this.micStand);
 
-    // 5. KEYBOARDIST + 3D Piano / Synth / Keytar Rig
+    // 5. KEYBOARDIST + 3D Piano / Synth / Keytar Rig on dedicated 0.5m riser (+6.5, 0.5, -1.8)
     this.pianoRigGroup = new THREE.Group();
-    this.pianoRigGroup.position.set(-2.45, 0, -2.65);
-    this.pianoRigGroup.rotation.y = 0.42;
+    this.pianoRigGroup.position.set(6.5, KEYS_RISER_TOP_Y, -1.8);
+    this.pianoRigGroup.rotation.y = -0.44;
     this.scene.add(this.pianoRigGroup);
 
     this.keyboardist = buildRobloxCharacter({
@@ -1916,6 +4121,7 @@ export class StageBand {
       hairStyle: 'spiky',
       accentColor: THEME_COLORS.piano,
       smile: 'grin',
+      clothingPbrMaps: this.clothingPbrMaps,
     });
     this.keyboardist.root.position.set(0, 0, -0.92);
     this.pianoRigGroup.add(this.keyboardist.root);
@@ -1928,17 +4134,20 @@ export class StageBand {
       vocals: this.vocalist,
     };
 
-    // Strict shadow budget: castShadow = true strictly on the 5 performing band members
-    if (!this.isSoftwareGl) {
-      Object.values(this.membersByRole).forEach((member) => {
-        member?.root?.traverse((obj) => {
+    // Strict shadow budget + disable frustum culling across all 5 performing musicians so closeups/orbits never clip!
+    Object.values(this.membersByRole).forEach((member) => {
+      if (!member?.root) return;
+      setHierarchyFrustumCulled(member.root, false);
+      if (!this.isSoftwareGl) {
+        member.root.traverse((obj) => {
           if (obj.isMesh) {
             obj.castShadow = true;
             obj.receiveShadow = false;
           }
         });
-      });
-    }
+      }
+    });
+    setHierarchyFrustumCulled(this.pianoRigGroup, false);
 
     // Mount initial custom 3D gear, star lookalike & lineup geometry
     this.swapGuitarMesh(this.guitarModelId);
@@ -1949,46 +4158,23 @@ export class StageBand {
   }
 
   getLineupMarks() {
-    const id = this.bandLineupId;
-    const pianoPos = this.bandLineup?.positions?.piano || { x: -2.45, z: -2.65, rotY: 0.42 };
-    if (id === 'singing-guitarist') {
-      return {
-        guitar: { x: 0, z: -0.82, rotY: 0 },
-        bass: { x: 3.3, z: -1.15, rotY: -0.26 },
-        piano: pianoPos,
-        vocals: { x: 0, z: -0.78, rotY: 0, visible: false, headset: false },
-        micStandVisible: true,
-        forceDoubleKick: false,
-      };
-    }
-    if (id === 'pop-diva') {
-      return {
-        guitar: { x: -3.75, z: -1.35, rotY: 0.28 },
-        bass: { x: 3.75, z: -1.35, rotY: -0.28 },
-        piano: pianoPos,
-        vocals: { x: 0, z: -0.68, rotY: 0, visible: true, headset: true },
-        micStandVisible: false,
-        forceDoubleKick: false,
-      };
-    }
-    if (id === 'rock-power-trio') {
-      return {
-        guitar: { x: -3.15, z: -1.05, rotY: 0.22 },
-        bass: { x: 3.15, z: -1.05, rotY: -0.22 },
-        piano: pianoPos,
-        vocals: { x: 0, z: -0.78, rotY: 0, visible: false, headset: false },
-        micStandVisible: false,
-        forceDoubleKick: true,
-      };
-    }
-    // Default: 4-Piece Arena Band
+    const pos = this.bandLineup?.positions || {};
+    const drumsPos = pos.drums || { x: 0, y: DRUM_RISER_TOP_Y, z: -2.8, rotY: 0 };
+    const pianoPos = pos.piano || { x: 6.5, y: KEYS_RISER_TOP_Y, z: -1.8, rotY: -0.44 };
+    const micPos = pos.micStand || { x: 0, y: STAGE_DECK_TOP_Y, z: 2.6 };
     return {
-      guitar: { x: -3.55, z: -1.1, rotY: 0.24 },
-      bass: { x: 3.55, z: -1.1, rotY: -0.24 },
+      guitar: pos.guitar || { x: -4.5, y: STAGE_DECK_TOP_Y, z: 1.0, rotY: 0.24 },
+      bass: pos.bass || { x: 4.5, y: STAGE_DECK_TOP_Y, z: 1.0, rotY: -0.24 },
+      drums: drumsPos,
       piano: pianoPos,
-      vocals: { x: 0, z: -0.78, rotY: 0, visible: true, headset: false },
-      micStandVisible: true,
-      forceDoubleKick: false,
+      micStand: micPos,
+      vocals: {
+        ...(pos.vocals || { x: 0, y: STAGE_DECK_TOP_Y, z: 2.0, rotY: 0 }),
+        visible: this.bandLineup?.hasVocalist !== false,
+        headset: Boolean(this.bandLineup?.vocalistHeadset),
+      },
+      micStandVisible: Boolean(this.bandLineup?.showMicStand ?? true),
+      forceDoubleKick: Boolean(this.bandLineup?.forceDoubleKick),
     };
   }
 
@@ -1999,9 +4185,11 @@ export class StageBand {
       this.guitarAsset.dispose?.();
       this.guitarAsset = null;
     }
-    const built = buildCustomGuitarMesh(this.guitarModelId, this.instrumentSkinId);
+    const skin = this.instrumentSkins?.guitar || this.instrumentSkinId;
+    const built = buildCustomGuitarMesh(this.guitarModelId, skin);
     built.group.position.set(0.08, 0.42, 0.36);
     built.group.rotation.set(0.06, 0.08, 0.26);
+    setHierarchyFrustumCulled(built.group, false);
     this.guitarAsset = built;
     this.electricGuitar = built.group;
     if (this.guitarist) {
@@ -2016,9 +4204,11 @@ export class StageBand {
       this.bassAsset.dispose?.();
       this.bassAsset = null;
     }
-    const built = buildCustomBassMesh(this.bassModelId, this.instrumentSkinId);
+    const skin = this.instrumentSkins?.bass || this.instrumentSkinId;
+    const built = buildCustomBassMesh(this.bassModelId, skin);
     built.group.position.set(0.06, 0.44, 0.36);
     built.group.rotation.set(0.05, -0.08, 0.3);
+    setHierarchyFrustumCulled(built.group, false);
     this.bassAsset = built;
     this.bassGuitar = built.group;
     if (this.bassist) {
@@ -2033,11 +4223,18 @@ export class StageBand {
       this.drumKitAsset.dispose?.();
       this.drumKitAsset = null;
     }
+    const skin = this.instrumentSkins?.drums || this.instrumentSkinId;
     const built = buildCustomDrumKitMesh(this.drumKitModelId, {
       forceDoubleKick,
-      skinId: this.instrumentSkinId,
+      skinId: skin,
     });
-    built.group.position.set(0, 0.64, -3.4);
+    const marks = this.getLineupMarks();
+    built.group.position.set(
+      marks.drums?.x ?? 0,
+      marks.drums?.y ?? DRUM_RISER_TOP_Y,
+      (marks.drums?.z ?? -2.8) + 0.18
+    );
+    setHierarchyFrustumCulled(built.group, false);
     this.drumKitAsset = built;
     this.drumKit = built;
     this.scene.add(built.group);
@@ -2052,7 +4249,9 @@ export class StageBand {
       this.keyboardAsset.dispose?.();
       this.keyboardAsset = null;
     }
-    const built = buildCustomKeyboardMesh(this.keyboardModelId, this.instrumentSkinId);
+    const skin = this.instrumentSkins?.piano || this.instrumentSkinId;
+    const built = buildCustomKeyboardMesh(this.keyboardModelId, skin);
+    setHierarchyFrustumCulled(built.group, false);
     this.keyboardAsset = built;
 
     if (built.isKeytar && this.keyboardist) {
@@ -2064,24 +4263,37 @@ export class StageBand {
       built.group.position.set(0, 0, 0);
       this.pianoRigGroup.add(built.group);
       if (this.keyboardist) {
-        this.keyboardist.root.position.set(0, 0, this.keyboardModelId === 'concert-grand' ? -0.92 : -0.68);
+        const isGrand = this.keyboardModelId === 'concert-grand' || this.keyboardModelId === 'white-crystal-grand';
+        this.keyboardist.root.position.set(0, 0, isGrand ? -0.92 : -0.68);
       }
     }
+    setHierarchyFrustumCulled(this.pianoRigGroup, false);
   }
 
   applyStarLook(starLookId) {
     this.starLookId = starLookId || 'default-band';
     const look = getStarLookById(this.starLookId);
 
-    // Always reset vocalist & guitarist first so switching looks stays clean
-    this.vocalist?.applyLook(null);
-    this.guitarist?.applyLook(null);
+    // Always reset all 5 band members first so switching role-targeted looks never leaves leftovers
+    const allMembers = [this.vocalist, this.guitarist, this.bassist, this.drummer, this.keyboardist];
+    allMembers.forEach((m) => m?.applyLook(null));
 
-    if (!look || look.id === 'default-band') return;
+    if (!look || look.id === 'default-band') {
+      allMembers.forEach((m) => setHierarchyFrustumCulled(m?.root, false));
+      return;
+    }
 
     const marks = this.getLineupMarks();
-    if (look.targetRole === 'guitar') {
+    if (look.targetRole === 'all') {
+      allMembers.forEach((m) => m?.applyLook(look));
+    } else if (look.targetRole === 'guitar') {
       this.guitarist?.applyLook(look);
+    } else if (look.targetRole === 'bass') {
+      this.bassist?.applyLook(look);
+    } else if (look.targetRole === 'drums') {
+      this.drummer?.applyLook(look);
+    } else if (look.targetRole === 'piano') {
+      this.keyboardist?.applyLook(look);
     } else {
       // Frontperson look: apply to Vocalist if visible, else Singing Guitarist
       if (marks.vocals.visible && this.vocalist) {
@@ -2090,25 +4302,30 @@ export class StageBand {
         this.guitarist.applyLook(look);
       }
     }
+    allMembers.forEach((m) => setHierarchyFrustumCulled(m?.root, false));
   }
 
   applyBandLineup() {
     const marks = this.getLineupMarks();
+    if (this.drummer && marks.drums) {
+      this.drummer.root.position.set(marks.drums.x ?? 0, marks.drums.y ?? DRUM_RISER_TOP_Y, marks.drums.z ?? -2.8);
+      this.drummer.root.rotation.y = marks.drums.rotY ?? 0;
+    }
     if (this.guitarist) {
-      this.guitarist.root.position.set(marks.guitar.x, 0, marks.guitar.z);
+      this.guitarist.root.position.set(marks.guitar.x, marks.guitar.y ?? STAGE_DECK_TOP_Y, marks.guitar.z);
       this.guitarist.root.rotation.y = marks.guitar.rotY;
     }
     if (this.bassist) {
-      this.bassist.root.position.set(marks.bass.x, 0, marks.bass.z);
+      this.bassist.root.position.set(marks.bass.x, marks.bass.y ?? STAGE_DECK_TOP_Y, marks.bass.z);
       this.bassist.root.rotation.y = marks.bass.rotY;
     }
     if (this.pianoRigGroup && marks.piano) {
-      this.pianoRigGroup.position.set(marks.piano.x, 0, marks.piano.z);
-      this.pianoRigGroup.rotation.y = marks.piano.rotY ?? 0.42;
+      this.pianoRigGroup.position.set(marks.piano.x, marks.piano.y ?? KEYS_RISER_TOP_Y, marks.piano.z);
+      this.pianoRigGroup.rotation.y = marks.piano.rotY ?? -0.44;
     }
     if (this.vocalist) {
       this.vocalist.root.visible = marks.vocals.visible;
-      this.vocalist.root.position.set(marks.vocals.x, 0, marks.vocals.z);
+      this.vocalist.root.position.set(marks.vocals.x, marks.vocals.y ?? STAGE_DECK_TOP_Y, marks.vocals.z);
       this.vocalist.root.rotation.y = marks.vocals.rotY;
     }
     if (this.vocalistHeadsetGroup) {
@@ -2116,6 +4333,9 @@ export class StageBand {
     }
     if (this.micStand) {
       this.micStand.visible = marks.micStandVisible;
+      if (marks.micStand) {
+        this.micStand.position.set(marks.micStand.x ?? 0, marks.micStand.y ?? STAGE_DECK_TOP_Y, marks.micStand.z ?? 2.6);
+      }
     }
 
     // Update member spotlight targets to match lineup coordinates!
@@ -2126,6 +4346,10 @@ export class StageBand {
     if (this.memberSpots?.bass) {
       this.memberSpots.bass.baseTargetX = marks.bass.x;
       this.memberSpots.bass.baseTargetZ = marks.bass.z;
+    }
+    if (this.memberSpots?.drums && marks.drums) {
+      this.memberSpots.drums.baseTargetX = marks.drums.x ?? 0;
+      this.memberSpots.drums.baseTargetZ = marks.drums.z ?? -2.8;
     }
     if (this.memberSpots?.piano && marks.piano) {
       this.memberSpots.piano.baseTargetX = marks.piano.x;
@@ -2225,22 +4449,52 @@ export class StageBand {
     this.applyStarLook(id);
   }
 
-  setInstrumentSkin(skinId) {
-    this.instrumentSkinId = skinId || 'classic-sunburst';
+  setInstrumentSkin(skinId, targetRole = 'all') {
+    const cleanId = skinId || 'classic-sunburst';
     const marks = this.getLineupMarks();
-    this.swapGuitarMesh(this.guitarModelId);
-    this.swapBassMesh(this.bassModelId);
-    this.swapDrumKitMesh(this.drumKitModelId, marks.forceDoubleKick);
-    this.swapKeyboardMesh(this.keyboardModelId);
-
-    // Swap amp cabinet grille texture cleanly and dispose old texture
-    const prevGrillTex = this.ampGrillTex;
-    this.ampGrillTex = createAmpGrilleSkinTexture(this.instrumentSkinId);
-    for (let i = 0; i < this.ampGrillMats.length; i += 1) {
-      this.ampGrillMats[i].map = this.ampGrillTex;
-      this.ampGrillMats[i].needsUpdate = true;
+    if (!this.instrumentSkins) {
+      this.instrumentSkins = {
+        guitar: this.instrumentSkinId,
+        bass: this.instrumentSkinId,
+        drums: this.instrumentSkinId,
+        piano: this.instrumentSkinId,
+      };
     }
-    prevGrillTex?.dispose?.();
+
+    if (targetRole === 'all') {
+      this.instrumentSkinId = cleanId;
+      this.instrumentSkins.guitar = cleanId;
+      this.instrumentSkins.bass = cleanId;
+      this.instrumentSkins.drums = cleanId;
+      this.instrumentSkins.piano = cleanId;
+      this.swapGuitarMesh(this.guitarModelId);
+      this.swapBassMesh(this.bassModelId);
+      this.swapDrumKitMesh(this.drumKitModelId, marks.forceDoubleKick);
+      this.swapKeyboardMesh(this.keyboardModelId);
+    } else if (targetRole === 'guitar') {
+      this.instrumentSkins.guitar = cleanId;
+      this.swapGuitarMesh(this.guitarModelId);
+    } else if (targetRole === 'bass') {
+      this.instrumentSkins.bass = cleanId;
+      this.swapBassMesh(this.bassModelId);
+    } else if (targetRole === 'drums') {
+      this.instrumentSkins.drums = cleanId;
+      this.swapDrumKitMesh(this.drumKitModelId, marks.forceDoubleKick);
+    } else if (targetRole === 'piano') {
+      this.instrumentSkins.piano = cleanId;
+      this.swapKeyboardMesh(this.keyboardModelId);
+    }
+
+    if (targetRole === 'all' || targetRole === 'guitar') {
+      // Swap amp cabinet grille texture cleanly and dispose old texture
+      const prevGrillTex = this.ampGrillTex;
+      this.ampGrillTex = createAmpGrilleSkinTexture(this.instrumentSkins.guitar);
+      for (let i = 0; i < this.ampGrillMats.length; i += 1) {
+        this.ampGrillMats[i].map = this.ampGrillTex;
+        this.ampGrillMats[i].needsUpdate = true;
+      }
+      prevGrillTex?.dispose?.();
+    }
   }
 
   setAdaptiveQualityMode(lowPower) {
@@ -2274,23 +4528,34 @@ export class StageBand {
     const count = 152;
     this.crowdCount = count;
     this.crowdSeeds = [];
+    this.crowdPhase = new Float32Array(count);
+    this.crowdRole = new Uint8Array(count);
+    this.crowdColorState = new Uint8Array(count);
+    this.crowdEventRole = new Uint8Array(count);
 
-    const legsGeo = new THREE.BoxGeometry(0.56, 0.72, 0.34);
-    const beltGeo = new THREE.BoxGeometry(0.65, 0.16, 0.39);
-    const torsoGeo = new THREE.BoxGeometry(0.68, 0.64, 0.38);
+    const legsGeo = createBeveledBoxGeometry(0.56, 0.72, 0.34, 0.028);
+    const beltGeo = createBeveledBoxGeometry(0.65, 0.16, 0.39, 0.02);
+    const torsoGeo = createBeveledBoxGeometry(0.68, 0.64, 0.38, 0.036);
     const headGeo = createRobloxR15HeadGeometry();
     const hairGeo = createSpikyHairGeometry();
     const capGeo = createBaseballCapGeometry();
     const hpGeo = createHeadphonesGeometry();
 
     // Shoulder-jointed upper arm + elbow-jointed forearm for fluid R15 waving
-    const upperArmGeo = new THREE.BoxGeometry(0.21, 0.36, 0.21);
+    const upperArmGeo = createBeveledBoxGeometry(0.21, 0.36, 0.21, 0.022);
     upperArmGeo.translate(0, 0.17, 0);
-    const forearmGeo = new THREE.BoxGeometry(0.18, 0.36, 0.18);
+    const forearmGeo = createBeveledBoxGeometry(0.18, 0.36, 0.18, 0.02);
     forearmGeo.translate(0, 0.17, 0);
 
     const stickGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.62, 6);
     stickGeo.translate(0, 0.31, 0);
+    const backpackGeo = createBeveledBoxGeometry(0.42, 0.44, 0.16, 0.022);
+    const phoneGeo = new THREE.BoxGeometry(0.11, 0.2, 0.035);
+    phoneGeo.translate(0, 0.1, 0);
+    const collarGeo = createBeveledBoxGeometry(0.74, 0.16, 0.42, 0.024);
+    const wristbandGeo = new THREE.CylinderGeometry(0.115, 0.115, 0.07, 8);
+    const foamFingerGeo = createBeveledBoxGeometry(0.22, 0.44, 0.08, 0.015);
+    foamFingerGeo.translate(0, 0.22, 0);
 
     this.crowdFaceTex = createCrowdR15FaceTexture();
     const legsMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0.05 });
@@ -2303,9 +4568,14 @@ export class StageBand {
       metalness: 0.04,
     });
     const headwearMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.48, metalness: 0.18 });
+    const backpackMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.66, metalness: 0.12 });
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.65, metalness: 0.08 });
     const upperArmMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.58, metalness: 0.08 });
     const forearmMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.05 });
-    this.lightstickMat = new THREE.MeshBasicMaterial({ color: THEME_COLORS.guitar });
+    this.lightstickMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.crowdPhoneMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.crowdWristbandMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const foamFingerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.72, metalness: 0.05 });
 
     // Split headwear counts cleanly across the 152 fans
     this.hairIndices = [];
@@ -2313,6 +4583,7 @@ export class StageBand {
     this.hpIndices = [];
     for (let i = 0; i < count; i += 1) {
       const style = i % 5;
+      this.crowdRole[i] = style;
       if (style === 0 || style === 2) this.hairIndices.push(i);
       else if (style === 1 || style === 4) this.capIndices.push(i);
       else this.hpIndices.push(i);
@@ -2321,70 +4592,130 @@ export class StageBand {
     this.crowdLegsMesh = new THREE.InstancedMesh(legsGeo, legsMat, count);
     this.crowdBeltMesh = new THREE.InstancedMesh(beltGeo, beltMat, count);
     this.crowdTorsoMesh = new THREE.InstancedMesh(torsoGeo, torsoMat, count);
+    this.crowdBodyMesh = this.crowdTorsoMesh;
+    this.crowdCollarMesh = new THREE.InstancedMesh(collarGeo, collarMat, count);
     this.crowdHeadMesh = new THREE.InstancedMesh(headGeo, headMat, count);
     this.crowdHairMesh = new THREE.InstancedMesh(hairGeo, headwearMat, this.hairIndices.length);
     this.crowdCapMesh = new THREE.InstancedMesh(capGeo, headwearMat, this.capIndices.length);
     this.crowdHpMesh = new THREE.InstancedMesh(hpGeo, headwearMat, this.hpIndices.length);
+    this.crowdBackpackMesh = new THREE.InstancedMesh(backpackGeo, backpackMat, count);
     this.crowdUpperArmLMesh = new THREE.InstancedMesh(upperArmGeo, upperArmMat, count);
     this.crowdUpperArmRMesh = new THREE.InstancedMesh(upperArmGeo, upperArmMat, count);
     this.crowdForearmLMesh = new THREE.InstancedMesh(forearmGeo, forearmMat, count);
     this.crowdForearmRMesh = new THREE.InstancedMesh(forearmGeo, forearmMat, count);
+    this.crowdWristbandMesh = new THREE.InstancedMesh(wristbandGeo, this.crowdWristbandMat, count);
+    this.crowdFoamFingerMesh = new THREE.InstancedMesh(foamFingerGeo, foamFingerMat, count);
     this.lightstickMesh = new THREE.InstancedMesh(stickGeo, this.lightstickMat, count);
+    this.glowstickMesh = this.lightstickMesh;
+    this.crowdPhoneMesh = new THREE.InstancedMesh(phoneGeo, this.crowdPhoneMat, count);
 
     [
       this.crowdLegsMesh,
       this.crowdBeltMesh,
       this.crowdTorsoMesh,
+      this.crowdCollarMesh,
       this.crowdHeadMesh,
       this.crowdHairMesh,
       this.crowdCapMesh,
       this.crowdHpMesh,
+      this.crowdBackpackMesh,
       this.crowdUpperArmLMesh,
       this.crowdUpperArmRMesh,
       this.crowdForearmLMesh,
       this.crowdForearmRMesh,
+      this.crowdWristbandMesh,
+      this.crowdFoamFingerMesh,
       this.lightstickMesh,
+      this.crowdPhoneMesh,
     ].forEach((m) => {
       m.frustumCulled = false;
     });
 
-    // Arrange 152 R15 fans in stadium pit & rising bowl arcs from z = +4.4 out to z = +20.8
+    // Arrange 152 R15 fans in stadium pit & rising bowl arcs strictly outside T-catwalk & barricade (z >= 6.05)
     const rows = 8;
     const perRow = Math.ceil(count / rows);
     let idx = 0;
     for (let r = 0; r < rows && idx < count; r += 1) {
       const rowT = r / (rows - 1);
-      const zBase = 4.45 + rowT * 15.8;
-      const spreadX = 9.6 + rowT * 7.4;
+      const zBase = 6.15 + rowT * 15.0;
+      const spreadX = 9.8 + rowT * 7.4;
 
       for (let c = 0; c < perRow && idx < count; c += 1) {
         const colT = perRow > 1 ? c / (perRow - 1) : 0.5;
         const jitterX = Math.sin(idx * 12.7) * 0.4;
         const jitterZ = Math.cos(idx * 9.3) * 0.42;
-        const x = (colT * 2 - 1) * spreadX + jitterX;
-        const z = zBase + jitterZ;
+        let x = (colT * 2 - 1) * spreadX + jitterX;
+        let z = Math.max(6.05 + (idx % 3) * 0.18, zBase + jitterZ);
+        if ((Math.abs(x) < 2.65 && z < 9.35) || (Math.abs(x) < 4.65 && z < 12.15)) {
+          const sign = x >= 0 ? 1 : -1;
+          if (z < 10.6) {
+            const minWingX = z < 9.1 ? 2.72 : 4.72;
+            x = sign * Math.max(minWingX + (idx % 3) * 0.35, Math.abs(x));
+          } else {
+            z = 12.2 + (idx % 4) * 0.28;
+          }
+        }
         const floorY = -1.2 + Math.max(0, rowT - 0.32) * 1.15;
         const facingY = Math.atan2(-x, -1.5 - z);
-        const scale = 0.88 + (idx % 5) * 0.052;
-        const phase = idx * 0.67;
+        const heightScale = 0.88 + ((idx * 19) % 27) * 0.01;
+        const widthScale = 0.86 + ((idx * 23) % 31) * 0.01;
+        const scale = heightScale;
+        const poseVariant = (idx * 3 + r) % 4; // 0: Clap/Fist-Pump, 1: Rock Horns Sway, 2: Neon Stick/Phone Wave, 3: Staggered Bounce
+        const baseStickColorHex = CROWD_STICK_COLORS[(idx * 5 + r) % CROWD_STICK_COLORS.length];
+        const phase = idx * 0.73 + (r % 3) * 0.41;
         const waveDelay = rowT * 0.72 + Math.abs(colT - 0.5) * 0.35;
-        const hasStick = idx % 3 !== 0;
+        const hasStick = poseVariant === 2 || (poseVariant !== 0 && idx % 3 !== 0);
+        const hasBackpack = idx % 5 === 1 || idx % 7 === 0;
+        const hasPhone = poseVariant === 2 || idx % 3 === 1;
+        const hasHoodie = idx % 2 === 0 || idx % 3 === 2;
+        const hasFoamFinger = !hasStick && idx % 4 === 0;
 
-        this.crowdSeeds.push({ x, floorY, z, facingY, scale, phase, waveDelay, hasStick });
+        this.crowdPhase[idx] = phase;
+        this.crowdSeeds.push({
+          x,
+          floorY,
+          z,
+          facingY,
+          scale,
+          heightScale,
+          widthScale,
+          poseVariant,
+          baseStickColorHex,
+          phase,
+          waveDelay,
+          hasStick,
+          hasBackpack,
+          hasPhone,
+          hasHoodie,
+          hasFoamFinger,
+        });
 
-        // Randomized streetwear shirt, pants, and skin tone per fan
+        // Randomized streetwear shirt, pants, skin tone, glowsticks, wristbands & foam fingers per fan
         this._colorA.setHex(CROWD_SHIRT_COLORS[idx % CROWD_SHIRT_COLORS.length]);
         this.crowdTorsoMesh.setColorAt(idx, this._colorA);
         this.crowdUpperArmLMesh.setColorAt(idx, this._colorA);
         this.crowdUpperArmRMesh.setColorAt(idx, this._colorA);
 
+        this._colorB.setHex(idx % 3 === 0 ? 0xf8fafc : 0x0f172a);
+        this.crowdCollarMesh.setColorAt(idx, this._colorB);
+
         this._colorB.setHex(CROWD_PANTS_COLORS[(idx * 3) % CROWD_PANTS_COLORS.length]);
         this.crowdLegsMesh.setColorAt(idx, this._colorB);
+        this._colorB.setHex(idx % 2 === 0 ? 0x1e293b : 0x334155);
+        this.crowdBackpackMesh.setColorAt(idx, this._colorB);
 
         this._colorB.setHex(CROWD_SKIN_TONES[idx % CROWD_SKIN_TONES.length]);
         this.crowdHeadMesh.setColorAt(idx, this._colorB);
         this.crowdForearmLMesh.setColorAt(idx, this._colorB);
         this.crowdForearmRMesh.setColorAt(idx, this._colorB);
+
+        this._colorA.setHex(baseStickColorHex);
+        this.lightstickMesh.setColorAt(idx, this._colorA);
+        this.crowdWristbandMesh.setColorAt(idx, this._colorA);
+        this._colorB.setHex(idx % 2 === 0 ? 0xef4444 : 0x38bdf8);
+        this.crowdFoamFingerMesh.setColorAt(idx, this._colorB);
+        this._colorB.setHex(0xfef9c3);
+        this.crowdPhoneMesh.setColorAt(idx, this._colorB);
 
         idx += 1;
       }
@@ -2408,15 +4739,20 @@ export class StageBand {
       this.crowdLegsMesh,
       this.crowdBeltMesh,
       this.crowdTorsoMesh,
+      this.crowdCollarMesh,
       this.crowdHeadMesh,
       this.crowdHairMesh,
       this.crowdCapMesh,
       this.crowdHpMesh,
+      this.crowdBackpackMesh,
       this.crowdUpperArmLMesh,
       this.crowdUpperArmRMesh,
       this.crowdForearmLMesh,
       this.crowdForearmRMesh,
+      this.crowdWristbandMesh,
+      this.crowdFoamFingerMesh,
       this.lightstickMesh,
+      this.crowdPhoneMesh,
     ].forEach((m) => {
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
       m.castShadow = false;
@@ -2428,104 +4764,586 @@ export class StageBand {
       this.crowdLegsMesh,
       this.crowdBeltMesh,
       this.crowdTorsoMesh,
+      this.crowdCollarMesh,
       this.crowdHeadMesh,
       this.crowdHairMesh,
       this.crowdCapMesh,
       this.crowdHpMesh,
+      this.crowdBackpackMesh,
       this.crowdUpperArmLMesh,
       this.crowdUpperArmRMesh,
       this.crowdForearmLMesh,
       this.crowdForearmRMesh,
-      this.lightstickMesh
+      this.crowdWristbandMesh,
+      this.crowdFoamFingerMesh,
+      this.lightstickMesh,
+      this.crowdPhoneMesh
     );
 
-    this.updateFullBodiedCrowd(0, 120, 0.12, 0.55, false);
+    // Pre-allocated Crowd Surfer 3D R15 NPC (Zero GC!)
+    const surferGroup = new THREE.Group();
+    const sShirt = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.5 });
+    const sPants = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+    const sSkin = new THREE.MeshStandardMaterial({ color: 0xf4c79a, roughness: 0.45 });
+    const sTorso = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.72, 0.36), sShirt);
+    const sHead = new THREE.Mesh(headGeo, sSkin);
+    sHead.position.set(0, 0.6, 0);
+    const sLegL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.68, 0.28), sPants);
+    sLegL.position.set(-0.18, -0.68, 0);
+    const sLegR = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.68, 0.28), sPants);
+    sLegR.position.set(0.18, -0.68, 0);
+    const sArmL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.2), sSkin);
+    sArmL.position.set(-0.46, 0.14, 0.08);
+    sArmL.rotation.z = 0.55;
+    const sArmR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.2), sSkin);
+    sArmR.position.set(0.46, 0.14, 0.08);
+    sArmR.rotation.z = -0.55;
+    surferGroup.add(sTorso, sHead, sLegL, sLegR, sArmL, sArmR);
+    surferGroup.rotation.x = Math.PI * 0.48;
+    surferGroup.visible = false;
+    this.crowdSurferGroup = surferGroup;
+    this.scene.add(surferGroup);
+
+    // Pre-allocated Cartoon Brawl Dust & Star Burst FX Group ('SUNTUKAN', Zero GC!)
+    const brawlGroup = new THREE.Group();
+    const dustMat = new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.72 });
+    const starMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
+    const puffGeo = new THREE.IcosahedronGeometry(0.32, 0);
+    const starGeo = new THREE.OctahedronGeometry(0.18, 0);
+    this.brawlPuffs = [];
+    for (let p = 0; p < 5; p += 1) {
+      const m = new THREE.Mesh(p < 2 ? puffGeo : starGeo, p < 2 ? dustMat : starMat);
+      brawlGroup.add(m);
+      this.brawlPuffs.push(m);
+    }
+    brawlGroup.visible = false;
+    this.brawlFxGroup = brawlGroup;
+    this.scene.add(brawlGroup);
+
+    // Pre-allocated Blue Teardrop Particle Pool for Ballad Crying Sway (Zero GC!)
+    this.crowdTearCount = 128;
+    const tearPositions = new Float32Array(this.crowdTearCount * 3);
+    for (let tIdx = 0; tIdx < this.crowdTearCount; tIdx += 1) {
+      tearPositions[tIdx * 3 + 1] = -60;
+    }
+    const tearGeo = new THREE.BufferGeometry();
+    tearGeo.setAttribute('position', new THREE.BufferAttribute(tearPositions, 3));
+    const tearMat = new THREE.PointsMaterial({
+      color: 0x38bdf8,
+      size: 0.16,
+      map: this.glowTex,
+      transparent: true,
+      opacity: 0.92,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.crowdTearPoints = new THREE.Points(tearGeo, tearMat);
+    this.crowdTearPoints.frustumCulled = false;
+    this.crowdTearPoints.visible = false;
+    this.crowdTearParticles = Array.from({ length: this.crowdTearCount }, () => ({
+      active: false,
+      x: 0,
+      y: -60,
+      z: 0,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      life: 0,
+      maxLife: 0.55,
+    }));
+    this.crowdTearCursor = 0;
+    this.crowdTearSpawnTimer = 0;
+    this.scene.add(this.crowdTearPoints);
+
+    this.updateCrowd(
+      0,
+      { beatPhase: 0, bassE: 0.12, overallE: 0.25, bpm: 120, songTime: 0, hypeNorm: 0.55, feverOrEncore: false },
+      'VERSE',
+      0
+    );
   }
 
-  updateFullBodiedCrowd(songTime, bpm, bassE, hypeNorm, feverOrEncore, sectionType = 'VERSE', overallE = 0.35) {
+  nextCrowdRand() {
+    this.crowdEvent.seed = (this.crowdEvent.seed * 1664525 + 1013904223) >>> 0;
+    return this.crowdEvent.seed / 4294967296;
+  }
+
+  updateCrowdEventState(dt, { playing, isWalkOn, hypeNorm, feverOrEncore, sectionType, ambianceType, streak = 0 }) {
+    const ev = this.crowdEvent;
+    if (!playing || isWalkOn) {
+      ev.type = 'NORMAL';
+      ev.timer = 0;
+      ev.cooldown = 4.5;
+      this.activeCrowdEvent.type = 'NORMAL';
+      this.prevCrowdStreak = streak;
+      this.crowdLastSection = sectionType;
+      return;
+    }
+
+    if (ev.type !== 'NORMAL') {
+      ev.timer -= dt;
+      if (ev.timer <= 0) {
+        ev.type = 'NORMAL';
+        ev.cooldown = 10.0 + this.nextCrowdRand() * 8.0;
+      }
+      this.activeCrowdEvent.type = ev.type;
+      this.prevCrowdStreak = streak;
+      this.crowdLastSection = sectionType;
+      return;
+    }
+
+    const sectionChangedPeak =
+      sectionType &&
+      sectionType !== this.crowdLastSection &&
+      (sectionType === 'CHORUS' || sectionType === 'BRIDGE') &&
+      ev.cooldown < 7.5;
+    const crossed50Streak = streak >= 50 && this.prevCrowdStreak < 50;
+    this.prevCrowdStreak = streak;
+    this.crowdLastSection = sectionType;
+
+    ev.cooldown -= dt;
+    if (ev.cooldown > 0 && !sectionChangedPeak && !crossed50Streak) {
+      this.activeCrowdEvent.type = 'NORMAL';
+      return;
+    }
+
+    const r = this.nextCrowdRand();
+    const isBallad = ambianceType === 'BALLAD_EMOTIONAL';
+    if (isBallad || sectionType === 'BRIDGE') {
+      ev.type = r < 0.36 ? 'HEART_HANDS' : 'CRYING_SWAY';
+      ev.duration = 8.0 + this.nextCrowdRand() * 3.0;
+      ev.centerX = 0;
+      ev.centerZ = 15.2;
+    } else if (hypeNorm < 0.44 || (ambianceType === 'METAL_CHAOS' && r < 0.32)) {
+      ev.type = 'SUNTUKAN';
+      ev.duration = 6.0 + this.nextCrowdRand() * 2.0;
+      let fA = -1;
+      let fB = -1;
+      for (let ci = 0; ci < this.crowdSeeds.length - 1; ci += 1) {
+        const sa = this.crowdSeeds[ci];
+        const sb = this.crowdSeeds[ci + 1];
+        if (sa && sb && sa.z >= 12.4 && sb.z >= 12.4 && Math.abs(sa.x) <= 5.5 && Math.abs(sb.x) <= 5.5) {
+          fA = ci;
+          fB = ci + 1;
+          break;
+        }
+      }
+      ev.fighterAIdx = fA >= 0 ? fA : 60;
+      ev.fighterBIdx = fB >= 0 ? fB : 61;
+      const fa = this.crowdSeeds[ev.fighterAIdx];
+      const fb = this.crowdSeeds[ev.fighterBIdx];
+      if (fa && fb && fa.z >= 12.2 && fb.z >= 12.2) {
+        ev.centerX = (fa.x + fb.x) * 0.5;
+        ev.centerZ = Math.max(12.6, (fa.z + fb.z) * 0.5);
+      } else {
+        ev.centerX = 0;
+        ev.centerZ = 14.8;
+      }
+    } else if (
+      (ambianceType === 'METAL_CHAOS' || ambianceType === 'ROCK_ANTHEM' || sectionType === 'CHORUS' || sectionType === 'GUITAR_SOLO') &&
+      r < 0.52
+    ) {
+      ev.type = r < 0.24 ? 'WALL_OF_DEATH' : 'MOSHPIT';
+      ev.duration = ev.type === 'WALL_OF_DEATH' ? 7.0 : 7.5 + this.nextCrowdRand() * 2.5;
+      ev.centerX = ev.type === 'WALL_OF_DEATH' ? 0 : (this.nextCrowdRand() - 0.5) * 2.4;
+      ev.centerZ = 15.2;
+    } else if (feverOrEncore || hypeNorm > 0.64 || sectionType === 'CHORUS' || crossed50Streak) {
+      if (r < 0.36) {
+        ev.type = 'CROWD_SURFING';
+        ev.duration = 6.5;
+      } else if (r < 0.72) {
+        ev.type = 'STADIUM_WAVE';
+        ev.duration = 7.6;
+      } else {
+        ev.type = 'HEART_HANDS';
+        ev.duration = 7.0;
+      }
+      this.crowdSurferDir = this.nextCrowdRand() < 0.5 ? 1 : -1;
+      ev.surferX = -6.5 * this.crowdSurferDir;
+      ev.surferZ = 12.85;
+      ev.centerX = 0;
+      ev.centerZ = ev.type === 'CROWD_SURFING' ? 12.85 : 15.2;
+    } else if (ambianceType === 'POP_UPBEAT' || r >= 0.52) {
+      ev.type = r < 0.75 ? 'STADIUM_WAVE' : 'HEART_HANDS';
+      ev.duration = 7.2;
+      ev.centerX = 0;
+      ev.centerZ = 15.2;
+    } else {
+      ev.cooldown = 10.0 + this.nextCrowdRand() * 8.0;
+      this.activeCrowdEvent.type = 'NORMAL';
+      return;
+    }
+
+    ev.timer = ev.duration;
+    this.activeCrowdEvent.type = ev.type;
+  }
+
+  updateFullBodiedCrowd(
+    songTime,
+    bpm,
+    bassE,
+    hypeNorm,
+    feverOrEncore,
+    sectionType = 'VERSE',
+    overallE = 0.35,
+    streakTier = 0,
+    multiplierColor = null,
+    ambianceType = 'ROCK_ANTHEM'
+  ) {
+    const resolvedBeatPhase = (((songTime * (bpm / 60)) % 1) + 1) % 1;
+    this.updateCrowd(
+      0.016,
+      {
+        beatPhase: resolvedBeatPhase,
+        bassE,
+        overallE,
+        bpm,
+        songTime,
+        hypeNorm,
+        feverOrEncore,
+        isBallad: ambianceType === 'BALLAD_EMOTIONAL',
+        ambianceType,
+        multiplierColor,
+        streakTier,
+      },
+      sectionType,
+      streakTier * 25
+    );
+  }
+
+  updateCrowd(dt, audioState = {}, songSection = 'VERSE', streak = 0) {
     const t = this.clock;
-    const beatRad = songTime * (bpm / 60) * Math.PI * 2;
+    const bpm = Math.max(70, Math.min(200, audioState.bpm || 120));
+    const songTime = audioState.songTime ?? t;
+    const resolvedBeatPhase = Number.isFinite(audioState.beatPhase)
+      ? audioState.beatPhase
+      : (((songTime * (bpm / 60)) % 1) + 1) % 1;
+    const barPhase = Number.isFinite(audioState.barPhase)
+      ? audioState.barPhase
+      : ((((songTime * (bpm / 60)) / 4) % 1) + 1) % 1;
+    const lightstickBoost = audioState.lightstickBoost ?? 1.0;
+    const beatRad = resolvedBeatPhase * Math.PI * 2;
+    const bassE = audioState.bassE ?? 0.2;
+    const overallE = audioState.overallE ?? 0.35;
+    const hypeNorm = audioState.hypeNorm ?? 0.55;
+    const feverOrEncore = Boolean(audioState.feverOrEncore);
+    const ambianceType = audioState.ambianceType || 'ROCK_ANTHEM';
+    const multiplierColor = audioState.multiplierColor || null;
+    const streakTier =
+      audioState.streakTier ?? (streak >= 100 ? 3 : streak >= 50 ? 2 : streak >= 25 ? 1 : 0);
+
+    const ev = this.crowdEvent;
+    const evType = ev.type;
+    const isBalladMode =
+      Boolean(audioState.isBallad) ||
+      ambianceType === 'BALLAD_EMOTIONAL' ||
+      evType === 'CRYING_SWAY' ||
+      evType === 'BALLAD_TEARS';
     const isBalladSway =
       !feverOrEncore &&
-      (bpm < 96 || ((sectionType === 'INTRO' || sectionType === 'BRIDGE') && overallE < 0.32));
-    const isChorusUnison = feverOrEncore || sectionType === 'CHORUS' || sectionType === 'OUTRO';
-    const energy = Math.min(1.45, 0.24 + bassE * 0.85 + hypeNorm * 0.38 + (feverOrEncore ? 0.36 : 0));
+      (isBalladMode ||
+        (streakTier < 2 &&
+          (bpm < 96 || ((songSection === 'INTRO' || songSection === 'BRIDGE') && overallE < 0.32))));
+    const isChorusUnison = feverOrEncore || streakTier >= 2 || songSection === 'CHORUS' || songSection === 'OUTRO';
+    const isHeartSwirl =
+      !isBalladSway && (evType === 'STADIUM_WAVE' || evType === 'HEART_WAVE' || streakTier >= 2 || songSection === 'CHORUS' || feverOrEncore);
+    const sectionEnergyMult =
+      feverOrEncore ? 1.28 :
+      songSection === 'CHORUS' || songSection === 'GUITAR_SOLO' || songSection === 'OUTRO' ? 1.15 :
+      songSection === 'PRE_CHORUS' || songSection === 'VERSE' ? 0.85 :
+      songSection === 'INTRO' || songSection === 'BRIDGE' ? 0.5 : 0.82;
+    const energy = Math.min(
+      1.5,
+      (0.24 + bassE * 0.85 + hypeNorm * 0.38 + (feverOrEncore ? 0.36 : 0) + streakTier * 0.08) * sectionEnergyMult
+    );
+    const evProgress = ev.duration > 0 ? Math.max(0, Math.min(1, 1 - ev.timer / ev.duration)) : 0;
+    const isHeartHands = evType === 'HEART_HANDS';
+    const isWallOfDeath = evType === 'WALL_OF_DEATH';
+    const isPeakJumpMoment =
+      songSection === 'CHORUS' ||
+      songSection === 'GUITAR_SOLO' ||
+      feverOrEncore ||
+      streak >= 50;
+    const jumpPctThreshold = feverOrEncore || streak >= 100 ? 7 : isPeakJumpMoment ? 5 : 1;
 
-    // Synchronize crowd lightstick glow in unison on Choruses / Fever / Encore!
-    if (this.lightstickMat) {
-      if (feverOrEncore) {
-        this._colorA.setHex(0xfde047);
-      } else if (isChorusUnison) {
-        const hue = (t * 0.16) % 1;
-        this._colorA.setHSL(hue, 0.92, 0.62);
-      } else if (isBalladSway) {
-        this._colorA.setHex(0xfef3c7);
-      } else {
-        this._colorA.setHex(THEME_COLORS[this.activeInstrument] || 0x38bdf8);
-      }
-      this.lightstickMat.color.lerp(this._colorA, 0.12);
+    // Resolve live per-instance glowstick / smartphone / wristband color state
+    let colorStateCode = 0;
+    if (isHeartHands) {
+      this._colorA.setHex(0xf472b6);
+      colorStateCode = 5;
+    } else if (feverOrEncore || streakTier >= 3) {
+      this._colorA.setHex(0xfde047);
+      colorStateCode = 4;
+    } else if (isBalladSway) {
+      this._colorA.setHex(0xfef3c7);
+      colorStateCode = 1;
+    } else if (streakTier >= 1 && multiplierColor) {
+      this._colorA.copy(multiplierColor);
+      colorStateCode = 3;
+    } else if (isChorusUnison) {
+      const hue = (t * 0.18) % 1;
+      this._colorA.setHSL(hue, 0.92, 0.62);
+      colorStateCode = 2;
+    } else {
+      this._colorA.setHex(THEME_COLORS[this.activeInstrument] || 0x38bdf8);
+      colorStateCode = 0;
     }
+    this.lightstickMat.color.setHex(0xffffff);
+    if (this.crowdWristbandMat) {
+      this.crowdWristbandMat.color.setHex(0xffffff);
+    }
+
+    // Update Crowd Surfer pooled NPC (sweeping left-to-right across front-row hands!)
+    if (this.crowdSurferGroup) {
+      if (evType === 'CROWD_SURFING' || evType === 'CROWD_SURF') {
+        const startX = -6.5 * this.crowdSurferDir;
+        const endX = 6.5 * this.crowdSurferDir;
+        const surfX = THREE.MathUtils.lerp(startX, endX, evProgress);
+        const surfZ = ev.surferZ + Math.sin(evProgress * Math.PI * 2) * 0.65;
+        const surfY = 1.45 + Math.abs(Math.sin(t * 7.2)) * 0.24;
+        this.crowdSurferGroup.visible = true;
+        this.crowdSurferGroup.position.set(surfX, surfY, surfZ);
+        this.crowdSurferGroup.rotation.set(
+          Math.PI * 0.48 + Math.sin(t * 5.8) * 0.14,
+          Math.sin(t * 3.4) * 0.24,
+          Math.cos(t * 4.8) * 0.22
+        );
+        ev.centerX = surfX;
+        ev.centerZ = surfZ;
+      } else {
+        this.crowdSurferGroup.visible = false;
+      }
+    }
+
+    if (this.brawlFxGroup) {
+      if (evType === 'SUNTUKAN') {
+        this.brawlFxGroup.visible = true;
+        this.brawlFxGroup.position.set(ev.centerX, 0.55, ev.centerZ);
+        for (let p = 0; p < this.brawlPuffs.length; p += 1) {
+          const m = this.brawlPuffs[p];
+          const ang = t * (4.5 + p) + p * 1.3;
+          const rad = p < 2 ? 0.38 : 0.72;
+          m.position.set(Math.cos(ang) * rad, Math.sin(ang * 1.4) * 0.35 + (p >= 2 ? 0.38 : 0), Math.sin(ang) * rad);
+          m.rotation.set(t * 5 + p, t * 4, p);
+          const pScale = p < 2 ? 0.8 + Math.sin(t * 14 + p) * 0.25 : 0.9 + Math.cos(t * 12 + p) * 0.2;
+          m.scale.set(pScale, pScale, pScale);
+        }
+      } else {
+        this.brawlFxGroup.visible = false;
+      }
+    }
+
+    // Stadium Wave sweeping across arena from x = -14 to x = +14 + synchronize 360° Stadium Bowl Spectators!
+    const waveFrontX = evType === 'STADIUM_WAVE' || evType === 'HEART_WAVE' ? -14.0 + evProgress * 28.0 : -999;
+    const isPhoneLightsEvent = evType === 'PHONE_LIGHTS';
+    this.venueEnv?.dynamicElements?.updateBowl?.(
+      t,
+      waveFrontX,
+      evType === 'STADIUM_WAVE' || evType === 'HEART_WAVE',
+      isBalladMode || evType === 'CRYING_SWAY',
+      resolvedBeatPhase,
+      barPhase,
+      isChorusUnison,
+      lightstickBoost,
+      isPhoneLightsEvent
+    );
 
     let hairSlot = 0;
     let capSlot = 0;
     let hpSlot = 0;
+    let instanceColorDirty = false;
 
     for (let i = 0; i < this.crowdCount; i += 1) {
       const s = this.crowdSeeds[i];
-      const sc = s.scale;
-      const cosF = Math.cos(s.facingY);
-      const sinF = Math.sin(s.facingY);
+      const scH = s.heightScale ?? s.scale;
+      const scW = s.widthScale ?? s.scale;
+      const scHead = (scH + scW) * 0.5;
+      const sc = scH;
+      const poseVariant = s.poseVariant ?? (i % 4);
+      const fanPhase = this.crowdPhase[i];
+      let fanX = s.x;
+      let fanZ = s.z;
+      let fanFacingY = s.facingY;
+      let eventRole = 0;
 
-      // Slow ballad unison side-to-side sway vs. energetic staggered stadium-wave jump & overhead clap!
+      if (evType === 'MOSHPIT') {
+        if (Math.hypot(s.x - ev.centerX, s.z - ev.centerZ) < 4.4 && s.z >= 12.4) {
+          eventRole = 1; // Mosh runner clearing pit & orbiting rapidly outside T-catwalk
+          const dx = s.x - ev.centerX;
+          const dz = s.z - ev.centerZ;
+          const baseDist = Math.hypot(dx, dz);
+          const angle = Math.atan2(dz, dx) + t * 3.1;
+          const pitR = Math.max(2.4, Math.min(4.0, baseDist + 0.9));
+          fanX = ev.centerX + Math.cos(angle) * pitR;
+          fanZ = Math.max(12.25, ev.centerZ + Math.sin(angle) * pitR);
+          fanFacingY = angle + Math.PI * 0.5;
+        }
+      } else if (isWallOfDeath && Math.abs(s.x) < 5.2 && s.z >= 12.6 && s.z <= 19.0) {
+        eventRole = 7; // Wall of Death split (< -2.4 vs > 2.4) then downbeat collision charge
+        const sideSign = s.x >= 0 ? 1 : -1;
+        if (evProgress < 0.45) {
+          const splitEase = Math.min(1, evProgress / 0.25);
+          fanX = THREE.MathUtils.lerp(s.x, sideSign * (2.6 + Math.abs(s.x) * 0.45), splitEase);
+          fanFacingY = -sideSign * Math.PI * 0.5;
+        } else {
+          const chargeT = Math.min(1, (evProgress - 0.45) / 0.35);
+          fanX = THREE.MathUtils.lerp(sideSign * 3.0, sideSign * (0.42 + (i % 3) * 0.25), chargeT);
+          fanFacingY = -sideSign * Math.PI * 0.5;
+        }
+      } else if (evType === 'SUNTUKAN') {
+        if (i === ev.fighterAIdx) {
+          eventRole = 2;
+          fanX = ev.centerX - 0.56 + Math.sin(t * 7.5) * 0.14;
+          fanZ = ev.centerZ + Math.cos(t * 6.0) * 0.08;
+          fanFacingY = Math.PI * 0.5;
+        } else if (i === ev.fighterBIdx) {
+          eventRole = 3;
+          fanX = ev.centerX + 0.56 - Math.sin(t * 7.5) * 0.14;
+          fanZ = ev.centerZ - Math.cos(t * 6.0) * 0.08;
+          fanFacingY = -Math.PI * 0.5;
+        } else {
+          const dx = ev.centerX - s.x;
+          const dz = ev.centerZ - s.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < 4.5) {
+            eventRole = 4; // Brawl spectator filming inward
+            fanFacingY = Math.atan2(dx, dz);
+          }
+        }
+      } else if ((evType === 'CROWD_SURFING' || evType === 'CROWD_SURF') && this.crowdSurferGroup) {
+        const dx = fanX - this.crowdSurferGroup.position.x;
+        const dz = fanZ - this.crowdSurferGroup.position.z;
+        if (dx * dx + dz * dz < 6.5) {
+          eventRole = 5; // Surfer carrier
+        }
+      } else if (isBalladMode) {
+        eventRole = 6;
+      }
+      this.crowdEventRole[i] = eventRole;
+
+      if (this.crowdColorState[i] !== colorStateCode || colorStateCode === 2) {
+        this.crowdColorState[i] = colorStateCode;
+        if (colorStateCode === 0) {
+          this._colorB.setHex(s.baseStickColorHex || 0x38bdf8).lerp(this._colorA, 0.28);
+        } else if (colorStateCode === 2) {
+          const fanHue = ((t * 0.18) + (i % 12) * 0.083) % 1;
+          this._colorB.setHSL(fanHue, 0.92, 0.62);
+        } else {
+          this._colorB.copy(this._colorA);
+        }
+        this.lightstickMesh.setColorAt(i, this._colorB);
+        this.crowdWristbandMesh.setColorAt(i, this._colorB);
+        instanceColorDirty = true;
+      }
+
+      const isMoshRunner = eventRole === 1;
+      const isFighterA = eventRole === 2;
+      const isFighterB = eventRole === 3;
+      const isBrawlSpectator = eventRole === 4;
+      const isSurferCarrier = eventRole === 5;
+      const isWallRunner = eventRole === 7;
+      const isThrower = i === this.crowdThrowerIdx && this.crowdThrowWindup > 0;
+
+      const cosF = Math.cos(fanFacingY);
+      const sinF = Math.sin(fanFacingY);
+
+      // Sync staggered crowd bounce, fist pumps, claps, rock horns & glowstick waves to live 192 PPQ beatPhase
       const wavePhase = isBalladSway
-        ? beatRad * 0.25 - s.waveDelay * 0.4
-        : beatRad * 0.5 - s.waveDelay * 2.4;
-      const bounceWave = isBalladSway ? 0 : Math.abs(Math.sin(wavePhase + s.phase * 0.25));
-      const jumpY = isBalladSway
-        ? Math.sin(beatRad * 0.5 + s.phase * 0.2) * 0.025 * sc
-        : bounceWave * (0.09 + energy * 0.4) * sc;
+        ? beatRad * 0.5 - s.waveDelay * 0.35
+        : beatRad - s.waveDelay * 2.2;
+      const bounceWave = isBalladSway
+        ? 0
+        : Math.pow(Math.abs(Math.sin(wavePhase * (poseVariant === 3 ? 1.0 : 0.5) + fanPhase * 0.34)), 1.35);
+      const stadiumWaveBump =
+        evType === 'STADIUM_WAVE' || evType === 'HEART_WAVE'
+          ? Math.exp(-Math.pow((s.x - waveFrontX) / 2.25, 2)) * 0.58 * scH
+          : 0;
+      const canNormalJump = isPeakJumpMoment ? (i % 10) < jumpPctThreshold : poseVariant === 3 && (i % 6 === 0);
+      const jumpY =
+        isFighterA || isFighterB
+          ? Math.abs(Math.sin(t * 11)) * 0.14 * scH
+          : isMoshRunner || isWallRunner
+            ? Math.abs(Math.sin(beatRad * 2 + fanPhase)) * 0.28 * scH
+            : isBrawlSpectator
+              ? Math.abs(Math.sin(t * 9.5 + fanPhase)) * 0.16 * scH
+              : isBalladSway
+                ? 0
+                : (canNormalJump ? bounceWave * (0.09 + energy * 0.34) * scH : Math.abs(Math.sin(beatRad + fanPhase)) * 0.04 * energy * scH) + stadiumWaveBump;
       const baseY = s.floorY + Math.max(0, jumpY);
 
-      // 1. Legs / Pants
-      this._dummy.position.set(s.x, baseY + 0.36 * sc, s.z);
-      this._dummy.rotation.set(0, s.facingY, 0);
-      this._dummy.scale.set(sc, sc, sc);
+      // 1. Legs / Pants (planted firmly on baseY)
+      this._dummy.position.set(fanX, baseY + 0.36 * scH, fanZ);
+      this._dummy.rotation.set(0, fanFacingY, 0);
+      this._dummy.scale.set(scW, scH, scW);
       this._dummy.updateMatrix();
       this.crowdLegsMesh.setMatrixAt(i, this._dummy.matrix);
 
       // 2. Waist / Belt detail
-      const torsoLean = isBalladSway ? 0.03 : Math.sin(wavePhase + s.phase * 0.4) * 0.09 * energy;
-      this._dummy.position.set(s.x, baseY + 0.78 * sc, s.z);
-      this._dummy.rotation.set(torsoLean * 0.5, s.facingY, 0);
-      this._dummy.scale.set(sc, sc, sc);
+      const torsoLean = isFighterA || isFighterB
+        ? 0.32 + Math.sin(t * 16 + (isFighterA ? 0 : Math.PI)) * 0.16
+        : isMoshRunner || isWallRunner
+          ? 0.22
+          : isThrower
+            ? -0.25 + (1 - this.crowdThrowWindup / 0.42) * 0.48
+            : isBalladSway
+              ? 0.04
+              : Math.sin(wavePhase + fanPhase * 0.42) * (poseVariant === 1 ? 0.12 : 0.08) * energy;
+      this._dummy.position.set(fanX, baseY + 0.78 * scH, fanZ);
+      this._dummy.rotation.set(torsoLean * 0.5, fanFacingY, 0);
+      this._dummy.scale.set(scW, scH, scW);
       this._dummy.updateMatrix();
       this.crowdBeltMesh.setMatrixAt(i, this._dummy.matrix);
 
-      // 3. Upper R15 Torso (gentle unison sway during ballads, bouncy groove during rock sections)
+      // 3. Upper R15 Torso + Hoodie Collar Accent
+      const hugOffset = eventRole === 6 ? (i % 2 === 0 ? 0.12 : -0.12) : 0;
       const swayZ = isBalladSway
-        ? Math.sin(beatRad * 0.25) * 0.16
-        : Math.sin(t * 2.4 + s.phase) * 0.07;
-      this._dummy.position.set(s.x, baseY + 1.15 * sc, s.z);
-      this._dummy.rotation.set(torsoLean, s.facingY, swayZ);
-      this._dummy.scale.set(sc, sc, sc);
+        ? Math.sin(beatRad * 0.5 + fanPhase * 0.15) * 0.18 + hugOffset
+        : Math.sin(beatRad * 0.5 + fanPhase * 0.52) * (poseVariant === 1 ? 0.12 : 0.08) * (0.65 + energy * 0.45);
+      this._dummy.position.set(fanX, baseY + 1.15 * scH, fanZ);
+      this._dummy.rotation.set(torsoLean, fanFacingY, swayZ);
+      this._dummy.scale.set(scW, scH, scW);
       this._dummy.updateMatrix();
       this.crowdTorsoMesh.setMatrixAt(i, this._dummy.matrix);
 
+      if (s.hasHoodie) {
+        this._dummy.position.set(fanX, baseY + 1.44 * scH, fanZ);
+        this._dummy.rotation.set(torsoLean, fanFacingY, swayZ);
+        this._dummy.scale.set(scW, scH, scW);
+      } else {
+        this._dummy.position.set(0, -40, 0);
+        this._dummy.scale.set(0, 0, 0);
+      }
+      this._dummy.updateMatrix();
+      this.crowdCollarMesh.setMatrixAt(i, this._dummy.matrix);
+
+      // 3B. Optional Streetwear Backpack
+      if (s.hasBackpack) {
+        this._dummy.position.set(fanX - sinF * 0.24 * scW, baseY + 1.12 * scH, fanZ - cosF * 0.24 * scW);
+        this._dummy.rotation.set(torsoLean, fanFacingY, swayZ);
+        this._dummy.scale.set(scW, scH, scW);
+      } else {
+        this._dummy.position.set(0, -40, 0);
+        this._dummy.scale.set(0, 0, 0);
+      }
+      this._dummy.updateMatrix();
+      this.crowdBackpackMesh.setMatrixAt(i, this._dummy.matrix);
+
       // 4. Rounded Roblox R15 Head with Face Decal
-      const headX = s.x;
-      const headY = baseY + 1.72 * sc;
-      const headZ = s.z;
+      const headX = fanX;
+      const headY = baseY + 1.72 * scH;
+      const headZ = fanZ;
       const headPitch = isBalladSway
         ? -0.05 + Math.sin(beatRad * 0.5) * 0.05
-        : -0.07 + Math.sin(beatRad + s.phase * 0.5) * 0.13 * energy;
+        : -0.07 + Math.sin(beatRad + fanPhase * 0.6) * (0.1 + energy * 0.12);
+      const headYaw = isBalladSway ? 0 : Math.sin(t * 1.4 + fanPhase) * 0.14;
       this._dummy.position.set(headX, headY, headZ);
-      this._dummy.rotation.set(headPitch, s.facingY, swayZ * 0.85);
-      this._dummy.scale.set(sc, sc, sc);
+      this._dummy.rotation.set(headPitch, fanFacingY + headYaw, swayZ * 0.85);
+      this._dummy.scale.set(scHead, scHead, scHead);
       this._dummy.updateMatrix();
       this.crowdHeadMesh.setMatrixAt(i, this._dummy.matrix);
 
       // 5. Distinct Headwear (Spiky Hair / Baseball Cap / Headphones) locked to head transform!
-      const style = i % 5;
+      const style = this.crowdRole[i];
       if (style === 0 || style === 2) {
         this.crowdHairMesh.setMatrixAt(hairSlot, this._dummy.matrix);
         hairSlot += 1;
@@ -2537,33 +5355,94 @@ export class StageBand {
         hpSlot += 1;
       }
 
-      // 6. Shoulder-Jointed Upper Arms + Elbow-Jointed Forearms (ballad sway / overhead clap / fist pump!)
-      const armOffset = 0.45 * sc;
-      const shoulderY = baseY + 1.4 * sc;
-      const upperLen = 0.34 * sc;
-      const foreLen = 0.34 * sc;
+      // 6. Shoulder-Jointed Upper Arms + Elbow-Jointed Forearms across 4 varied pose states
+      const armOffset = 0.45 * scW;
+      const shoulderY = baseY + 1.4 * scH;
+      const upperLen = 0.34 * scH;
+      const foreLen = 0.34 * scH;
 
-      const clapFan = !isBalladSway && !s.hasStick && (i % 3 === 0);
-      const clapPulse = clapFan ? Math.pow(Math.max(0, Math.sin(beatRad * 0.5)), 4) * 0.45 : 0;
+      const clapFan = !isBalladSway && (poseVariant === 0 || (!s.hasStick && i % 3 === 0));
+      const clapPulse = clapFan ? Math.pow(Math.max(0, Math.sin(beatRad + fanPhase * 0.15)), 3.2) * 0.5 : 0;
 
-      const waveL = isBalladSway
-        ? Math.sin(beatRad * 0.25) * 0.42
-        : clapFan
-          ? -0.28 - clapPulse
-          : Math.sin(wavePhase + s.phase * 0.3) * (0.28 + energy * 0.38);
-      const waveR = isBalladSway
-        ? Math.sin(beatRad * 0.25) * 0.46
-        : clapFan
-          ? 0.28 + clapPulse
-          : Math.sin(wavePhase + s.phase * 0.3 + (isChorusUnison ? 0 : 0.55)) * (0.34 + energy * 0.44);
+      const heartSwirl = isHeartSwirl ? Math.sin(beatRad * 0.5 + (i % 2 === 0 ? 0 : Math.PI * 0.5)) * 0.32 : 0;
+      let waveL;
+      let waveR;
+      let armFrontTiltL = 0.16;
+      let armFrontTiltR = 0.18;
+
+      if (isBalladSway) {
+        waveL = Math.sin(beatRad * 0.5 + fanPhase * 0.15) * 0.44;
+        waveR = Math.sin(beatRad * 0.5 + fanPhase * 0.15) * 0.48;
+      } else if (poseVariant === 0 && !s.hasStick) {
+        // Variant 0: Enthusiastic chest-level clap or alternating single-arm fist-pump
+        if (i % 2 === 0) {
+          waveL = -0.34 - clapPulse;
+          waveR = 0.34 + clapPulse;
+          armFrontTiltL = 0.42;
+          armFrontTiltR = 0.42;
+        } else {
+          waveL = -0.18 + Math.sin(beatRad + fanPhase) * 0.14;
+          waveR = 0.18 + Math.sin(wavePhase + fanPhase) * (0.28 + energy * 0.4);
+          armFrontTiltL = -0.45;
+          armFrontTiltR = 0.28 + Math.abs(Math.sin(beatRad + fanPhase)) * 0.45;
+        }
+      } else if (poseVariant === 1) {
+        // Variant 1: Dual-arm V-shaped rock sway / devil-horns energy
+        const rockSway = Math.sin(wavePhase * 0.5 + fanPhase * 0.4) * (0.28 + energy * 0.25);
+        waveL = -0.36 + rockSway + heartSwirl * 0.5;
+        waveR = 0.36 + rockSway - heartSwirl * 0.5;
+        armFrontTiltL = 0.22;
+        armFrontTiltR = 0.22;
+      } else if (poseVariant === 2) {
+        // Variant 2: Focused lightstick / smartphone wave aloft while left arm grooving
+        waveL = -0.16 + Math.sin(wavePhase + fanPhase) * 0.22;
+        waveR = Math.sin(wavePhase * 0.5 + fanPhase * 0.3) * (0.42 + energy * 0.35) - heartSwirl;
+        armFrontTiltL = -0.3;
+        armFrontTiltR = 0.26;
+      } else {
+        // Variant 3: Staggered hype pump & double-time groove
+        waveL = Math.sin(wavePhase + fanPhase * 0.25) * (0.32 + energy * 0.42) + heartSwirl;
+        waveR = Math.sin(wavePhase + fanPhase * 0.25 + (isChorusUnison ? 0 : 0.55)) * (0.38 + energy * 0.48) - heartSwirl;
+      }
+
+      if (isFighterA || isFighterB) {
+        const swing = Math.sin(t * 17 + (isFighterA ? 0 : Math.PI));
+        waveL = -0.35 + swing * 0.58;
+        waveR = 0.35 - swing * 0.58;
+        armFrontTiltL = 1.1 + swing * 0.52;
+        armFrontTiltR = 1.1 - swing * 0.52;
+      } else if (isHeartHands) {
+        // Overhead Heart Arch hands raised toward band!
+        waveL = -0.62;
+        waveR = 0.62;
+        armFrontTiltL = -0.18;
+        armFrontTiltR = -0.18;
+      } else if (isThrower) {
+        const throwP = 1 - Math.max(0, Math.min(1, this.crowdThrowWindup / 0.42));
+        armFrontTiltR = throwP < 0.45 ? -1.15 : THREE.MathUtils.lerp(-1.15, 1.45, (throwP - 0.45) / 0.55);
+        waveR = -0.2;
+      } else if (isSurferCarrier) {
+        waveL = -0.15;
+        waveR = 0.15;
+        armFrontTiltL = 0.08;
+        armFrontTiltR = 0.08;
+      } else if (evType === 'STADIUM_WAVE' || evType === 'HEART_WAVE') {
+        const boost = stadiumWaveBump * 1.4;
+        waveL = -0.32 - boost;
+        waveR = 0.32 + boost;
+      } else if (isBrawlSpectator) {
+        armFrontTiltR = 0.68;
+        waveL = Math.sin(t * 10 + fanPhase) * 0.45;
+        waveR = 0.12;
+      }
 
       // Left Upper Arm
-      const lx = s.x - cosF * armOffset;
-      const lz = s.z + sinF * armOffset;
+      const lx = fanX - cosF * armOffset;
+      const lz = fanZ + sinF * armOffset;
       const lTiltZ = 0.24 + waveL;
       this._dummy.position.set(lx, shoulderY, lz);
-      this._dummy.rotation.set(0.16, s.facingY, lTiltZ);
-      this._dummy.scale.set(sc, sc, sc);
+      this._dummy.rotation.set(armFrontTiltL, fanFacingY, lTiltZ);
+      this._dummy.scale.set(scW, scH, scW);
       this._dummy.updateMatrix();
       this.crowdUpperArmLMesh.setMatrixAt(i, this._dummy.matrix);
 
@@ -2571,20 +5450,22 @@ export class StageBand {
       const lElbowX = lx - Math.sin(lTiltZ) * upperLen * cosF;
       const lElbowZ = lz + Math.sin(lTiltZ) * upperLen * sinF;
       const lElbowY = shoulderY + Math.cos(lTiltZ) * upperLen;
-      const lForeTiltZ = lTiltZ * 0.85 - 0.14 + Math.cos(wavePhase * 1.2 + s.phase) * (isBalladSway ? 0.06 : 0.18);
+      const lForeTiltZ = isHeartHands
+        ? 0.52
+        : lTiltZ * 0.85 - 0.14 + Math.cos(wavePhase * 1.2 + fanPhase) * (isBalladSway ? 0.06 : 0.18);
       this._dummy.position.set(lElbowX, lElbowY, lElbowZ);
-      this._dummy.rotation.set(0.24, s.facingY, lForeTiltZ);
-      this._dummy.scale.set(sc, sc, sc);
+      this._dummy.rotation.set(armFrontTiltL + 0.08, fanFacingY, lForeTiltZ);
+      this._dummy.scale.set(scW, scH, scW);
       this._dummy.updateMatrix();
       this.crowdForearmLMesh.setMatrixAt(i, this._dummy.matrix);
 
       // Right Upper Arm
-      const rx = s.x + cosF * armOffset;
-      const rz = s.z - sinF * armOffset;
+      const rx = fanX + cosF * armOffset;
+      const rz = fanZ - sinF * armOffset;
       const rTiltZ = -0.24 + waveR;
       this._dummy.position.set(rx, shoulderY, rz);
-      this._dummy.rotation.set(0.18, s.facingY, rTiltZ);
-      this._dummy.scale.set(sc, sc, sc);
+      this._dummy.rotation.set(armFrontTiltR, fanFacingY, rTiltZ);
+      this._dummy.scale.set(scW, scH, scW);
       this._dummy.updateMatrix();
       this.crowdUpperArmRMesh.setMatrixAt(i, this._dummy.matrix);
 
@@ -2592,46 +5473,169 @@ export class StageBand {
       const rElbowX = rx - Math.sin(rTiltZ) * upperLen * cosF;
       const rElbowZ = rz + Math.sin(rTiltZ) * upperLen * sinF;
       const rElbowY = shoulderY + Math.cos(rTiltZ) * upperLen;
-      const rForeTiltZ = rTiltZ * 0.85 + 0.16 + Math.sin(wavePhase * 1.2 + s.phase) * (isBalladSway ? 0.06 : 0.2);
+      const rForeTiltZ = isHeartHands
+        ? -0.52
+        : rTiltZ * 0.85 + 0.16 + Math.sin(wavePhase * 1.2 + fanPhase) * (isBalladSway ? 0.06 : 0.2);
       this._dummy.position.set(rElbowX, rElbowY, rElbowZ);
-      this._dummy.rotation.set(0.26, s.facingY, rForeTiltZ);
-      this._dummy.scale.set(sc, sc, sc);
+      this._dummy.rotation.set(armFrontTiltR + 0.08, fanFacingY, rForeTiltZ);
+      this._dummy.scale.set(scW, scH, scW);
       this._dummy.updateMatrix();
       this.crowdForearmRMesh.setMatrixAt(i, this._dummy.matrix);
 
-      // 7. Glowing Neon Lightstick held in raised right hand
-      if (s.hasStick) {
-        const tipX = rElbowX - Math.sin(rForeTiltZ) * foreLen * cosF;
-        const tipZ = rElbowZ + Math.sin(rForeTiltZ) * foreLen * sinF;
-        const tipY = rElbowY + Math.cos(rForeTiltZ) * foreLen;
+      // Glowing Concert Wristband aligned to right forearm
+      const tipX = rElbowX - Math.sin(rForeTiltZ) * foreLen * cosF;
+      const tipZ = rElbowZ + Math.sin(rForeTiltZ) * foreLen * sinF;
+      const tipY = rElbowY + Math.cos(rForeTiltZ) * foreLen;
+      this._dummy.position.set(tipX, tipY - 0.06 * scH, tipZ);
+      this._dummy.rotation.set(armFrontTiltR + 0.08, fanFacingY, rForeTiltZ);
+      this._dummy.scale.set(scW, scH, scW);
+      this._dummy.updateMatrix();
+      this.crowdWristbandMesh.setMatrixAt(i, this._dummy.matrix);
+
+      // 7. Glowing Smartphone Flashlights (on BALLAD_EMOTIONAL / PHONE_LIGHTS / CRYING_SWAY / Brawl filming), Foam Fingers, or Neon Glowsticks
+      const showPhone =
+        (isPhoneLightsEvent && !isFighterA && !isFighterB && (s.hasPhone || i % 3 !== 0)) ||
+        ((isBalladMode || isBrawlSpectator || (poseVariant === 2 && !s.hasStick)) && s.hasPhone && !isFighterA && !isFighterB);
+      if (showPhone) {
         this._dummy.position.set(tipX, tipY, tipZ);
-        this._dummy.rotation.set(0.18, s.facingY, rForeTiltZ * 1.18);
-        this._dummy.scale.set(sc, sc * (0.95 + bassE * 0.35 + (isChorusUnison ? 0.18 : 0)), sc);
+        this._dummy.rotation.set(0.12, fanFacingY, rForeTiltZ * 0.9);
+        this._dummy.scale.set(scHead, scHead, scHead);
+        this._dummy.updateMatrix();
+        this.crowdPhoneMesh.setMatrixAt(i, this._dummy.matrix);
+
+        this._dummy.position.set(0, -40, 0);
+        this._dummy.scale.set(0, 0, 0);
+        this._dummy.updateMatrix();
+        this.lightstickMesh.setMatrixAt(i, this._dummy.matrix);
+        this.crowdFoamFingerMesh.setMatrixAt(i, this._dummy.matrix);
+      } else if (s.hasFoamFinger && !isFighterA && !isFighterB && !isSurferCarrier && !isHeartHands) {
+        this._dummy.position.set(tipX, tipY, tipZ);
+        this._dummy.rotation.set(0.08, fanFacingY, rForeTiltZ * 0.95);
+        this._dummy.scale.set(scHead, scHead, scHead);
+        this._dummy.updateMatrix();
+        this.crowdFoamFingerMesh.setMatrixAt(i, this._dummy.matrix);
+
+        this._dummy.position.set(0, -40, 0);
+        this._dummy.scale.set(0, 0, 0);
+        this._dummy.updateMatrix();
+        this.lightstickMesh.setMatrixAt(i, this._dummy.matrix);
+        this.crowdPhoneMesh.setMatrixAt(i, this._dummy.matrix);
+      } else if (s.hasStick && !isFighterA && !isFighterB && !isSurferCarrier && !isHeartHands) {
+        this._dummy.position.set(tipX, tipY, tipZ);
+        this._dummy.rotation.set(0.18, fanFacingY, rForeTiltZ * 1.18);
+        this._dummy.scale.set(scHead, scHead * (0.95 + bassE * 0.35 + (isChorusUnison ? 0.18 : 0)), scHead);
+        this._dummy.updateMatrix();
+        this.lightstickMesh.setMatrixAt(i, this._dummy.matrix);
+
+        this._dummy.position.set(0, -40, 0);
+        this._dummy.scale.set(0, 0, 0);
+        this._dummy.updateMatrix();
+        this.crowdPhoneMesh.setMatrixAt(i, this._dummy.matrix);
+        this.crowdFoamFingerMesh.setMatrixAt(i, this._dummy.matrix);
       } else {
         this._dummy.position.set(0, -40, 0);
         this._dummy.scale.set(0, 0, 0);
+        this._dummy.updateMatrix();
+        this.lightstickMesh.setMatrixAt(i, this._dummy.matrix);
+        this.crowdPhoneMesh.setMatrixAt(i, this._dummy.matrix);
+        this.crowdFoamFingerMesh.setMatrixAt(i, this._dummy.matrix);
       }
-      this._dummy.updateMatrix();
-      this.lightstickMesh.setMatrixAt(i, this._dummy.matrix);
+    }
+
+    // 8. Animated Blue Teardrop Particle Pool for Crying Ballad Sway
+    if (this.crowdTearPoints) {
+      const tearsActive = evType === 'CRYING_SWAY' || evType === 'BALLAD_TEARS' || isBalladMode;
+      const posAttr = this.crowdTearPoints.geometry.attributes.position;
+      const posArr = posAttr.array;
+
+      if (tearsActive) {
+        this.crowdTearPoints.visible = true;
+        this.crowdTearSpawnTimer += dt;
+        while (this.crowdTearSpawnTimer >= 0.045) {
+          this.crowdTearSpawnTimer -= 0.045;
+          const fanIdx = Math.floor(this.nextCrowdRand() * Math.min(64, this.crowdCount));
+          const fs = this.crowdSeeds[fanIdx];
+          if (fs) {
+            const side = this.nextCrowdRand() < 0.5 ? -0.09 : 0.09;
+            const cosF = Math.cos(fs.facingY);
+            const sinF = Math.sin(fs.facingY);
+            const tp = this.crowdTearParticles[this.crowdTearCursor];
+            this.crowdTearCursor = (this.crowdTearCursor + 1) % this.crowdTearCount;
+            tp.active = true;
+            tp.x = fs.x + sinF * 0.24 * fs.scale + cosF * side * fs.scale;
+            tp.y = fs.floorY + 1.68 * fs.scale;
+            tp.z = fs.z + cosF * 0.24 * fs.scale - sinF * side * fs.scale;
+            tp.vx = sinF * 0.35 + (this.nextCrowdRand() - 0.5) * 0.16;
+            tp.vy = -1.45 - this.nextCrowdRand() * 0.55;
+            tp.vz = cosF * 0.35 + (this.nextCrowdRand() - 0.5) * 0.16;
+            tp.life = 0;
+            tp.maxLife = 0.52 + this.nextCrowdRand() * 0.25;
+          }
+        }
+      }
+
+      let anyTearUpdated = false;
+      for (let k = 0; k < this.crowdTearCount; k += 1) {
+        const tp = this.crowdTearParticles[k];
+        if (!tp.active) continue;
+        tp.life += dt;
+        if (tp.life >= tp.maxLife || !tearsActive) {
+          tp.active = false;
+          posArr[k * 3 + 1] = -60;
+          anyTearUpdated = true;
+          continue;
+        }
+        tp.vy -= 2.2 * dt;
+        tp.x += tp.vx * dt;
+        tp.y += tp.vy * dt;
+        tp.z += tp.vz * dt;
+        posArr[k * 3] = tp.x;
+        posArr[k * 3 + 1] = tp.y;
+        posArr[k * 3 + 2] = tp.z;
+        anyTearUpdated = true;
+      }
+
+      if (!tearsActive && !anyTearUpdated) {
+        this.crowdTearPoints.visible = false;
+      }
+      if (anyTearUpdated) {
+        posAttr.needsUpdate = true;
+      }
     }
 
     this.crowdLegsMesh.instanceMatrix.needsUpdate = true;
     this.crowdBeltMesh.instanceMatrix.needsUpdate = true;
     this.crowdTorsoMesh.instanceMatrix.needsUpdate = true;
+    this.crowdBodyMesh.instanceMatrix.needsUpdate = true;
+    this.crowdCollarMesh.instanceMatrix.needsUpdate = true;
     this.crowdHeadMesh.instanceMatrix.needsUpdate = true;
     this.crowdHairMesh.instanceMatrix.needsUpdate = true;
     this.crowdCapMesh.instanceMatrix.needsUpdate = true;
     this.crowdHpMesh.instanceMatrix.needsUpdate = true;
+    this.crowdBackpackMesh.instanceMatrix.needsUpdate = true;
     this.crowdUpperArmLMesh.instanceMatrix.needsUpdate = true;
     this.crowdUpperArmRMesh.instanceMatrix.needsUpdate = true;
     this.crowdForearmLMesh.instanceMatrix.needsUpdate = true;
     this.crowdForearmRMesh.instanceMatrix.needsUpdate = true;
+    this.crowdWristbandMesh.instanceMatrix.needsUpdate = true;
+    this.crowdFoamFingerMesh.instanceMatrix.needsUpdate = true;
     this.lightstickMesh.instanceMatrix.needsUpdate = true;
+    this.glowstickMesh.instanceMatrix.needsUpdate = true;
+    this.crowdPhoneMesh.instanceMatrix.needsUpdate = true;
+    if (instanceColorDirty && this.lightstickMesh.instanceColor) {
+      this.lightstickMesh.instanceColor.needsUpdate = true;
+    }
+    if (instanceColorDirty && this.crowdWristbandMesh.instanceColor) {
+      this.crowdWristbandMesh.instanceColor.needsUpdate = true;
+    }
+    if (this.crowdPhoneMesh.instanceColor && (isBalladMode || isPhoneLightsEvent)) {
+      this.crowdPhoneMesh.instanceColor.needsUpdate = true;
+    }
   }
 
   buildPyrotechnicsAndFX() {
-    // 1. 6 Front-Apron Volumetric 3D Flame Pillars + Pyro Light
-    this.pyroNozzleXs = [-6.4, -4.2, -2.2, 2.2, 4.2, 6.4];
+    // 1. 6 Front-Apron Volumetric 3D Flame Pillars + Pyro Light (flanking T-catwalk mouth on 28m apron)
+    this.pyroNozzleXs = [-8.4, -5.6, -2.6, 2.6, 5.6, 8.4];
     this.flamePillars = [];
 
     const outerConeGeo = new THREE.ConeGeometry(0.52, 4.3, 10, 1, true);
@@ -2663,11 +5667,11 @@ export class StageBand {
 
     this.pyroNozzleXs.forEach((nx, idx) => {
       const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
-      nozzle.position.set(nx, 0.08, 2.86);
+      nozzle.position.set(nx, 0.08, 4.62);
       this.scene.add(nozzle);
 
       const pillar = new THREE.Group();
-      pillar.position.set(nx, 0.12, 2.86);
+      pillar.position.set(nx, 0.12, 4.62);
       const outer = new THREE.Mesh(outerConeGeo, outerFlameMat);
       const inner = new THREE.Mesh(innerConeGeo, innerFlameMat);
       pillar.add(outer, inner);
@@ -2677,7 +5681,7 @@ export class StageBand {
     });
 
     this.pyroGlowLight = new THREE.PointLight(0xfb923c, 0, 26, 1.4);
-    this.pyroGlowLight.position.set(0, 2.4, 3.2);
+    this.pyroGlowLight.position.set(0, 2.4, 4.8);
     this.scene.add(this.pyroGlowLight);
 
     // 1B. Stage-Edge CO2 Cryo-Jets (4 vertical frosty white mist columns firing on Fever & Chorus drops!)
@@ -2686,9 +5690,9 @@ export class StageBand {
     const cryoConeGeo = new THREE.ConeGeometry(0.62, 5.0, 14, 1, true);
     cryoConeGeo.translate(0, 2.5, 0);
     this.cryoJetMat = createVolumetricSpotlightMaterial(0xe0f2fe, 0);
-    [-5.3, -1.8, 1.8, 5.3].forEach((cx, idx) => {
+    [-6.8, -3.1, 3.1, 6.8].forEach((cx, idx) => {
       const jet = new THREE.Mesh(cryoConeGeo, this.cryoJetMat);
-      jet.position.set(cx, 0.08, 2.95);
+      jet.position.set(cx, 0.08, 4.68);
       jet.rotation.x = 0.08;
       jet.visible = false;
       this.scene.add(jet);
@@ -2722,10 +5726,80 @@ export class StageBand {
     this.hazePoints = new THREE.Points(hazeGeo, hazeMat);
     this.scene.add(this.hazePoints);
 
+    // 1D. Ballad Atmospheric Golden & Indigo Light Motes (fade in during BALLAD_EMOTIONAL)
+    this.balladDustCount = 90;
+    this.balladDustPositions = new Float32Array(this.balladDustCount * 3);
+    const balladDustColors = new Float32Array(this.balladDustCount * 3);
+    this.balladDustSeeds = [];
+    for (let i = 0; i < this.balladDustCount; i += 1) {
+      const bx = (Math.random() - 0.5) * 18;
+      const by = 0.4 + Math.random() * 6.8;
+      const bz = -5.5 + Math.random() * 14;
+      this.balladDustPositions[i * 3] = bx;
+      this.balladDustPositions[i * 3 + 1] = by;
+      this.balladDustPositions[i * 3 + 2] = bz;
+      const isWarm = i % 3 !== 0;
+      this._colorA.setHex(isWarm ? 0xfef08a : 0x818cf8);
+      balladDustColors[i * 3] = this._colorA.r;
+      balladDustColors[i * 3 + 1] = this._colorA.g;
+      balladDustColors[i * 3 + 2] = this._colorA.b;
+      this.balladDustSeeds.push({
+        baseX: bx,
+        baseY: by,
+        baseZ: bz,
+        speed: 0.28 + Math.random() * 0.35,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+    const balladDustGeo = new THREE.BufferGeometry();
+    balladDustGeo.setAttribute('position', new THREE.BufferAttribute(this.balladDustPositions, 3));
+    balladDustGeo.setAttribute('color', new THREE.BufferAttribute(balladDustColors, 3));
+    this.balladDustMat = new THREE.PointsMaterial({
+      size: 0.42,
+      map: this.glowTex,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.balladDustPoints = new THREE.Points(balladDustGeo, this.balladDustMat);
+    this.balladDustPoints.visible = false;
+    this.scene.add(this.balladDustPoints);
+
     // 2. 3D Golden Spark Fountains (Points, 180 particles)
-    this.sparkCount = 180;
+    // Procedural CanvasTextures for crisp velocity-stretched streaks, 4-pt star cores & volumetric smoke clouds
+    this.fwStreakTex = createFireworkStreakTexture();
+    this.fwStarTex = createFireworkStarCoreTexture();
+    this.fwSmokeTex = createFireworkSmokeTexture();
+
+    const unitQuad = new THREE.PlaneGeometry(1, 1);
+    const initAspect = this.camera?.aspect || 16 / 9;
+    const initProjScale = 1 / Math.tan(THREE.MathUtils.degToRad((this.camera?.fov || 46) * 0.5));
+
+    // Shared velocity-aligned additive billboard ShaderMaterial (ACESFilmic HDR core bloom, zero depthWrite)
+    this.fwStreakUniforms = {
+      uStreakTex: { value: this.fwStreakTex },
+      uStarTex: { value: this.fwStarTex },
+      uAspect: { value: initAspect },
+      uProjScale: { value: initProjScale },
+    };
+    const fwStreakMat = new THREE.ShaderMaterial({
+      uniforms: this.fwStreakUniforms,
+      vertexShader: FW_STREAK_VERTEX_SHADER,
+      fragmentShader: FW_STREAK_FRAGMENT_SHADER,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    // 2. Towering 7m Stage-Front Cold-Spark Gerb Fountains (360 velocity-stretched titanium sparks, zero GC)
+    this.sparkCount = 360;
     this.sparkPositions = new Float32Array(this.sparkCount * 3);
+    this.sparkVelocities = new Float32Array(this.sparkCount * 3);
     this.sparkColors = new Float32Array(this.sparkCount * 3);
+    this.sparkMeta = new Float32Array(this.sparkCount * 4);
     this.sparks = Array.from({ length: this.sparkCount }, () => ({
       active: false,
       x: 0,
@@ -2734,71 +5808,214 @@ export class StageBand {
       vx: 0,
       vy: 0,
       vz: 0,
+      r: 1.0,
+      g: 0.92,
+      b: 0.72,
+      size: 0.52,
       life: 0,
-      maxLife: 1,
+      maxLife: 1.15,
     }));
+    for (let i = 0; i < this.sparkCount; i += 1) {
+      this.sparkPositions[i * 3 + 1] = -50;
+      this.sparkMeta[i * 4 + 1] = 0;
+    }
     this.sparkCursor = 0;
 
-    const sparkGeo = new THREE.BufferGeometry();
-    sparkGeo.setAttribute('position', new THREE.BufferAttribute(this.sparkPositions, 3));
-    sparkGeo.setAttribute('color', new THREE.BufferAttribute(this.sparkColors, 3));
-    const sparkMat = new THREE.PointsMaterial({
-      size: 0.56,
-      map: this.glowTex,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.95,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      sizeAttenuation: true,
-    });
-    this.sparkPoints = new THREE.Points(sparkGeo, sparkMat);
+    const sparkGeo = new THREE.InstancedBufferGeometry();
+    sparkGeo.index = unitQuad.index;
+    sparkGeo.setAttribute('position', unitQuad.attributes.position);
+    sparkGeo.setAttribute('uv', unitQuad.attributes.uv);
+    sparkGeo.instanceCount = this.sparkCount;
+    const sparkPosAttr = new THREE.InstancedBufferAttribute(this.sparkPositions, 3);
+    const sparkVelAttr = new THREE.InstancedBufferAttribute(this.sparkVelocities, 3);
+    const sparkColAttr = new THREE.InstancedBufferAttribute(this.sparkColors, 3);
+    const sparkMetaAttr = new THREE.InstancedBufferAttribute(this.sparkMeta, 4);
+    sparkPosAttr.setUsage(THREE.DynamicDrawUsage);
+    sparkVelAttr.setUsage(THREE.DynamicDrawUsage);
+    sparkColAttr.setUsage(THREE.DynamicDrawUsage);
+    sparkMetaAttr.setUsage(THREE.DynamicDrawUsage);
+    sparkGeo.setAttribute('aPos', sparkPosAttr);
+    sparkGeo.setAttribute('aVel', sparkVelAttr);
+    sparkGeo.setAttribute('aColor', sparkColAttr);
+    sparkGeo.setAttribute('aMeta', sparkMetaAttr);
+
+    this.sparkPoints = new THREE.Mesh(sparkGeo, fwStreakMat);
     this.sparkPoints.frustumCulled = false;
+    this.sparkPoints.renderOrder = 14;
     this.scene.add(this.sparkPoints);
 
-    // 3. 3D Stadium Aerial Fireworks (Rising shells + 3D spherical star bursts, 280 particles)
-    this.fwParticleCount = 280;
+    // 3. Pyromusical 3D Stadium Aerial Fireworks Engine (5,600 velocity-stretched instanced particles, 10 authentic real-world effects)
+    this.fwParticleCount = 5600;
     this.fwPositions = new Float32Array(this.fwParticleCount * 3);
+    this.fwVelocities = new Float32Array(this.fwParticleCount * 3);
     this.fwColors = new Float32Array(this.fwParticleCount * 3);
+    this.fwMeta = new Float32Array(this.fwParticleCount * 4);
     this.fwParticles = Array.from({ length: this.fwParticleCount }, () => ({
       active: false,
       x: 0,
-      y: -60,
+      y: -80,
       z: 0,
       vx: 0,
       vy: 0,
       vz: 0,
+      r0: 1,
+      g0: 0.98,
+      b0: 0.92,
       r: 1,
       g: 0.9,
       b: 0.4,
+      r2: 1,
+      g2: 0.45,
+      b2: 0.1,
+      size: 1.0,
+      stretch: 1.4,
+      spriteMode: 0,
+      hdrBoost: 1.35,
+      isCore: false,
+      drag: 0.24,
+      gravity: 3.8,
+      burstType: 'chrysanthemum',
+      secondaryTimer: 0,
+      trailTimer: 0,
+      strobeTail: false,
+      spinOmega: 0,
+      spinRadius: 0,
+      spinPhase: 0,
+      subColorHex: 0xfacc15,
       life: 0,
       maxLife: 1.4,
     }));
+    for (let i = 0; i < this.fwParticleCount; i += 1) {
+      this.fwPositions[i * 3 + 1] = -80;
+      this.fwMeta[i * 4 + 1] = 0;
+    }
     this.fwCursor = 0;
     this.fwShells = [];
+    this.fwGirandolas = [];
+    this.fwRomanQueue = [];
+    this._fwTypeCycleIndex = 0;
+    this._lastFwSubdiv8 = -1;
+    this._lastFwSubdiv16 = -1;
+    this._lastFwBeatIdx = -1;
 
-    const fwGeo = new THREE.BufferGeometry();
-    fwGeo.setAttribute('position', new THREE.BufferAttribute(this.fwPositions, 3));
-    fwGeo.setAttribute('color', new THREE.BufferAttribute(this.fwColors, 3));
-    const fwMat = new THREE.PointsMaterial({
-      size: 0.96,
-      map: this.glowTex,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.98,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      sizeAttenuation: true,
-    });
-    this.fwPoints = new THREE.Points(fwGeo, fwMat);
+    // 6 Pooled Dynamic Sky & Rim PointLights + Shared Smoke-Flash Uniform Buffers (zero per-frame GC)
+    this.fwBurstLights = [];
+    this.fwBurstLightCursor = 0;
+    this.fwFlashUniformPos = [];
+    this.fwFlashUniformCol = [];
+    for (let l = 0; l < 6; l += 1) {
+      const pl = new THREE.PointLight(0xfde047, 0, 165, 1.05);
+      pl.position.set(0, 30, -20);
+      this.scene.add(pl);
+      this.fwBurstLights.push(pl);
+      this.fwFlashUniformPos.push(new THREE.Vector3(0, -100, 0));
+      this.fwFlashUniformCol.push(new THREE.Vector3(0, 0, 0));
+    }
+    this.fireworkFlashState = {
+      color: new THREE.Color(0xfacc15),
+      intensity: 0,
+      skyBloom: 0,
+      subBassFlash: 0,
+    };
+    this._fwSubBassFlashDecay = 0;
+    this._fwScratchVecA = new THREE.Vector3();
+    this._fwScratchVecB = new THREE.Vector3();
+    this._fwScratchVecC = new THREE.Vector3();
+    this._fwFlashAggColor = new THREE.Color(0xfacc15);
+
+    const fwGeo = new THREE.InstancedBufferGeometry();
+    fwGeo.index = unitQuad.index;
+    fwGeo.setAttribute('position', unitQuad.attributes.position);
+    fwGeo.setAttribute('uv', unitQuad.attributes.uv);
+    fwGeo.instanceCount = this.fwParticleCount;
+    const fwPosAttr = new THREE.InstancedBufferAttribute(this.fwPositions, 3);
+    const fwVelAttr = new THREE.InstancedBufferAttribute(this.fwVelocities, 3);
+    const fwColAttr = new THREE.InstancedBufferAttribute(this.fwColors, 3);
+    const fwMetaAttr = new THREE.InstancedBufferAttribute(this.fwMeta, 4);
+    fwPosAttr.setUsage(THREE.DynamicDrawUsage);
+    fwVelAttr.setUsage(THREE.DynamicDrawUsage);
+    fwColAttr.setUsage(THREE.DynamicDrawUsage);
+    fwMetaAttr.setUsage(THREE.DynamicDrawUsage);
+    fwGeo.setAttribute('aPos', fwPosAttr);
+    fwGeo.setAttribute('aVel', fwVelAttr);
+    fwGeo.setAttribute('aColor', fwColAttr);
+    fwGeo.setAttribute('aMeta', fwMetaAttr);
+
+    this.fwPoints = new THREE.Mesh(fwGeo, fwStreakMat);
     this.fwPoints.frustumCulled = false;
+    this.fwPoints.renderOrder = 16;
     this.scene.add(this.fwPoints);
 
-    // 4. 3D Fluttering Confetti Cannons (InstancedMesh, 160 metallic cards)
-    this.confettiCount = 160;
+    // 3B. Illuminated Volumetric Apex Smoke Plumes (220 soft cloud puffs catching neighboring explosion colors)
+    this.fwSmokeCount = 220;
+    this.fwSmokePositions = new Float32Array(this.fwSmokeCount * 3);
+    this.fwSmokeMeta = new Float32Array(this.fwSmokeCount * 4);
+    this.fwSmokeParticles = Array.from({ length: this.fwSmokeCount }, () => ({
+      active: false,
+      x: 0,
+      y: -90,
+      z: 0,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      size: 6.5,
+      growRate: 2.2,
+      rot: 0,
+      vRot: 0,
+      baseAlpha: 0.24,
+      baseGrey: 0.85,
+      life: 0,
+      maxLife: 3.8,
+    }));
+    for (let i = 0; i < this.fwSmokeCount; i += 1) {
+      this.fwSmokePositions[i * 3 + 1] = -90;
+      this.fwSmokeMeta[i * 4 + 1] = 0;
+    }
+    this.fwSmokeCursor = 0;
+
+    const fwSmokeGeo = new THREE.InstancedBufferGeometry();
+    fwSmokeGeo.index = unitQuad.index;
+    fwSmokeGeo.setAttribute('position', unitQuad.attributes.position);
+    fwSmokeGeo.setAttribute('uv', unitQuad.attributes.uv);
+    fwSmokeGeo.instanceCount = this.fwSmokeCount;
+    const smokePosAttr = new THREE.InstancedBufferAttribute(this.fwSmokePositions, 3);
+    const smokeMetaAttr = new THREE.InstancedBufferAttribute(this.fwSmokeMeta, 4);
+    smokePosAttr.setUsage(THREE.DynamicDrawUsage);
+    smokeMetaAttr.setUsage(THREE.DynamicDrawUsage);
+    fwSmokeGeo.setAttribute('aPos', smokePosAttr);
+    fwSmokeGeo.setAttribute('aMeta', smokeMetaAttr);
+
+    this.fwSmokeUniforms = {
+      uSmokeTex: { value: this.fwSmokeTex },
+      uAspect: { value: initAspect },
+      uProjScale: { value: initProjScale },
+      uFlashPos: { value: this.fwFlashUniformPos },
+      uFlashCol: { value: this.fwFlashUniformCol },
+    };
+    const fwSmokeMat = new THREE.ShaderMaterial({
+      uniforms: this.fwSmokeUniforms,
+      vertexShader: FW_SMOKE_VERTEX_SHADER,
+      fragmentShader: FW_SMOKE_FRAGMENT_SHADER,
+      transparent: true,
+      blending: THREE.NormalBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.fwSmokePoints = new THREE.Mesh(fwSmokeGeo, fwSmokeMat);
+    this.fwSmokePoints.frustumCulled = false;
+    this.fwSmokePoints.renderOrder = 15;
+    this.scene.add(this.fwSmokePoints);
+    unitQuad.dispose();
+
+    // 4. 3D Fluttering Confetti Cannons (InstancedMesh, 1,200 metallic paper cards)
+    this.confettiCount = 1200;
     const confettiGeo = new THREE.PlaneGeometry(0.24, 0.13);
-    const confettiMat = new THREE.MeshBasicMaterial({
+    const confettiMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
+      roughness: 0.24,
+      metalness: 0.78,
+      emissive: 0x1e293b,
+      emissiveIntensity: 0.25,
       side: THREE.DoubleSide,
     });
     this.confettiMesh = new THREE.InstancedMesh(confettiGeo, confettiMat, this.confettiCount);
@@ -2857,6 +6074,37 @@ export class StageBand {
       this.scene.add(pivot);
       this.laserBeams.push({ pivot, mat, index: idx });
     });
+
+    // 6. Pre-allocated 100x+ Streak Player Gold Aura (zero per-frame heap allocations!)
+    const auraGroup = new THREE.Group();
+    const auraRingGeo = new THREE.RingGeometry(0.66, 1.12, 28);
+    auraRingGeo.rotateX(-Math.PI * 0.5);
+    this.playerGoldAuraRingMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const auraRing = new THREE.Mesh(auraRingGeo, this.playerGoldAuraRingMat);
+    auraRing.position.y = 0.04;
+
+    const auraBeamGeo = new THREE.CylinderGeometry(0.72, 1.02, 2.55, 24, 1, true);
+    auraBeamGeo.translate(0, 1.28, 0);
+    this.playerGoldAuraBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xfacc15,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const auraBeam = new THREE.Mesh(auraBeamGeo, this.playerGoldAuraBeamMat);
+    auraGroup.add(auraRing, auraBeam);
+    auraGroup.visible = false;
+    this.playerGoldAura = auraGroup;
+    this.scene.add(auraGroup);
   }
 
   /**
@@ -3006,12 +6254,17 @@ export class StageBand {
     const role = targetRole || this.activeInstrument || 'guitar';
     const targetPos = this.livePositions?.[role] || { x: 0, y: 0, z: -1.1 };
 
-    // Pick a front-row crowd fan seed as the launch point
+    // Pick a front-row crowd fan seed as the launch point and animate their throwing arm wind-up
     const frontCount = Math.min(28, this.crowdSeeds.length);
-    const seed = frontCount > 0 ? this.crowdSeeds[Math.floor(Math.random() * frontCount)] : null;
+    const throwerIdx = frontCount > 0 ? Math.floor(Math.random() * frontCount) : -1;
+    const seed = throwerIdx >= 0 ? this.crowdSeeds[throwerIdx] : null;
+    if (throwerIdx >= 0) {
+      this.crowdThrowerIdx = throwerIdx;
+      this.crowdThrowWindup = 0.42;
+    }
     const startX = seed ? seed.x * 0.72 : (laneIndex - 2) * 2.2 + (Math.random() - 0.5) * 1.6;
     const startY = seed ? seed.floorY + 1.55 : 0.6;
-    const startZ = seed ? Math.min(8.5, seed.z) : 6.2;
+    const startZ = seed ? Math.max(6.2, Math.min(13.5, seed.z)) : 12.2;
 
     const flightTime = 0.52 + Math.random() * 0.14;
     const gravity = 15.8;
@@ -3019,19 +6272,19 @@ export class StageBand {
     const aimY = targetPos.y + 1.15 + (Math.random() - 0.5) * 0.25;
     const aimZ = targetPos.z;
 
-    // Pick theme-aware prop matching the current concert venue
+    // Pick theme-aware prop matching the current concert stage overlay or venue
     let variant = Math.random() < 0.62 ? 'tomato' : 'cup';
     let splatHex = variant === 'tomato' ? 0xef4444 : 0xe2e8f0;
-    if (this.venueId === 'christmas-wonderland') {
+    if (this.venueOverlayId === 'CHRISTMAS' || this.venueId === 'christmas-wonderland') {
       variant = 'snowball';
       splatHex = 0xe0f2fe;
-    } else if (this.venueId === 'halloween-cathedral') {
+    } else if (this.venueOverlayId === 'HALLOWEEN' || this.venueId === 'halloween-cathedral') {
       variant = 'pumpkin';
       splatHex = 0xf97316;
-    } else if (this.venueId === 'sakura-festival') {
+    } else if (this.venueOverlayId === 'SAKURA' || this.venueId === 'sakura-festival') {
       variant = 'sakuraFan';
       splatHex = 0xf472b6;
-    } else if (this.venueId === 'tropical-beach') {
+    } else if (this.venueOverlayId === 'TROPICAL' || this.venueId === 'tropical-beach') {
       variant = 'beachBall';
       splatHex = 0x38bdf8;
     }
@@ -3087,6 +6340,13 @@ export class StageBand {
   updateCrowdProjectiles(dt) {
     const gravity = 15.8;
 
+    if (this.crowdThrowWindup > 0) {
+      this.crowdThrowWindup = Math.max(0, this.crowdThrowWindup - dt);
+      if (this.crowdThrowWindup <= 0) {
+        this.crowdThrowerIdx = -1;
+      }
+    }
+
     // 1. Decay musician flinch timers
     Object.keys(this.flinchTimers).forEach((k) => {
       if (this.flinchTimers[k] > 0) {
@@ -3125,7 +6385,7 @@ export class StageBand {
         p.vz = Math.abs(p.vz) * 0.38;
         this.spawnSplatBurst(p.x, p.y, p.z, p.splatHex);
         if (hitMusician && this.flinchTimers[p.targetRole] !== undefined) {
-          this.flinchTimers[p.targetRole] = 0.48;
+          this.flinchTimers[p.targetRole] = 0.35;
         }
         if (typeof this.onProjectileImpact === 'function') {
           const pan = Math.max(-0.85, Math.min(0.85, p.x / 6.5));
@@ -3176,7 +6436,7 @@ export class StageBand {
   /**
    * Called on real note hits to drive instrument-matched physical animation impulses!
    */
-  notifyNoteEvent({ instrument, lane = 1, pitchNorm = 0.5, drumPart = null, isChord = false } = {}) {
+  notifyNoteEvent({ instrument, lane = 1, pitchNorm = 0.5, drumPart = null, isChord = false, pianoHand = null } = {}) {
     if (instrument === 'guitar') {
       this.guitarStrumImpulse = isChord ? 1.35 : 1.0;
       this.guitarStrumDir = -this.guitarStrumDir;
@@ -3240,23 +6500,60 @@ export class StageBand {
       }
       this.pianoHandPos = nextPos;
       this.pianoHitImpulse = isChord ? 1.35 : 1.0;
-      this.pianoHandAlt = -this.pianoHandAlt;
+      this.lastPianoHand = pianoHand || (lane <= 1 ? 'left' : 'right');
+      this.pianoHandAlt = this.lastPianoHand === 'left' ? 1 : -1;
     }
   }
 
-  setVenue(venueId) {
-    this.venueId = venueId;
+  setVenue(venueId, overlayId = this.venueOverlayId || 'STANDARD') {
+    this.venueId = venueId || this.venueId || 'philippine-arena';
+    this.venueOverlayId = overlayId || this.venueOverlayId || 'STANDARD';
+    this.overlayMeta = getStageOverlayById(this.venueOverlayId);
     if (this.venueEnv) {
       this.scene.remove(this.venueEnv.group);
       this.venueEnv.dispose();
       this.venueEnv = null;
     }
 
-    const built = buildVenueEnvironment(venueId);
+    const built = buildVenueEnvironment(this.venueId, this.venueOverlayId);
     this.venueEnv = built;
     this.scene.add(built.group);
 
+    // Cache waterfront surfaces (Manila Bay / Sydney Harbour) & metallic roof trusses for live firework color reflections
+    this._venueWaterMats = [];
+    this._venueTrussMats = [];
+    const seenWater = new Set();
+    const seenTruss = new Set();
+    built.group.traverse((obj) => {
+      if (!obj.isMesh || !obj.material || Array.isArray(obj.material)) return;
+      const mat = obj.material;
+      if (!mat.emissive) return;
+      const geomParams = obj.geometry?.parameters;
+      const isWaterPlane =
+        geomParams &&
+        geomParams.width >= 180 &&
+        geomParams.height >= 120 &&
+        obj.position.y < -1.0 &&
+        mat.metalness >= 0.4;
+      if (isWaterPlane && !seenWater.has(mat)) {
+        seenWater.add(mat);
+        this._venueWaterMats.push({
+          mat,
+          baseEmissive: mat.emissive.clone(),
+          baseIntensity: mat.emissiveIntensity ?? 0.3,
+        });
+      } else if (mat.metalness >= 0.78 && mat.roughness <= 0.42 && obj.position.y > 6 && !seenTruss.has(mat)) {
+        seenTruss.add(mat);
+        this._venueTrussMats.push({
+          mat,
+          baseEmissive: mat.emissive.clone(),
+          baseIntensity: mat.emissiveIntensity ?? 0,
+        });
+      }
+    });
+
     const meta = built.meta;
+    this._venueSkyColor.setHex(meta.skyColor);
     this.scene.background = new THREE.Color(meta.skyColor);
     this.scene.fog = new THREE.FogExp2(meta.fogColor, meta.fogDensity);
     this.hemiLight.color.setHex(meta.hemiSky);
@@ -3271,7 +6568,18 @@ export class StageBand {
   }
 
   setCameraMode(mode) {
-    if (mode === 'on' || mode === 'subtle' || mode === 'locked') {
+    const validModes = [
+      'on',
+      'pit-steadicam',
+      'crowd-pov',
+      'pit-surf',
+      'hero-closeup',
+      'stadium-crane',
+      'aerial-drone',
+      'subtle',
+      'locked',
+    ];
+    if (validModes.includes(mode)) {
       this.cameraMode = mode;
       this.cameraDirector?.setMode(mode);
     }
@@ -3279,7 +6587,7 @@ export class StageBand {
 
   setTrackTitle(title) {
     this.currentTrackTitle = title || 'ENCORE STAGE';
-    this.drawLedBackdrop(0.25, 0.25, 0.2, this.feverActive, this.encorePerformanceActive);
+    this.drawLedBackdrop(0.25, 0.25, 0.2, this.feverActive, this.encorePerformanceActive || this.grandEncoreActive);
   }
 
   /**
@@ -3289,12 +6597,32 @@ export class StageBand {
     this.encorePerformanceActive = Boolean(active);
     if (trackTitle) this.currentTrackTitle = trackTitle;
     this.setInstrumentTheme(this.activeInstrument, this.feverActive);
-    this.drawLedBackdrop(0.45, 0.4, 0.35, this.feverActive, this.encorePerformanceActive);
+    this.drawLedBackdrop(0.45, 0.4, 0.35, this.feverActive, this.encorePerformanceActive || this.grandEncoreActive);
 
     if (this.encorePerformanceActive) {
       this.triggerStagePyro(1.35);
       this.triggerConfettiBurst();
       this.launchFireworkShell();
+    }
+  }
+
+  /**
+   * Engages the Grand Encore Finale: open-air stadium sky reveal, retracted indoor ceilings,
+   * locked ENCORE_AERIAL_HELICOPTER sweep, and continuous multi-stage aerial mortar barrages.
+   */
+  setGrandEncore(active) {
+    const next = Boolean(active);
+    const was = this.grandEncoreActive;
+    this.grandEncoreActive = next;
+    this.setInstrumentTheme(this.activeInstrument, this.feverActive);
+    this.drawLedBackdrop(0.5, 0.45, 0.4, this.feverActive, this.encorePerformanceActive || this.grandEncoreActive);
+
+    if (next && !was) {
+      this.finaleFireworkTimer = 0.12;
+      this.triggerStagePyro(1.45);
+      this.triggerConfettiBurst();
+      this.launchFireworkShell(true);
+      this.launchFireworkShell(true);
     }
   }
 
@@ -3319,13 +6647,35 @@ export class StageBand {
     });
   }
 
-  setMemberMissed(instrument, missed) {
-    this.missedInstrument = missed ? instrument : null;
+  setActivePlayers(roles = ['guitar'], feverActive = false) {
+    const clean = Array.isArray(roles) && roles.length ? roles : ['guitar'];
+    this.activeInstruments = clean;
+    this.setInstrumentTheme(clean[0], feverActive);
+  }
 
-    ['guitar', 'bass', 'drums'].forEach((role) => {
+  setPlayersMissed(missedRoles = []) {
+    this.missedInstruments = new Set(Array.isArray(missedRoles) ? missedRoles : []);
+    this.missedInstrument = this.missedInstruments.size > 0 ? [...this.missedInstruments][0] : null;
+    ['guitar', 'bass', 'drums', 'piano'].forEach((role) => {
       const member = this.membersByRole[role];
       if (member) {
-        member.setShocked(missed && role === instrument);
+        member.setShocked(this.missedInstruments.has(role));
+      }
+    });
+  }
+
+  setMemberMissed(instrument, missed) {
+    if (missed && instrument) {
+      this.missedInstruments.add(instrument);
+    } else if (instrument) {
+      this.missedInstruments.delete(instrument);
+    }
+    this.missedInstrument = this.missedInstruments.size > 0 ? [...this.missedInstruments][0] : null;
+
+    ['guitar', 'bass', 'drums', 'piano'].forEach((role) => {
+      const member = this.membersByRole[role];
+      if (member) {
+        member.setShocked(this.missedInstruments.has(role));
       }
     });
   }
@@ -3333,95 +6683,925 @@ export class StageBand {
   triggerStagePyro(intensity = 1.0) {
     this.pyroFlameIntensity = Math.max(this.pyroFlameIntensity, Math.min(1.65, intensity));
     this.pyroFlameTimer = Math.max(this.pyroFlameTimer, 0.95 + intensity * 0.45);
-    this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 1.25 + intensity * 0.5);
+    this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 1.6 + intensity * 0.65);
+    if (intensity >= 0.85) {
+      this.launchStageTrussMines(intensity);
+    }
     if (intensity >= 1.0) {
       this.triggerCryoJets(1.4 + intensity * 0.35);
       this.triggerBandJump(intensity);
     }
   }
 
-  triggerConfettiBurst() {
+  triggerManualPyroAndSparks() {
+    this.pyroFlameIntensity = Math.max(this.pyroFlameIntensity, 1.5);
+    this.pyroFlameTimer = Math.max(this.pyroFlameTimer, 1.65);
+    this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 2.2);
+    this.launchStageTrussMines(1.25);
+    this.launchRomanCandleSalvo(Math.random() < 0.5 ? 'patriot' : 'cyber', 8, 5);
+    this.launchFireworkShell(true);
+    this.triggerBandJump(1.08);
+    this.crowdAmbience?.triggerMilestoneRoar?.(0.95);
+  }
+
+  triggerCrowdEvent(requestedType = 'CYCLE') {
+    const ev = this.crowdEvent;
+    const cycleOrder = ['STADIUM_WAVE', 'MOSHPIT', 'PHONE_LIGHTS', 'HEART_HANDS'];
+    let nextType = requestedType;
+    if (!requestedType || requestedType === 'CYCLE') {
+      const curIdx = cycleOrder.indexOf(ev.type);
+      nextType = cycleOrder[(curIdx + 1) % cycleOrder.length];
+    }
+    ev.type = nextType;
+    ev.duration = nextType === 'PHONE_LIGHTS' ? 9.5 : 8.0;
+    ev.timer = ev.duration;
+    ev.cooldown = 10.0;
+    ev.centerX = 0;
+    ev.centerZ = nextType === 'MOSHPIT' ? 15.2 : 14.8;
+    this.activeCrowdEvent.type = nextType;
+    this.crowdAmbience?.triggerMilestoneRoar?.(1.1);
+    return nextType;
+  }
+
+  triggerConfettiBurst(cannonMode = false) {
     let spawned = 0;
-    const perBurst = 90;
+    const perBurst = cannonMode ? 320 : 120;
     for (let i = 0; i < this.confettiCount && spawned < perBurst; i += 1) {
       const c = this.confettiItems[i];
       if (c.active && c.life < c.maxLife * 0.65) continue;
 
       const side = spawned % 2 === 0 ? -1 : 1;
       c.active = true;
-      c.x = side * (5.8 + Math.random() * 1.4);
-      c.y = 0.35 + Math.random() * 0.4;
-      c.z = 2.2 + (Math.random() - 0.5) * 1.2;
+      c.x = side * (5.2 + Math.random() * (cannonMode ? 3.2 : 1.4));
+      c.y = 0.35 + Math.random() * 0.5;
+      c.z = 2.0 + (Math.random() - 0.5) * (cannonMode ? 2.4 : 1.2);
 
-      c.vx = -side * (2.2 + Math.random() * 4.8) + (Math.random() - 0.5) * 2.2;
-      c.vy = 6.9 + Math.random() * 4.8;
-      c.vz = -1.2 + (Math.random() - 0.5) * 4.2;
+      c.vx = -side * ((cannonMode ? 3.0 : 2.2) + Math.random() * 5.2) + (Math.random() - 0.5) * 2.8;
+      c.vy = (cannonMode ? 9.2 : 6.9) + Math.random() * (cannonMode ? 6.4 : 4.8);
+      c.vz = -1.2 + (Math.random() - 0.5) * (cannonMode ? 5.8 : 4.2);
 
       c.rx = Math.random() * Math.PI * 2;
       c.ry = Math.random() * Math.PI * 2;
       c.rz = Math.random() * Math.PI * 2;
-      c.vrx = (Math.random() - 0.5) * 9;
-      c.vry = (Math.random() - 0.5) * 9;
-      c.vrz = (Math.random() - 0.5) * 7;
+      c.vrx = (Math.random() - 0.5) * 10;
+      c.vry = (Math.random() - 0.5) * 10;
+      c.vrz = (Math.random() - 0.5) * 8;
       c.life = 0;
-      c.maxLife = 3.2 + Math.random() * 1.8;
+      c.maxLife = (cannonMode ? 4.4 : 3.2) + Math.random() * 1.9;
       spawned += 1;
+    }
+    if (cannonMode) {
+      this.crowdAmbience?.triggerMilestoneRoar?.(1.0);
     }
   }
 
-  launchFireworkShell(force = false) {
-    const meta = this.venueEnv?.meta;
-    if (!force && !meta?.supportsAerialFireworks && !this.encorePerformanceActive) return;
-    if (this.fwShells.length >= 6) return;
+  /**
+   * Registers a live firework sky/rim PointLight flash for stadium trusses, water reflections & illuminated smoke clouds.
+   */
+  registerFireworkFlash(x, y, z, hexColor, intensity = 165, isSubBassSalute = false) {
+    if (this.fwBurstLights?.length) {
+      const pl = this.fwBurstLights[this.fwBurstLightCursor % this.fwBurstLights.length];
+      this.fwBurstLightCursor += 1;
+      pl.position.set(x, Math.min(48, Math.max(8, y)), z);
+      pl.color.setHex(hexColor);
+      pl.intensity = intensity;
+    }
+    if (isSubBassSalute) {
+      this._fwSubBassFlashDecay = Math.max(this._fwSubBassFlashDecay, 1.0);
+    }
+  }
 
-    const x = (Math.random() - 0.5) * 22;
-    const z = -10.5 - Math.random() * 8.5;
-    const ceiling = meta?.fireworksCeilingY || 16.5;
-    const apexY = Math.max(9.5, ceiling - 4.0 + Math.random() * 3.2);
-    const palette = FIREWORK_PALETTES[Math.floor(Math.random() * FIREWORK_PALETTES.length)];
+  /**
+   * Zero-GC pooled particle writer for the 5,600-instance velocity-stretched firework shader mesh.
+   */
+  spawnFireworkParticle(cfg) {
+    const p = this.fwParticles[this.fwCursor];
+    this.fwCursor = (this.fwCursor + 1) % this.fwParticleCount;
+    p.active = true;
+    p.x = cfg.x;
+    p.y = cfg.y;
+    p.z = cfg.z;
+    p.vx = cfg.vx;
+    p.vy = cfg.vy;
+    p.vz = cfg.vz;
+    p.r0 = cfg.r0 ?? 1.0;
+    p.g0 = cfg.g0 ?? 0.98;
+    p.b0 = cfg.b0 ?? 0.92;
+    p.r = cfg.r;
+    p.g = cfg.g;
+    p.b = cfg.b;
+    p.r2 = cfg.r2 ?? cfg.r;
+    p.g2 = cfg.g2 ?? cfg.g;
+    p.b2 = cfg.b2 ?? cfg.b;
+    p.size = cfg.size ?? 1.1;
+    p.stretch = cfg.stretch ?? 1.4;
+    p.spriteMode = cfg.spriteMode ?? 0;
+    p.hdrBoost = cfg.hdrBoost ?? 1.45;
+    p.isCore = Boolean(cfg.isCore);
+    p.drag = cfg.drag ?? 0.24;
+    p.gravity = cfg.gravity ?? 4.2;
+    p.burstType = cfg.burstType || 'chrysanthemum';
+    p.secondaryTimer = cfg.secondaryTimer ?? 0;
+    p.trailTimer = cfg.trailTimer ?? 0;
+    p.strobeTail = Boolean(cfg.strobeTail);
+    p.spinOmega = cfg.spinOmega ?? 0;
+    p.spinRadius = cfg.spinRadius ?? 0;
+    p.spinPhase = cfg.spinPhase ?? 0;
+    p.subColorHex = cfg.subColorHex ?? 0xfacc15;
+    p.life = 0;
+    p.maxLife = cfg.maxLife ?? 1.5;
+    this.hasActiveFireworks = true;
+    return p;
+  }
+
+  /**
+   * Spawns illuminated apex smoke clouds that dynamically catch the colored glow of nearby shell detonations.
+   */
+  spawnFireworkSmoke(x, y, z, count = 6, windAx = 0, scaleMult = 1.0) {
+    const n = this.adaptiveLowPower ? Math.max(2, Math.floor(count * 0.5)) : count;
+    for (let s = 0; s < n; s += 1) {
+      const sm = this.fwSmokeParticles[this.fwSmokeCursor];
+      this.fwSmokeCursor = (this.fwSmokeCursor + 1) % this.fwSmokeCount;
+      sm.active = true;
+      sm.x = x + (Math.random() - 0.5) * 3.8 * scaleMult;
+      sm.y = y + (Math.random() - 0.5) * 3.0 * scaleMult;
+      sm.z = z + (Math.random() - 0.5) * 3.8 * scaleMult;
+      sm.vx = windAx * 0.38 + (Math.random() - 0.5) * 1.1;
+      sm.vy = 0.45 + Math.random() * 0.7;
+      sm.vz = (Math.random() - 0.5) * 0.95;
+      sm.size = (6.2 + Math.random() * 4.5) * scaleMult;
+      sm.growRate = (1.8 + Math.random() * 1.4) * scaleMult;
+      sm.rot = Math.random() * Math.PI * 2;
+      sm.vRot = (Math.random() - 0.5) * 0.28;
+      sm.baseAlpha = 0.16 + Math.random() * 0.09;
+      sm.baseGrey = 0.75 + Math.random() * 0.25;
+      sm.life = 0;
+      sm.maxLife = 3.2 + Math.random() * 1.8;
+    }
+  }
+
+  /**
+   * EFFECT #9: Stage-Lip Roof Truss V-Angled Titanium Silver & Gold Mines + 7m Cold-Spark Gerbs.
+   */
+  launchStageTrussMines(intensity = 1.0) {
+    const trussXs = [-11.4, -6.8, -2.4, 2.4, 6.8, 11.4];
+    const perMortar = this.adaptiveLowPower ? 14 : Math.round(24 * Math.min(1.4, intensity));
+    for (let m = 0; m < trussXs.length; m += 1) {
+      const mx = trussXs[m];
+      const mz = -5.4;
+      const my = 12.2;
+      const isGold = m % 2 === 1;
+      const fanDir = mx < 0 ? -0.35 : 0.35;
+      for (let i = 0; i < perMortar; i += 1) {
+        const spread = (Math.random() - 0.5) * 0.72 + fanDir * (0.4 + Math.random() * 0.8);
+        const speed = 13.5 + Math.random() * 9.5;
+        this._colorA.setHex(isGold ? 0xfef08a : 0xf8fafc);
+        this._colorB.setHex(isGold ? 0xd97706 : 0x38bdf8);
+        this.spawnFireworkParticle({
+          x: mx + (Math.random() - 0.5) * 0.35,
+          y: my,
+          z: mz + (Math.random() - 0.5) * 0.35,
+          vx: Math.sin(spread) * speed * 0.85,
+          vy: Math.cos(spread * 0.6) * speed,
+          vz: (Math.random() - 0.5) * 4.5 - 1.2,
+          r0: 1.0,
+          g0: 0.99,
+          b0: 0.96,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 0.78 + Math.random() * 0.42,
+          stretch: 2.35,
+          spriteMode: i % 4 === 0 ? 1 : 0,
+          hdrBoost: 1.85,
+          drag: 0.36,
+          gravity: 10.2,
+          burstType: 'stage_mine',
+          life: 0,
+          maxLife: 0.65 + Math.random() * 0.42,
+        });
+      }
+    }
+    this.registerFireworkFlash(0, 16, -4, 0xfef08a, 145);
+    this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 1.8);
+  }
+
+  /**
+   * EFFECT #4: Beat-Synchronized Roman Candle Tubes along upper stadium rim (1/8-note & 1/16-note rapid pearl bursts).
+   */
+  launchRomanCandleSalvo(paletteMode = 'patriot', subdiv = 8, shotsPerTube = 6) {
+    if (this.fwRomanQueue.length >= 24) return;
+    const tubePositions = [
+      { x: -24, y: 12.5, z: -16, aimX: 0.32 },
+      { x: -15, y: 13.8, z: -17, aimX: 0.18 },
+      { x: -7, y: 14.2, z: -18, aimX: 0.08 },
+      { x: 7, y: 14.2, z: -18, aimX: -0.08 },
+      { x: 15, y: 13.8, z: -17, aimX: -0.18 },
+      { x: 24, y: 12.5, z: -16, aimX: -0.32 },
+    ];
+    const colors =
+      paletteMode === 'cyber'
+        ? [0xfacc15, 0x22d3ee, 0xe879f9, 0x38bdf8]
+        : [0xff2e55, 0xf8fafc, 0x38bdf8];
+
+    const startOffset = Math.random() < 0.5 ? 0 : 1;
+    for (let s = 0; s < shotsPerTube; s += 1) {
+      const pairIdx = (s + startOffset) % 3;
+      const leftTube = tubePositions[pairIdx];
+      const rightTube = tubePositions[5 - pairIdx];
+      const hex = colors[s % colors.length];
+      this.fwRomanQueue.push({
+        subdiv,
+        colorHex: hex,
+        tubes: [leftTube, rightTube],
+      });
+    }
+  }
+
+  /**
+   * EFFECT #8: Ground-Launched Girandola (Flying Spinning Firework UFO Wheel lifting vertically -> silver crown burst).
+   */
+  launchGirandolaWheel(x = null, z = null) {
+    if (this.fwGirandolas.length >= 3) return;
+    const gx = x !== null ? x : (Math.random() - 0.5) * 28;
+    const gz = z !== null ? z : -15 - Math.random() * 6;
+    const apexY = 26 + Math.random() * 10;
+    this.fwGirandolas.push({
+      x: gx,
+      y: 2.2,
+      z: gz,
+      vy: 14.5,
+      apexY,
+      angle: Math.random() * Math.PI * 2,
+      spinSpeed: 20.0,
+      radius: 1.55,
+      emitAccum: 0,
+      life: 0,
+      maxLife: 2.05,
+    });
+    if (typeof this.onFireworkLaunch === 'function') {
+      this.onFireworkLaunch(Math.max(-0.85, Math.min(0.85, gx / 20)));
+    }
+    this.hasActiveFireworks = true;
+  }
+
+  launchFireworkShell(force = false, forcedType = null) {
+    const meta = this.venueEnv?.meta;
+    const isGrandEncore = this.grandEncoreActive || this.encoreFinaleActive;
+    if (!force && !isGrandEncore && !meta?.supportsAerialFireworks && !this.encorePerformanceActive) return;
+    if (this.fwShells.length >= 12) return;
+
+    const x = (Math.random() - 0.5) * 44; // -22 .. +22 behind open stadium rim
+    const z = -18 - Math.random() * 11; // -18 .. -29 behind stage rim
+    const apexY = isGrandEncore || force
+      ? 26 + Math.random() * 20 // 26 .. 46 high-altitude stadium bursts
+      : Math.max(17, (meta?.fireworksCeilingY || 20) + Math.random() * 7);
+    const flightSec = 0.88 + Math.random() * 0.34;
+    const shellGrav = 6.4;
+    const vy0 = apexY / flightSec + 0.5 * shellGrav * flightSec;
+    const windAx = (Math.random() - 0.5) * 3.0;
+
+    // Cycle across all rich authentic pyrotechnic shell types so every finale showcases dazzling variety
+    const shellRoster = [
+      'chrysanthemum',
+      'peony_strobe',
+      'kamuro_willow',
+      'crossette',
+      'tourbillon',
+      'heart_3d',
+      'double_ring_saturn',
+      'star_5pt',
+      'shell_of_shells',
+      'dragon_egg_salute',
+    ];
+    let burstType = forcedType;
+    if (!burstType) {
+      burstType = shellRoster[this._fwTypeCycleIndex % shellRoster.length];
+      this._fwTypeCycleIndex += 1;
+      // Extra weighting toward massive Kamuro/Chrysanthemum/Dragon-Egg spectacles in Grand Encore
+      if (isGrandEncore && Math.random() < 0.25) {
+        const finaleFavorites = ['kamuro_willow', 'chrysanthemum', 'dragon_egg_salute', 'shell_of_shells'];
+        burstType = finaleFavorites[Math.floor(Math.random() * finaleFavorites.length)];
+      }
+    }
+
+    // Also occasionally pair an aerial launch with a Girandola UFO wheel!
+    if (burstType === 'girandola') {
+      this.launchGirandolaWheel(x * 0.7, z + 3);
+      return;
+    }
+
+    const palette =
+      burstType === 'kamuro_willow'
+        ? FIREWORK_PALETTES[0]
+        : burstType === 'heart_3d'
+          ? FIREWORK_PALETTES[3]
+          : FIREWORK_PALETTES[Math.floor(Math.random() * FIREWORK_PALETTES.length)];
+
+    const pan = Math.max(-0.85, Math.min(0.85, x / 20));
+    if (typeof this.onFireworkLaunch === 'function') {
+      this.onFireworkLaunch(pan);
+    }
 
     this.fwShells.push({
       x,
-      y: 1.6,
+      y: 0.4,
       z,
-      vx: (Math.random() - 0.5) * 1.8,
-      vy: 13.5 + Math.random() * 4.5,
+      vx: (Math.random() - 0.5) * 2.0,
+      vy: vy0,
+      vz: (Math.random() - 0.5) * 1.4,
+      ax: windAx,
+      gravity: shellGrav,
       apexY,
       palette,
+      burstType,
       trailAccum: 0,
+      flightAge: 0,
+      flightSec,
     });
   }
 
   detonateFireworkShell(shell) {
-    const starCount = this.adaptiveLowPower ? 24 : 46;
-    const pal = shell.palette;
-    const pan = Math.max(-0.85, Math.min(0.85, shell.x / 13));
+    const burstType = shell.burstType || 'chrysanthemum';
+    const pal = shell.palette || FIREWORK_PALETTES[0];
+    const sx = shell.x;
+    const sy = shell.y;
+    const sz = shell.z;
+    const low = Boolean(this.adaptiveLowPower);
+    const pan = Math.max(-0.85, Math.min(0.85, sx / 20));
     if (typeof this.onFireworkBurst === 'function') {
       this.onFireworkBurst(pan);
     }
 
-    for (let i = 0; i < starCount; i += 1) {
-      const p = this.fwParticles[this.fwCursor];
-      this.fwCursor = (this.fwCursor + 1) % this.fwParticleCount;
+    const isSalute = burstType === 'dragon_egg_salute';
+    const flashHex =
+      burstType === 'kamuro_willow'
+        ? 0xfacc15
+        : isSalute
+          ? 0xfffbeb
+          : pal[0];
+    this.registerFireworkFlash(sx, sy, sz, flashHex, isSalute ? 260 : 185, isSalute);
 
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const speed = 3.6 + Math.random() * 5.2;
+    // Spawn illuminated translucent smoke clouds at apex (catch neighboring explosions' light!)
+    this.spawnFireworkSmoke(sx, sy, sz, isSalute ? 10 : 7, shell.ax || 0, burstType === 'kamuro_willow' ? 1.35 : 1.05);
 
-      p.active = true;
-      p.x = shell.x;
-      p.y = shell.y;
-      p.z = shell.z;
-      p.vx = Math.sin(phi) * Math.cos(theta) * speed;
-      p.vy = Math.cos(phi) * speed + 0.8;
-      p.vz = Math.sin(phi) * Math.sin(theta) * speed;
-      p.life = 0;
-      p.maxLife = 1.05 + Math.random() * 0.65;
+    // Volumetric incandescent core bloom flash at detonation apex
+    this._colorA.setHex(flashHex);
+    this.spawnFireworkParticle({
+      x: sx,
+      y: sy,
+      z: sz,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      r0: 1.0,
+      g0: 0.99,
+      b0: 0.95,
+      r: this._colorA.r,
+      g: this._colorA.g,
+      b: this._colorA.b,
+      r2: this._colorA.r * 0.4,
+      g2: this._colorA.g * 0.4,
+      b2: this._colorA.b * 0.4,
+      size: isSalute ? 19.0 : 13.5,
+      stretch: 0.0,
+      spriteMode: 3,
+      hdrBoost: isSalute ? 2.4 : 1.7,
+      isCore: true,
+      drag: 0.9,
+      gravity: 0,
+      burstType: 'apex_bloom',
+      maxLife: isSalute ? 0.42 : 0.32,
+    });
 
-      this._colorA.setHex(pal[i % pal.length]);
-      p.r = this._colorA.r;
-      p.g = this._colorA.g;
-      p.b = this._colorA.b;
+    const goldenAngle = Math.PI * (1 + Math.sqrt(5));
+    // Compute horizontal camera-facing basis (right & up) so 3D Heart, 5-Point Star & Saturn Rings stay crystal clear
+    const camX = this.camera?.position?.x ?? 0;
+    const camZ = this.camera?.position?.z ?? 26;
+    const yawToCam = Math.atan2(camX - sx, camZ - sz);
+    const cosY = Math.cos(yawToCam);
+    const sinY = Math.sin(yawToCam);
+
+    // ── EFFECT #1: CHRYSANTHEMUM (180–260 symmetrical stars, long velocity trails, 3-stage burn color shift) ──
+    if (burstType === 'chrysanthemum') {
+      const count = low ? 115 : 195 + Math.floor(Math.random() * 65);
+      for (let i = 0; i < count; i += 1) {
+        const tNorm = (i + 0.5) / count;
+        const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.05;
+        const theta = goldenAngle * i + (Math.random() - 0.5) * 0.08;
+        const speed = 15.5 + Math.random() * 3.8;
+        this._colorA.setHex(pal[0]);
+        this._colorB.setHex(pal[2] ?? pal[1]);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.sin(phi) * Math.cos(theta) * speed,
+          vy: Math.cos(phi) * speed + 1.4,
+          vz: Math.sin(phi) * Math.sin(theta) * speed,
+          r0: 1.0,
+          g0: 0.99,
+          b0: 0.96,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.15 + Math.random() * 0.35,
+          stretch: 2.75,
+          spriteMode: 0,
+          hdrBoost: 1.75,
+          drag: 0.28,
+          gravity: 4.5,
+          burstType: 'chrysanthemum',
+          trailTimer: 0.045 + Math.random() * 0.04,
+          maxLife: 1.65 + Math.random() * 0.48,
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #2: PEONY & STROBE-TIPPED PEONY (crisp spherical burst + silver/gold high-freq twinkle final 0.6s) ──
+    if (burstType === 'peony_strobe') {
+      const count = low ? 105 : 175 + Math.floor(Math.random() * 45);
+      for (let i = 0; i < count; i += 1) {
+        const tNorm = (i + 0.5) / count;
+        const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.04;
+        const theta = goldenAngle * i;
+        const isInner = i % 5 === 0;
+        const speed = isInner ? 8.5 + Math.random() * 2.5 : 14.5 + Math.random() * 2.8;
+        this._colorA.setHex(isInner ? pal[1] : pal[0]);
+        this._colorB.setHex(pal[2] ?? pal[1]);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.sin(phi) * Math.cos(theta) * speed,
+          vy: Math.cos(phi) * speed + 1.0,
+          vz: Math.sin(phi) * Math.sin(theta) * speed,
+          r0: 1.0,
+          g0: 0.98,
+          b0: 0.92,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: isInner ? 1.05 : 1.38,
+          stretch: 0.55,
+          spriteMode: 1,
+          hdrBoost: 1.85,
+          drag: 0.24,
+          gravity: 3.8,
+          burstType: 'peony_strobe',
+          strobeTail: !isInner,
+          maxLife: 1.85 + Math.random() * 0.4,
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #3: KAMURO / GOLDEN BROCADE CROWN & WEEPING WILLOW (18–24m drooping canopy, 3.5–4.5s hang time) ──
+    if (burstType === 'kamuro_willow') {
+      const count = low ? 130 : 225 + Math.floor(Math.random() * 45);
+      for (let i = 0; i < count; i += 1) {
+        const tNorm = (i + 0.5) / count;
+        const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.08;
+        const theta = goldenAngle * i + (Math.random() - 0.5) * 0.1;
+        // Massive 18-24m canopy initial burst velocity that arrests via high drag and weeps downward
+        const speed = 17.5 + Math.random() * 7.5;
+        this._colorA.setHex(i % 4 === 0 ? 0xfef9c3 : 0xfacc15);
+        this._colorB.setHex(0x9a3412);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.sin(phi) * Math.cos(theta) * speed,
+          vy: Math.cos(phi) * speed * 0.92 + 3.4,
+          vz: Math.sin(phi) * Math.sin(theta) * speed,
+          r0: 1.0,
+          g0: 0.97,
+          b0: 0.82,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.25 + Math.random() * 0.45,
+          stretch: 3.1,
+          spriteMode: 0,
+          hdrBoost: 1.7,
+          drag: 0.34,
+          gravity: 5.6,
+          burstType: 'kamuro_willow',
+          trailTimer: 0.055 + Math.random() * 0.055,
+          maxLife: 3.55 + Math.random() * 0.95, // 3.5 - 4.5s weeping shimmer!
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #5: CROSSETTE (large comet stars flying 0.45s then splitting perpendicularly into 4 cross micro-comets) ──
+    if (burstType === 'crossette') {
+      const count = low ? 18 : 26 + Math.floor(Math.random() * 8);
+      for (let i = 0; i < count; i += 1) {
+        const tNorm = (i + 0.5) / count;
+        const phi = Math.acos(1 - 2 * tNorm);
+        const theta = goldenAngle * i;
+        const speed = 15.8 + Math.random() * 3.6;
+        this._colorA.setHex(pal[i % pal.length]);
+        this._colorB.setHex(pal[(i + 1) % pal.length]);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.sin(phi) * Math.cos(theta) * speed,
+          vy: Math.cos(phi) * speed + 1.5,
+          vz: Math.sin(phi) * Math.sin(theta) * speed,
+          r0: 1.0,
+          g0: 0.99,
+          b0: 0.94,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.95,
+          stretch: 2.1,
+          spriteMode: 1,
+          hdrBoost: 2.0,
+          drag: 0.44,
+          gravity: 4.0,
+          burstType: 'crossette',
+          secondaryTimer: 0.44 + Math.random() * 0.04,
+          trailTimer: 0.04,
+          subColorHex: pal[(i + 1) % pal.length],
+          maxLife: 0.95,
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #6: TOURBILLON / SPINNING VORTEX SERPENTS & FISH (helical corkscrew darting rockets) ──
+    if (burstType === 'tourbillon') {
+      const count = low ? 20 : 32 + Math.floor(Math.random() * 8);
+      for (let i = 0; i < count; i += 1) {
+        const tNorm = (i + 0.5) / count;
+        const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.22;
+        const theta = goldenAngle * i + (Math.random() - 0.5) * 0.25;
+        const speed = 11.5 + Math.random() * 6.5;
+        const isSilver = i % 2 === 0;
+        this._colorA.setHex(isSilver ? 0xf8fafc : pal[i % pal.length]);
+        this._colorB.setHex(isSilver ? 0x38bdf8 : 0xe879f9);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.sin(phi) * Math.cos(theta) * speed,
+          vy: Math.cos(phi) * speed + 2.2,
+          vz: Math.sin(phi) * Math.sin(theta) * speed,
+          r0: 1.0,
+          g0: 1.0,
+          b0: 1.0,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.38,
+          stretch: 2.5,
+          spriteMode: 1,
+          hdrBoost: 1.95,
+          drag: 0.56,
+          gravity: 2.4,
+          burstType: 'tourbillon',
+          spinOmega: (i % 2 === 0 ? 1 : -1) * (15 + Math.random() * 10),
+          spinRadius: 11 + Math.random() * 8,
+          spinPhase: Math.random() * Math.PI * 2,
+          trailTimer: 0.028,
+          secondaryTimer: 1.15 + Math.random() * 0.45,
+          subColorHex: pal[(i + 1) % pal.length],
+          maxLife: 1.45 + Math.random() * 0.45,
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #7A: DOUBLE-RING & TILTED SATURN RING SHELL ──
+    if (burstType === 'double_ring_saturn') {
+      const outerCount = low ? 54 : 88;
+      const innerCount = low ? 34 : 56;
+      const tilt = 0.42 + (Math.random() - 0.5) * 0.35;
+      const cosT = Math.cos(tilt);
+      const sinT = Math.sin(tilt);
+      // Outer Saturn Ring
+      for (let i = 0; i < outerCount; i += 1) {
+        const a = (i / outerCount) * Math.PI * 2;
+        const lx = Math.cos(a) * 18.0;
+        const ly = Math.sin(a) * 18.0 * sinT;
+        const lz = Math.sin(a) * 18.0 * cosT;
+        const wx = lx * cosY + lz * sinY;
+        const wz = -lx * sinY + lz * cosY;
+        this._colorA.setHex(pal[0]);
+        this._colorB.setHex(pal[1]);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: wx,
+          vy: ly + 1.2,
+          vz: wz,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.35,
+          stretch: 1.85,
+          spriteMode: 1,
+          hdrBoost: 1.9,
+          drag: 0.26,
+          gravity: 3.4,
+          burstType: 'ring_star',
+          strobeTail: true,
+          maxLife: 2.0 + Math.random() * 0.25,
+        });
+      }
+      // Concentric Inner Core Planet Sphere
+      for (let i = 0; i < innerCount; i += 1) {
+        const tNorm = (i + 0.5) / innerCount;
+        const phi = Math.acos(1 - 2 * tNorm);
+        const theta = goldenAngle * i;
+        const speed = 8.4 + Math.random() * 1.4;
+        this._colorA.setHex(pal[2] ?? 0xfacc15);
+        this._colorB.setHex(0xffffff);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.sin(phi) * Math.cos(theta) * speed,
+          vy: Math.cos(phi) * speed + 1.2,
+          vz: Math.sin(phi) * Math.sin(theta) * speed,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.22,
+          stretch: 1.0,
+          spriteMode: 1,
+          hdrBoost: 1.85,
+          drag: 0.26,
+          gravity: 3.4,
+          burstType: 'ring_core',
+          maxLife: 1.85 + Math.random() * 0.25,
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #7B: UPRIGHT 3D HEART FORMATION ORIENTED TOWARD STADIUM CAMERA ──
+    if (burstType === 'heart_3d') {
+      const heartPts = low ? 64 : 110;
+      const scale = 1.02;
+      for (let i = 0; i < heartPts; i += 1) {
+        const a = (i / heartPts) * Math.PI * 2;
+        const hx = 16 * Math.pow(Math.sin(a), 3) * scale;
+        const hy = (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) * scale;
+        const hz = (Math.random() - 0.5) * 1.6;
+        const wx = hx * cosY + hz * sinY;
+        const wz = -hx * sinY + hz * cosY;
+        this._colorA.setHex(i % 3 === 0 ? 0xfda4af : 0xf43f5e);
+        this._colorB.setHex(0xf472b6);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: wx,
+          vy: hy + 2.0,
+          vz: wz,
+          r0: 1.0,
+          g0: 0.92,
+          b0: 0.96,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.48,
+          stretch: 1.25,
+          spriteMode: 1,
+          hdrBoost: 2.05,
+          drag: 0.22,
+          gravity: 2.6,
+          burstType: 'heart_3d',
+          strobeTail: true,
+          maxLife: 2.25 + Math.random() * 0.25,
+        });
+      }
+      // Subtle gold outer sparkle ring framing the Heart
+      const ringPts = low ? 26 : 44;
+      for (let i = 0; i < ringPts; i += 1) {
+        const a = (i / ringPts) * Math.PI * 2;
+        const lx = Math.cos(a) * 19.5;
+        const ly = Math.sin(a) * 19.5;
+        this._colorA.setHex(0xfef08a);
+        this._colorB.setHex(0xf59e0b);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: lx * cosY,
+          vy: ly + 2.0,
+          vz: -lx * sinY,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 0.95,
+          stretch: 1.6,
+          spriteMode: 0,
+          hdrBoost: 1.6,
+          drag: 0.24,
+          gravity: 3.1,
+          burstType: 'ring_frame',
+          maxLife: 1.85,
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #7C: UPRIGHT 5-POINT STAR FORMATION ORIENTED TOWARD STADIUM CAMERA ──
+    if (burstType === 'star_5pt') {
+      const verts = [];
+      for (let k = 0; k < 10; k += 1) {
+        const rad = k % 2 === 0 ? 18.5 : 7.6;
+        const ang = Math.PI * 0.5 + (k * Math.PI) / 5;
+        verts.push({ x: Math.cos(ang) * rad, y: Math.sin(ang) * rad });
+      }
+      const perEdge = low ? 7 : 12;
+      for (let e = 0; e < 10; e += 1) {
+        const v0 = verts[e];
+        const v1 = verts[(e + 1) % 10];
+        for (let s = 0; s < perEdge; s += 1) {
+          const frac = s / perEdge;
+          const lx = v0.x + (v1.x - v0.x) * frac;
+          const ly = v0.y + (v1.y - v0.y) * frac;
+          const lz = (Math.random() - 0.5) * 1.2;
+          const wx = lx * cosY + lz * sinY;
+          const wz = -lx * sinY + lz * cosY;
+          this._colorA.setHex(pal[0]);
+          this._colorB.setHex(0xfef08a);
+          this.spawnFireworkParticle({
+            x: sx,
+            y: sy,
+            z: sz,
+            vx: wx,
+            vy: ly + 1.8,
+            vz: wz,
+            r0: 1.0,
+            g0: 0.99,
+            b0: 0.94,
+            r: this._colorA.r,
+            g: this._colorA.g,
+            b: this._colorA.b,
+            r2: this._colorB.r,
+            g2: this._colorB.g,
+            b2: this._colorB.b,
+            size: 1.42,
+            stretch: 1.2,
+            spriteMode: 1,
+            hdrBoost: 2.0,
+            drag: 0.22,
+            gravity: 2.7,
+            burstType: 'star_5pt',
+            strobeTail: true,
+            maxLife: 2.15 + Math.random() * 0.2,
+          });
+        }
+      }
+      return;
+    }
+
+    // ── EFFECT #7D: MULTI-BREAK "SHELL-OF-SHELLS" (outer cluster of sub-shells detonating into synchronized peonies) ──
+    if (burstType === 'shell_of_shells') {
+      const subCount = low ? 5 : 8;
+      // Inner glittering pistachio core
+      const coreStars = low ? 35 : 65;
+      for (let i = 0; i < coreStars; i += 1) {
+        const tNorm = (i + 0.5) / coreStars;
+        const phi = Math.acos(1 - 2 * tNorm);
+        const theta = goldenAngle * i;
+        const speed = 7.2 + Math.random() * 2.4;
+        this._colorA.setHex(0xfef08a);
+        this._colorB.setHex(pal[0]);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.sin(phi) * Math.cos(theta) * speed,
+          vy: Math.cos(phi) * speed + 1.0,
+          vz: Math.sin(phi) * Math.sin(theta) * speed,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: this._colorB.r,
+          g2: this._colorB.g,
+          b2: this._colorB.b,
+          size: 1.15,
+          stretch: 1.35,
+          spriteMode: 1,
+          hdrBoost: 1.85,
+          drag: 0.26,
+          gravity: 3.6,
+          burstType: 'peony_core',
+          maxLife: 1.35,
+        });
+      }
+      // 8 outer sub-shells that fly outward for 0.52s and each burst into a crisp miniature peony!
+      for (let k = 0; k < subCount; k += 1) {
+        const ang = (k / subCount) * Math.PI * 2;
+        const elev = (k % 2 === 0 ? 0.35 : -0.22);
+        const speed = 15.5 + Math.random() * 2.5;
+        const subPal = FIREWORK_PALETTES[(k + 1) % FIREWORK_PALETTES.length];
+        this._colorA.setHex(subPal[0]);
+        this.spawnFireworkParticle({
+          x: sx,
+          y: sy,
+          z: sz,
+          vx: Math.cos(ang) * Math.cos(elev) * speed,
+          vy: Math.sin(elev) * speed + 3.2,
+          vz: Math.sin(ang) * Math.cos(elev) * speed,
+          r: this._colorA.r,
+          g: this._colorA.g,
+          b: this._colorA.b,
+          r2: 1.0,
+          g2: 0.98,
+          b2: 0.9,
+          size: 1.8,
+          stretch: 2.2,
+          spriteMode: 1,
+          hdrBoost: 2.1,
+          drag: 0.45,
+          gravity: 4.5,
+          burstType: 'sub_shell_carrier',
+          secondaryTimer: 0.5 + k * 0.025,
+          trailTimer: 0.035,
+          subColorHex: subPal[0],
+          maxLife: 0.72 + k * 0.025,
+        });
+      }
+      return;
+    }
+
+    // ── EFFECT #10: DRAGON-EGG CRACKLING FINALE SALUTE (delayed gold micro-sparks -> white-hot popcorn crackle + sub-bass flash) ──
+    const eggCount = low ? 75 : 130 + Math.floor(Math.random() * 30);
+    for (let i = 0; i < eggCount; i += 1) {
+      const tNorm = (i + 0.5) / eggCount;
+      const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.14;
+      const theta = goldenAngle * i + (Math.random() - 0.5) * 0.2;
+      const speed = 11.0 + Math.random() * 9.5;
+      this._colorA.setHex(0xfde047);
+      this._colorB.setHex(0xd97706);
+      this.spawnFireworkParticle({
+        x: sx,
+        y: sy,
+        z: sz,
+        vx: Math.sin(phi) * Math.cos(theta) * speed,
+        vy: Math.cos(phi) * speed + 1.6,
+        vz: Math.sin(phi) * Math.sin(theta) * speed,
+        r0: 1.0,
+        g0: 0.99,
+        b0: 0.92,
+        r: this._colorA.r,
+        g: this._colorA.g,
+        b: this._colorA.b,
+        r2: this._colorB.r,
+        g2: this._colorB.g,
+        b2: this._colorB.b,
+        size: 1.15,
+        stretch: 2.0,
+        spriteMode: 0,
+        hdrBoost: 1.85,
+        drag: 0.34,
+        gravity: 5.2,
+        burstType: 'dragon_egg',
+        secondaryTimer: 0.38 + Math.random() * 0.36, // staggered delayed popcorn crackle!
+        maxLife: 1.05,
+      });
     }
   }
 
@@ -3436,10 +7616,10 @@ export class StageBand {
       if (grade === 'S' || grade === 'A' || this.encorePerformanceActive) {
         this.triggerConfettiBurst();
       }
-      if (this.venueEnv?.meta?.supportsAerialFireworks || this.encorePerformanceActive) {
-        this.launchFireworkShell(true);
-        this.launchFireworkShell(true);
-      }
+      this.launchFireworkShell(true, 'kamuro_willow');
+      this.launchFireworkShell(true, 'heart_3d');
+      this.launchRomanCandleSalvo('patriot', 8, 8);
+      this.launchGirandolaWheel(0, -16);
     }
   }
 
@@ -3497,24 +7677,727 @@ export class StageBand {
       combo: stageState?.combo || 0,
       fever: Boolean(stageState?.feverActive),
       encore: Boolean(stageState?.isEncore || this.encorePerformanceActive),
+      isEncoreActive: Boolean(stageState?.isEncoreActive || this.grandEncoreActive || this.encoreFinaleActive),
       encoreFinaleActive: this.encoreFinaleActive,
       stemDropped: Boolean(stageState?.stemDropped),
       activeInstrument: stageState?.instrument || this.activeInstrument,
+      activeInstruments: stageState?.activeInstruments || this.activeInstruments,
       overallEnergy: telemetry?.overallEnergy || 0,
       bassEnergy: telemetry?.bassEnergy || 0,
+      drumEnergy: telemetry?.drumEnergy || 0,
+      kickTransient: telemetry?.kickTransient || 0,
+      snareTransient: telemetry?.snareTransient || 0,
       stemActivity: stageState?.stemActivity || { drums: true, bass: true, guitar: true, piano: true },
       lineupPositions: {
         guitar: marks.guitar,
         bass: marks.bass,
         piano: marks.piano,
         vocalist: marks.vocals,
-        drums: { x: 0, y: 0.64, z: -3.56 },
+        drums: marks.drums || { x: 0, y: DRUM_RISER_TOP_Y, z: -2.8 },
       },
       livePositions: this.livePositions,
       hasVocalist: Boolean(marks.vocals?.visible),
       currentSection: stageState?.currentSection || null,
       beatGrid: stageState?.beatGrid || null,
+      currentTick: stageState?.currentTick,
+      beatPhase: stageState?.beatPhase,
+      crowdEventType: this.crowdEvent?.type || 'NORMAL',
+      crowdEventCenter: { x: this.crowdEvent?.centerX || 0, z: this.crowdEvent?.centerZ || 14.8 },
+      trackMeta: this.lastTrackMeta,
     });
+  }
+
+  /**
+   * Advances pyromusical mortar launches, beat-locked Roman Candles, Girandola UFO wheels,
+   * all 10 multi-stage firework physics types, illuminated volumetric smoke plumes,
+   * pooled sky-flash PointLights, and indoor roof retraction for Grand Encore.
+   */
+  updateFireworks(dt, t, stageState) {
+    const playing = Boolean(stageState?.playing);
+    const fever = Boolean(stageState?.feverActive);
+    const encore = Boolean(stageState?.isEncore || this.encorePerformanceActive);
+    const isGrandEncore = Boolean(stageState?.isEncoreActive || this.grandEncoreActive || this.encoreFinaleActive);
+    const combo = stageState?.combo || 0;
+    const bpm = Math.max(60, Math.min(220, stageState?.bpm || 120));
+    const songTime = Number.isFinite(stageState?.songTime) ? stageState.songTime : t;
+    const beatPos = playing ? songTime * (bpm / 60) : t * (bpm / 60);
+    const subdiv8 = Math.floor(beatPos * 2);
+    const subdiv16 = Math.floor(beatPos * 4);
+    const beatIdx = Math.floor(beatPos);
+    const newSubdiv8 = subdiv8 !== this._lastFwSubdiv8;
+    const newSubdiv16 = subdiv16 !== this._lastFwSubdiv16;
+    const newBeat = beatIdx !== this._lastFwBeatIdx;
+    this._lastFwSubdiv8 = subdiv8;
+    this._lastFwSubdiv16 = subdiv16;
+    this._lastFwBeatIdx = beatIdx;
+
+    // Sync camera aspect & projection scale into custom velocity-streak & smoke shaders
+    const camAspect = this.camera?.aspect || 16 / 9;
+    const camProjScale = 1 / Math.tan(THREE.MathUtils.degToRad((this.camera?.fov || 46) * 0.5));
+    if (this.fwStreakUniforms) {
+      this.fwStreakUniforms.uAspect.value = camAspect;
+      this.fwStreakUniforms.uProjScale.value = camProjScale;
+    }
+    if (this.fwSmokeUniforms) {
+      this.fwSmokeUniforms.uAspect.value = camAspect;
+      this.fwSmokeUniforms.uProjScale.value = camProjScale;
+    }
+
+    // A. Musical & Pyromusical Choreography (Chorus Drops, Downbeats, Fever, Grand Encore)
+    if (this.lightingState?.chorusDropTriggered && playing) {
+      this.launchStageTrussMines(1.3);
+      this.launchRomanCandleSalvo(fever ? 'cyber' : 'patriot', 8, 6);
+      this.launchFireworkShell(true, 'chrysanthemum');
+      this.launchFireworkShell(true, 'star_5pt');
+    } else if (this.lightingState?.pyroDownbeatAccent && newBeat) {
+      this.launchStageTrussMines(0.95);
+    }
+
+    if (isGrandEncore) {
+      this.finaleFireworkTimer -= dt;
+      if (this.finaleFireworkTimer <= 0) {
+        this.launchFireworkShell(true);
+        if (Math.random() < 0.24) {
+          this.launchGirandolaWheel();
+        }
+        if (Math.random() < 0.32 && this.fwRomanQueue.length === 0) {
+          this.launchRomanCandleSalvo(
+            Math.random() < 0.5 ? 'patriot' : 'cyber',
+            Math.random() < 0.45 ? 16 : 8,
+            Math.random() < 0.45 ? 8 : 6
+          );
+        }
+        this.finaleFireworkTimer = 0.46 + Math.random() * 0.36;
+      }
+    } else if (playing && (fever || (encore && combo >= 15))) {
+      this.feverFireworkTimer -= dt;
+      if (this.feverFireworkTimer <= 0) {
+        this.launchFireworkShell(encore);
+        if (fever && Math.random() < 0.35 && this.fwRomanQueue.length === 0) {
+          this.launchRomanCandleSalvo('cyber', 8, 4);
+        }
+        this.feverFireworkTimer = fever ? 0.92 : 1.55;
+      }
+    }
+
+    // A2. Drain Beat-Locked Roman Candle Queue on exact 1/8-note and 1/16-note musical subdivisions!
+    if (this.fwRomanQueue.length > 0) {
+      const nextShot = this.fwRomanQueue[0];
+      const fireNow = nextShot.subdiv === 16 ? newSubdiv16 : newSubdiv8;
+      if (fireNow) {
+        this.fwRomanQueue.shift();
+        this._colorA.setHex(nextShot.colorHex);
+        this._colorB.setHex(nextShot.colorHex).lerp(this._colorC.setHex(0xffffff), 0.35);
+        for (let tb = 0; tb < nextShot.tubes.length; tb += 1) {
+          const tube = nextShot.tubes[tb];
+          const speed = 26 + Math.random() * 5;
+          this.spawnFireworkParticle({
+            x: tube.x,
+            y: tube.y,
+            z: tube.z,
+            vx: tube.aimX * speed + (Math.random() - 0.5) * 1.4,
+            vy: speed * 0.94,
+            vz: -1.8 + (Math.random() - 0.5) * 1.5,
+            r0: 1.0,
+            g0: 0.99,
+            b0: 0.96,
+            r: this._colorA.r,
+            g: this._colorA.g,
+            b: this._colorA.b,
+            r2: this._colorB.r,
+            g2: this._colorB.g,
+            b2: this._colorB.b,
+            size: 1.65,
+            stretch: 2.3,
+            spriteMode: 1,
+            hdrBoost: 2.15,
+            drag: 0.62,
+            gravity: 11.2,
+            burstType: 'roman_pearl',
+            trailTimer: 0.018,
+            maxLife: 1.45,
+          });
+        }
+        this.registerFireworkFlash(0, 22, -17, nextShot.colorHex, 105);
+      }
+    }
+
+    // A3. Advance Ground-Launched Girandola Spinning UFO Wheels -> Silver Crown Burst
+    for (let g = this.fwGirandolas.length - 1; g >= 0; g -= 1) {
+      const wheel = this.fwGirandolas[g];
+      wheel.life += dt;
+      wheel.y += wheel.vy * dt;
+      wheel.vy = Math.max(4.5, wheel.vy - 3.6 * dt);
+      wheel.angle += wheel.spinSpeed * dt;
+      wheel.emitAccum += dt;
+
+      while (wheel.emitAccum >= 0.016) {
+        wheel.emitAccum -= 0.016;
+        // Emit two opposing tangential golden rocket jets around the horizontal spinning wheel
+        for (let side = 0; side < 2; side += 1) {
+          const ang = wheel.angle + side * Math.PI;
+          const ox = Math.cos(ang) * wheel.radius;
+          const oz = Math.sin(ang) * wheel.radius;
+          const tx = -Math.sin(ang);
+          const tz = Math.cos(ang);
+          this._colorA.setHex(0xfef08a);
+          this._colorB.setHex(0xd97706);
+          this.spawnFireworkParticle({
+            x: wheel.x + ox,
+            y: wheel.y,
+            z: wheel.z + oz,
+            vx: tx * 11.5 + ox * 1.2,
+            vy: -1.8 + (Math.random() - 0.5) * 0.8,
+            vz: tz * 11.5 + oz * 1.2,
+            r0: 1.0,
+            g0: 0.98,
+            b0: 0.9,
+            r: this._colorA.r,
+            g: this._colorA.g,
+            b: this._colorA.b,
+            r2: this._colorB.r,
+            g2: this._colorB.g,
+            b2: this._colorB.b,
+            size: 1.05,
+            stretch: 2.6,
+            spriteMode: 0,
+            hdrBoost: 1.85,
+            drag: 0.42,
+            gravity: 3.4,
+            burstType: 'girandola_jet',
+            maxLife: 0.42,
+          });
+        }
+      }
+
+      if (wheel.y >= wheel.apexY || wheel.life >= wheel.maxLife) {
+        // Detonate Girandola into a brilliant glittering Silver Crown!
+        this.registerFireworkFlash(wheel.x, wheel.y, wheel.z, 0xe0f2fe, 195);
+        this.spawnFireworkSmoke(wheel.x, wheel.y, wheel.z, 5, 0, 0.95);
+        if (typeof this.onFireworkBurst === 'function') {
+          this.onFireworkBurst(Math.max(-0.85, Math.min(0.85, wheel.x / 20)));
+        }
+        const crownCount = this.adaptiveLowPower ? 52 : 92;
+        const goldenAngle = Math.PI * (1 + Math.sqrt(5));
+        for (let k = 0; k < crownCount; k += 1) {
+          const tNorm = (k + 0.5) / crownCount;
+          const phi = Math.acos(1 - 2 * tNorm);
+          const theta = goldenAngle * k;
+          const speed = 12.5 + Math.random() * 4.5;
+          this.spawnFireworkParticle({
+            x: wheel.x,
+            y: wheel.y,
+            z: wheel.z,
+            vx: Math.sin(phi) * Math.cos(theta) * speed,
+            vy: Math.cos(phi) * speed + 2.0,
+            vz: Math.sin(phi) * Math.sin(theta) * speed,
+            r0: 1.0,
+            g0: 1.0,
+            b0: 1.0,
+            r: 0.92,
+            g: 0.97,
+            b: 1.0,
+            r2: 0.56,
+            g2: 0.78,
+            b2: 1.0,
+            size: 1.28,
+            stretch: 1.9,
+            spriteMode: 1,
+            hdrBoost: 2.0,
+            drag: 0.28,
+            gravity: 4.8,
+            burstType: 'silver_crown',
+            strobeTail: true,
+            maxLife: 1.7 + Math.random() * 0.4,
+          });
+        }
+        this.fwGirandolas.splice(g, 1);
+      }
+    }
+
+    // B. Advance rising whistling mortar shells with wind-drift curve & glowing comet tail
+    for (let i = this.fwShells.length - 1; i >= 0; i -= 1) {
+      const sh = this.fwShells[i];
+      sh.flightAge += dt;
+      sh.vx += (sh.ax || 0) * dt;
+      sh.x += sh.vx * dt;
+      sh.y += sh.vy * dt;
+      sh.z += (sh.vz || 0) * dt;
+      sh.vy -= (sh.gravity || 6.4) * dt;
+      sh.trailAccum += dt;
+
+      if (sh.trailAccum >= 0.014) {
+        sh.trailAccum = 0;
+        this.spawnFireworkParticle({
+          x: sh.x + (Math.random() - 0.5) * 0.16,
+          y: sh.y,
+          z: sh.z + (Math.random() - 0.5) * 0.16,
+          vx: sh.vx * 0.15 + (Math.random() - 0.5) * 0.9,
+          vy: sh.vy * 0.12 - 2.2 - Math.random() * 1.1,
+          vz: sh.vz * 0.15 + (Math.random() - 0.5) * 0.9,
+          r0: 1.0,
+          g0: 0.99,
+          b0: 0.9,
+          r: 1.0,
+          g: 0.86,
+          b: 0.44,
+          r2: 0.95,
+          g2: 0.34,
+          b2: 0.06,
+          size: 0.92,
+          stretch: 2.4,
+          spriteMode: 0,
+          hdrBoost: 1.7,
+          drag: 0.34,
+          gravity: 5.5,
+          burstType: 'comet_tail',
+          maxLife: 0.42,
+        });
+      }
+
+      if (sh.y >= sh.apexY || sh.flightAge >= sh.flightSec || sh.vy <= 1.2) {
+        this.detonateFireworkShell(sh);
+        this.fwShells.splice(i, 1);
+      }
+    }
+
+    // C. Decay 6 pooled sky/rim PointLights, populate illuminated smoke flash uniforms & aggregate LightingProfileController flash state!
+    let totalFlashWeight = 0;
+    let aggR = 0;
+    let aggG = 0;
+    let aggB = 0;
+    let peakNorm = 0;
+    if (this.fwBurstLights?.length) {
+      for (let l = 0; l < this.fwBurstLights.length; l += 1) {
+        const pl = this.fwBurstLights[l];
+        if (pl.intensity > 0.08) {
+          pl.intensity = THREE.MathUtils.damp(pl.intensity, 0, 4.9, dt);
+        } else if (pl.intensity > 0) {
+          pl.intensity = 0;
+        }
+        const norm = Math.min(1.6, pl.intensity / 155);
+        this.fwFlashUniformPos[l].copy(pl.position);
+        this.fwFlashUniformCol[l].set(pl.color.r * norm * 1.5, pl.color.g * norm * 1.5, pl.color.b * norm * 1.5);
+        if (norm > 0.01) {
+          totalFlashWeight += norm;
+          aggR += pl.color.r * norm;
+          aggG += pl.color.g * norm;
+          aggB += pl.color.b * norm;
+          if (norm > peakNorm) peakNorm = norm;
+        }
+      }
+    }
+    this._fwSubBassFlashDecay = THREE.MathUtils.damp(this._fwSubBassFlashDecay, 0, 8.5, dt);
+    if (totalFlashWeight > 0.01) {
+      this._fwFlashAggColor.setRGB(
+        Math.min(1, aggR / totalFlashWeight),
+        Math.min(1, aggG / totalFlashWeight),
+        Math.min(1, aggB / totalFlashWeight)
+      );
+      this.fireworkFlashState.color.copy(this._fwFlashAggColor);
+      this.fireworkFlashState.intensity = Math.min(1.5, peakNorm + totalFlashWeight * 0.25);
+      this.fireworkFlashState.skyBloom = Math.min(1.2, totalFlashWeight * 0.55);
+    } else {
+      this.fireworkFlashState.intensity = 0;
+      this.fireworkFlashState.skyBloom = 0;
+    }
+    this.fireworkFlashState.subBassFlash = this._fwSubBassFlashDecay;
+
+    // D. Retract & hide Indoor Arena Roofs cleanly during Grand Encore / BRE so open starry sky is unobstructed
+    const roofs = this.venueEnv?.dynamicElements?.retractableRoofMeshes;
+    if (roofs?.length) {
+      const roofOpen = Boolean(
+        isGrandEncore || this.breActive || (this.encorePerformanceActive && playing)
+      );
+      for (let r = 0; r < roofs.length; r += 1) {
+        const mesh = roofs[r];
+        const baseX = mesh.userData?.baseX ?? mesh.position.x;
+        const baseY = mesh.userData?.baseY ?? mesh.position.y;
+        const baseZ = mesh.userData?.baseZ ?? mesh.position.z;
+        const slideX = mesh.userData?.slideDirX ?? 0;
+        const slideZ = mesh.userData?.slideDirZ ?? 0;
+        const offsetY = mesh.userData?.openOffsetY ?? 24;
+        mesh.position.x = THREE.MathUtils.damp(mesh.position.x, roofOpen ? baseX + slideX : baseX, 3.8, dt);
+        mesh.position.y = THREE.MathUtils.damp(mesh.position.y, roofOpen ? baseY + offsetY : baseY, 4.2, dt);
+        mesh.position.z = THREE.MathUtils.damp(mesh.position.z, roofOpen ? baseZ + slideZ : baseZ, 3.8, dt);
+        const hasSlide = Math.abs(slideX) > 1 || Math.abs(slideZ) > 1;
+        mesh.visible =
+          !roofOpen ||
+          (hasSlide
+            ? Math.abs(mesh.position.y - baseY) < offsetY * 0.92
+            : mesh.position.y < baseY + offsetY * 0.45);
+      }
+    }
+
+    // D2. Advance pooled illuminated volumetric smoke clouds (zero GC)
+    if (this.fwSmokePoints) {
+      let smokeDirty = false;
+      for (let s = 0; s < this.fwSmokeCount; s += 1) {
+        const sm = this.fwSmokeParticles[s];
+        const s3 = s * 3;
+        const s4 = s * 4;
+        if (!sm.active) {
+          if (this.fwSmokeMeta[s4 + 1] > 0) {
+            this.fwSmokePositions[s3 + 1] = -90;
+            this.fwSmokeMeta[s4 + 1] = 0;
+            smokeDirty = true;
+          }
+          continue;
+        }
+        sm.life += dt;
+        if (sm.life >= sm.maxLife) {
+          sm.active = false;
+          this.fwSmokePositions[s3 + 1] = -90;
+          this.fwSmokeMeta[s4 + 1] = 0;
+          smokeDirty = true;
+          continue;
+        }
+        const dragSmoke = Math.pow(0.68, dt);
+        sm.vx *= dragSmoke;
+        sm.vz *= dragSmoke;
+        sm.x += sm.vx * dt;
+        sm.y += sm.vy * dt;
+        sm.z += sm.vz * dt;
+        sm.size += sm.growRate * dt;
+        sm.rot += sm.vRot * dt;
+
+        const progress = sm.life / sm.maxLife;
+        const fadeIn = Math.min(1, progress * 5.0);
+        const fadeOut = Math.pow(Math.max(0, 1 - progress), 1.45);
+        this.fwSmokePositions[s3] = sm.x;
+        this.fwSmokePositions[s3 + 1] = sm.y;
+        this.fwSmokePositions[s3 + 2] = sm.z;
+        this.fwSmokeMeta[s4] = sm.size;
+        this.fwSmokeMeta[s4 + 1] = sm.baseAlpha * fadeIn * fadeOut;
+        this.fwSmokeMeta[s4 + 2] = sm.rot;
+        this.fwSmokeMeta[s4 + 3] = sm.baseGrey;
+        smokeDirty = true;
+      }
+      if (smokeDirty) {
+        this.fwSmokePoints.geometry.attributes.aPos.needsUpdate = true;
+        this.fwSmokePoints.geometry.attributes.aMeta.needsUpdate = true;
+      }
+    }
+
+    // E. Integrate all 5,600 active velocity-stretched firework particles (zero runtime heap allocations)
+    if (!this.hasActiveFireworks && this.fwShells.length === 0 && this.fwGirandolas.length === 0) return;
+
+    let anyFwUpdated = false;
+    let stillActive = false;
+    const vFwd = this._fwScratchVecA;
+    const vU = this._fwScratchVecB;
+    const vV = this._fwScratchVecC;
+
+    for (let i = 0; i < this.fwParticleCount; i += 1) {
+      const p = this.fwParticles[i];
+      const idx3 = i * 3;
+      const idx4 = i * 4;
+      if (!p.active) {
+        if (this.fwMeta[idx4 + 1] > 0) {
+          this.fwPositions[idx3 + 1] = -80;
+          this.fwMeta[idx4 + 1] = 0;
+          anyFwUpdated = true;
+        }
+        continue;
+      }
+      anyFwUpdated = true;
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+        this.fwPositions[idx3 + 1] = -80;
+        this.fwMeta[idx4 + 1] = 0;
+        continue;
+      }
+      stillActive = true;
+
+      // Multi-stage mid-air splits (Crossette 4-way orthogonal cross, Shell-of-Shells mini-peony, Dragon-Egg popcorn crackle, Tourbillon pop)
+      if (p.secondaryTimer > 0 && p.life >= p.secondaryTimer) {
+        p.secondaryTimer = 0;
+
+        if (p.burstType === 'crossette') {
+          // True perpendicular 4-way cross split via orthonormal basis (u, v) orthogonal to velocity!
+          vFwd.set(p.vx, p.vy, p.vz);
+          if (vFwd.lengthSq() < 0.01) vFwd.set(0, 1, 0);
+          else vFwd.normalize();
+          if (Math.abs(vFwd.y) < 0.9) vU.set(0, 1, 0).cross(vFwd).normalize();
+          else vU.set(1, 0, 0).cross(vFwd).normalize();
+          vV.copy(vFwd).cross(vU).normalize();
+
+          this._colorA.setHex(p.subColorHex || 0xfacc15);
+          const splitSpeed = 8.4;
+          for (let k = 0; k < 4; k += 1) {
+            const sign = k < 2 ? (k === 0 ? 1 : -1) : (k === 2 ? 1 : -1);
+            const axis = k < 2 ? vU : vV;
+            this.spawnFireworkParticle({
+              x: p.x,
+              y: p.y,
+              z: p.z,
+              vx: p.vx * 0.25 + axis.x * sign * splitSpeed,
+              vy: p.vy * 0.25 + axis.y * sign * splitSpeed,
+              vz: p.vz * 0.25 + axis.z * sign * splitSpeed,
+              r0: 1.0,
+              g0: 0.99,
+              b0: 0.94,
+              r: this._colorA.r,
+              g: this._colorA.g,
+              b: this._colorA.b,
+              r2: p.r2,
+              g2: p.g2,
+              b2: p.b2,
+              size: 1.12,
+              stretch: 2.25,
+              spriteMode: 1,
+              hdrBoost: 1.9,
+              drag: 0.24,
+              gravity: 4.5,
+              burstType: 'crossette_sub',
+              maxLife: 0.62 + Math.random() * 0.22,
+            });
+          }
+          // Crisp crackle flash at cross split center
+          p.vx *= 0.15;
+          p.vy *= 0.15;
+          p.vz *= 0.15;
+          p.spriteMode = 2;
+          p.size = 2.4;
+          p.stretch = 0;
+          p.hdrBoost = 2.5;
+          p.life = p.maxLife - 0.14;
+        } else if (p.burstType === 'sub_shell_carrier') {
+          // Shell-of-Shells synchronized miniature peony sub-detonation!
+          const subStars = this.adaptiveLowPower ? 14 : 26;
+          const ga = Math.PI * (1 + Math.sqrt(5));
+          this._colorA.setHex(p.subColorHex || 0x38bdf8);
+          for (let k = 0; k < subStars; k += 1) {
+            const tn = (k + 0.5) / subStars;
+            const phi = Math.acos(1 - 2 * tn);
+            const th = ga * k;
+            const spd = 6.2 + Math.random() * 2.2;
+            this.spawnFireworkParticle({
+              x: p.x,
+              y: p.y,
+              z: p.z,
+              vx: p.vx * 0.18 + Math.sin(phi) * Math.cos(th) * spd,
+              vy: p.vy * 0.18 + Math.cos(phi) * spd,
+              vz: p.vz * 0.18 + Math.sin(phi) * Math.sin(th) * spd,
+              r0: 1.0,
+              g0: 0.98,
+              b0: 0.92,
+              r: this._colorA.r,
+              g: this._colorA.g,
+              b: this._colorA.b,
+              r2: 1.0,
+              g2: 0.95,
+              b2: 0.78,
+              size: 1.15,
+              stretch: 1.35,
+              spriteMode: 1,
+              hdrBoost: 1.95,
+              drag: 0.22,
+              gravity: 3.6,
+              burstType: 'peony_sub',
+              strobeTail: true,
+              maxLife: 0.95 + Math.random() * 0.3,
+            });
+          }
+          this.registerFireworkFlash(p.x, p.y, p.z, p.subColorHex || 0x38bdf8, 95);
+          p.active = false;
+          this.fwPositions[idx3 + 1] = -80;
+          this.fwMeta[idx4 + 1] = 0;
+          continue;
+        } else if (p.burstType === 'dragon_egg') {
+          // Dragon-Egg delayed white-hot popcorn strobe crackle burst!
+          const crackles = this.adaptiveLowPower ? 2 : 3;
+          for (let k = 0; k < crackles; k += 1) {
+            const ang = Math.random() * Math.PI * 2;
+            const elev = (Math.random() - 0.5) * Math.PI;
+            const spd = 3.8 + Math.random() * 4.8;
+            this.spawnFireworkParticle({
+              x: p.x + (Math.random() - 0.5) * 0.6,
+              y: p.y + (Math.random() - 0.5) * 0.6,
+              z: p.z + (Math.random() - 0.5) * 0.6,
+              vx: Math.cos(ang) * Math.cos(elev) * spd,
+              vy: Math.sin(elev) * spd,
+              vz: Math.sin(ang) * Math.cos(elev) * spd,
+              r0: 1.0,
+              g0: 1.0,
+              b0: 0.98,
+              r: 1.0,
+              g: 0.98,
+              b: 0.9,
+              r2: 1.0,
+              g2: 0.8,
+              b2: 0.35,
+              size: 1.85 + Math.random() * 0.7,
+              stretch: 0.4,
+              spriteMode: 2,
+              hdrBoost: 2.65,
+              drag: 0.16,
+              gravity: 3.2,
+              burstType: 'crackle_pop',
+              maxLife: 0.2 + Math.random() * 0.18,
+            });
+          }
+          p.active = false;
+          this.fwPositions[idx3 + 1] = -80;
+          this.fwMeta[idx4 + 1] = 0;
+          continue;
+        } else if (p.burstType === 'tourbillon') {
+          // Neon pop at the end of a Tourbillon serpent spiral!
+          this._colorA.setHex(p.subColorHex || 0xe879f9);
+          for (let k = 0; k < 4; k += 1) {
+            const ang = (k / 4) * Math.PI * 2 + Math.random();
+            this.spawnFireworkParticle({
+              x: p.x,
+              y: p.y,
+              z: p.z,
+              vx: Math.cos(ang) * 5.2,
+              vy: (Math.random() - 0.3) * 5.2,
+              vz: Math.sin(ang) * 5.2,
+              r: this._colorA.r,
+              g: this._colorA.g,
+              b: this._colorA.b,
+              r2: 1.0,
+              g2: 1.0,
+              b2: 1.0,
+              size: 1.5,
+              stretch: 0.6,
+              spriteMode: 2,
+              hdrBoost: 2.3,
+              drag: 0.2,
+              gravity: 3.0,
+              burstType: 'crackle_pop',
+              maxLife: 0.28,
+            });
+          }
+        }
+      }
+
+      // Helical self-propelled Tourbillon vortex serpent acceleration!
+      if (p.burstType === 'tourbillon' && p.spinOmega !== 0) {
+        p.spinPhase += p.spinOmega * dt;
+        const c = Math.cos(p.spinPhase);
+        const s = Math.sin(p.spinPhase);
+        p.vx += c * p.spinRadius * dt;
+        p.vy += s * p.spinRadius * 0.85 * dt;
+        p.vz += Math.sin(p.spinPhase * 0.7 + i) * p.spinRadius * 0.75 * dt;
+      }
+
+      // Lingering trailing ember sparks for Kamuro/Willow, Chrysanthemum, Roman Pearls & Tourbillon serpents
+      if (p.trailTimer > 0) {
+        p.trailTimer -= dt;
+        if (p.trailTimer <= 0 && p.life < p.maxLife * 0.78) {
+          p.trailTimer =
+            p.burstType === 'roman_pearl'
+              ? 0.022
+              : p.burstType === 'tourbillon'
+                ? 0.032
+                : p.burstType === 'kamuro_willow'
+                  ? 0.075
+                  : 0.095;
+          this.spawnFireworkParticle({
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            vx: p.vx * 0.14 + (Math.random() - 0.5) * 0.6,
+            vy: p.vy * 0.12 - 0.7,
+            vz: p.vz * 0.14 + (Math.random() - 0.5) * 0.6,
+            r0: p.r,
+            g0: p.g,
+            b0: p.b,
+            r: p.r,
+            g: p.g,
+            b: p.b,
+            r2: p.r2,
+            g2: p.g2,
+            b2: p.b2,
+            size: p.burstType === 'kamuro_willow' ? 0.85 : 0.72,
+            stretch: p.burstType === 'kamuro_willow' ? 2.2 : 1.65,
+            spriteMode: 0,
+            hdrBoost: 1.25,
+            drag: 0.36,
+            gravity: p.burstType === 'kamuro_willow' ? 5.8 : 4.2,
+            burstType: 'trail_ember',
+            maxLife: p.burstType === 'kamuro_willow' ? 0.72 : 0.34,
+          });
+        }
+      }
+
+      const drag = Math.pow(p.drag || 0.24, dt);
+      p.vx *= drag;
+      p.vz *= drag;
+      p.vy = p.vy * drag - (p.gravity || 3.8) * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+
+      const progress = p.life / p.maxLife;
+      const timeLeft = p.maxLife - p.life;
+
+      // 3-Stage Chemical Burn Color Shift: incandescent white core (0..0.14) -> primary -> deep secondary fade
+      let cr;
+      let cg;
+      let cb;
+      if (progress < 0.14) {
+        const k = progress / 0.14;
+        cr = p.r0 + (p.r - p.r0) * k;
+        cg = p.g0 + (p.g - p.g0) * k;
+        cb = p.b0 + (p.b - p.b0) * k;
+      } else {
+        const k = (progress - 0.14) / 0.86;
+        cr = p.r + (p.r2 - p.r) * k;
+        cg = p.g + (p.g2 - p.g) * k;
+        cb = p.b + (p.b2 - p.b) * k;
+      }
+
+      let fade = Math.max(0, 1 - Math.pow(progress, p.burstType === 'kamuro_willow' ? 1.55 : 1.32));
+      let hdr = p.hdrBoost;
+      let curMode = p.spriteMode;
+
+      // Strobe-Tipped Peony / Heart / Star / Crown high-frequency silver/gold twinkle during final 0.6s!
+      if (p.strobeTail && timeLeft <= 0.62) {
+        const strobeWave = Math.sin(t * 58 + i * 4.1);
+        if (strobeWave > 0.25) {
+          cr = 1.0;
+          cg = 0.98;
+          cb = 0.88;
+          hdr = 2.4;
+          curMode = 2;
+          fade = Math.max(fade, 0.72 * (timeLeft / 0.62));
+        } else {
+          fade *= 0.14;
+        }
+      } else if (p.burstType === 'crackle_pop') {
+        const popFlash = Math.abs(Math.sin(t * 74 + i * 5.3));
+        fade *= 0.4 + 0.6 * popFlash;
+      } else if (p.burstType === 'kamuro_willow') {
+        // Gentle golden charcoal shimmer across 4s willow hang time
+        fade *= 0.82 + 0.18 * Math.sin(t * 24 + i * 2.9);
+      }
+
+      this.fwPositions[idx3] = p.x;
+      this.fwPositions[idx3 + 1] = p.y;
+      this.fwPositions[idx3 + 2] = p.z;
+      this.fwVelocities[idx3] = p.vx;
+      this.fwVelocities[idx3 + 1] = p.vy;
+      this.fwVelocities[idx3 + 2] = p.vz;
+      this.fwColors[idx3] = cr * hdr;
+      this.fwColors[idx3 + 1] = cg * hdr;
+      this.fwColors[idx3 + 2] = cb * hdr;
+      this.fwMeta[idx4] = p.size * (p.burstType === 'apex_bloom' ? 1 + progress * 1.4 : 0.72 + fade * 0.35);
+      this.fwMeta[idx4 + 1] = Math.min(1, fade);
+      this.fwMeta[idx4 + 2] = p.stretch;
+      this.fwMeta[idx4 + 3] = curMode;
+    }
+
+    this.hasActiveFireworks =
+      stillActive || this.fwShells.length > 0 || this.fwGirandolas.length > 0 || this.fwRomanQueue.length > 0;
+    if (anyFwUpdated) {
+      this.fwPoints.geometry.attributes.aPos.needsUpdate = true;
+      this.fwPoints.geometry.attributes.aVel.needsUpdate = true;
+      this.fwPoints.geometry.attributes.aColor.needsUpdate = true;
+      this.fwPoints.geometry.attributes.aMeta.needsUpdate = true;
+    }
   }
 
   updatePyrotechnics(dt, stageState, telemetry) {
@@ -3522,28 +8405,16 @@ export class StageBand {
     const playing = Boolean(stageState?.playing);
     const fever = Boolean(stageState?.feverActive);
     const encore = Boolean(stageState?.isEncore || this.encorePerformanceActive);
+    const isGrandEncore = Boolean(stageState?.isEncoreActive || this.grandEncoreActive || this.encoreFinaleActive);
     const combo = stageState?.combo || 0;
     const overallE = telemetry?.overallEnergy || 0;
 
-    // A. Auto-launch periodic aerial fireworks during Fever Mode, Final Encore & Encore Results!
-    if (this.encoreFinaleActive) {
-      this.finaleFireworkTimer -= dt;
-      if (this.finaleFireworkTimer <= 0) {
-        this.launchFireworkShell(true);
-        this.finaleFireworkTimer = this.encoreGrade === 'S' ? 0.58 : 0.92;
-      }
-      if (this.encoreGrade === 'S' || this.encoreGrade === 'A' || encore) {
-        this.finaleConfettiTimer -= dt;
-        if (this.finaleConfettiTimer <= 0) {
-          this.triggerConfettiBurst();
-          this.finaleConfettiTimer = 2.5;
-        }
-      }
-    } else if (playing && (fever || (encore && combo >= 15))) {
-      this.feverFireworkTimer -= dt;
-      if (this.feverFireworkTimer <= 0) {
-        this.launchFireworkShell(encore);
-        this.feverFireworkTimer = fever ? 1.05 : 1.8;
+    // A. Continuous celebration confetti during Grand Encore / Finale
+    if (isGrandEncore && (this.encoreGrade === 'S' || this.encoreGrade === 'A' || encore || this.grandEncoreActive)) {
+      this.finaleConfettiTimer -= dt;
+      if (this.finaleConfettiTimer <= 0) {
+        this.triggerConfettiBurst();
+        this.finaleConfettiTimer = 2.4;
       }
     }
 
@@ -3574,26 +8445,36 @@ export class StageBand {
       }
     }
 
-    // C. Golden Spark Fountains (plus continuous indoor fountains at Royal Opera House!)
-    if (this.venueEnv?.meta?.continuousIndoorFountains && (playing || this.encoreFinaleActive)) {
-      this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 0.2);
+    // C. Towering 7m Titanium Cold-Spark Gerb Fountains (velocity-stretched needles, continuous at Royal Opera!)
+    const continuousFountains = Boolean(
+      this.venueEnv?.meta?.continuousIndoorFountains || this.venueOverlayId === 'ROYAL_OPERA'
+    );
+    if (continuousFountains && (playing || this.encoreFinaleActive)) {
+      this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 0.25);
     }
     if (this.sparkEmitterTimer > 0) {
       this.sparkEmitterTimer = Math.max(0, this.sparkEmitterTimer - dt);
-      const emitPerFrame = Math.min(12, Math.ceil(dt * (this.venueEnv?.meta?.continuousIndoorFountains ? 64 : 120)));
+      const emitPerFrame = Math.min(20, Math.ceil(dt * (continuousFountains ? 95 : 210)));
       for (let e = 0; e < emitPerFrame; e += 1) {
-        const nozzleX = this.pyroNozzleXs[Math.floor(Math.random() * this.pyroNozzleXs.length)];
+        const nozzleIdx = Math.floor(Math.random() * this.pyroNozzleXs.length);
+        const nozzleX = this.pyroNozzleXs[nozzleIdx];
         const sp = this.sparks[this.sparkCursor];
         this.sparkCursor = (this.sparkCursor + 1) % this.sparkCount;
+        const isSilverTitanium = (e + nozzleIdx) % 3 === 0;
         sp.active = true;
-        sp.x = nozzleX + (Math.random() - 0.5) * 0.25;
+        sp.x = nozzleX + (Math.random() - 0.5) * 0.22;
         sp.y = 0.16;
-        sp.z = 2.86 + (Math.random() - 0.5) * 0.25;
-        sp.vx = (Math.random() - 0.5) * 1.9;
-        sp.vy = 5.5 + Math.random() * 4.4;
-        sp.vz = (Math.random() - 0.5) * 1.6;
+        sp.z = 4.62 + (Math.random() - 0.5) * 0.2;
+        sp.vx = (Math.random() - 0.5) * 1.45;
+        // Peak height v^2 / (2*g) with vy=12.6..14.4 & g=11.6 => true towering 6.8m - 8.5m stage-front cold-spark gerbs!
+        sp.vy = 11.4 + Math.random() * 3.4;
+        sp.vz = (Math.random() - 0.5) * 1.25;
+        sp.r = isSilverTitanium ? 0.98 : 1.0;
+        sp.g = isSilverTitanium ? 0.99 : 0.88;
+        sp.b = isSilverTitanium ? 1.0 : 0.52;
+        sp.size = 0.44 + Math.random() * 0.28;
         sp.life = 0;
-        sp.maxLife = 0.65 + Math.random() * 0.45;
+        sp.maxLife = 0.78 + Math.random() * 0.42;
       }
     }
 
@@ -3601,108 +8482,74 @@ export class StageBand {
     for (let i = 0; i < this.sparkCount; i += 1) {
       const sp = this.sparks[i];
       const idx3 = i * 3;
+      const idx4 = i * 4;
       if (!sp.active) {
-        if (this.sparkPositions[idx3 + 1] > -40) {
+        if (this.sparkMeta[idx4 + 1] > 0) {
           this.sparkPositions[idx3 + 1] = -50;
+          this.sparkMeta[idx4 + 1] = 0;
           anySparkUpdated = true;
         }
         continue;
       }
       anySparkUpdated = true;
       sp.life += dt;
-      if (sp.life >= sp.maxLife) {
+      if (sp.life >= sp.maxLife || sp.y < 0.05) {
         sp.active = false;
         this.sparkPositions[idx3 + 1] = -50;
+        this.sparkMeta[idx4 + 1] = 0;
         continue;
       }
-      sp.vy -= 9.8 * dt;
+      const drag = Math.pow(0.55, dt);
+      sp.vx *= drag;
+      sp.vz *= drag;
+      sp.vy -= 11.6 * dt;
       sp.x += sp.vx * dt;
       sp.y += sp.vy * dt;
       sp.z += sp.vz * dt;
 
-      const fade = 1 - sp.life / sp.maxLife;
+      const progress = sp.life / sp.maxLife;
+      const fade = Math.max(0, 1 - Math.pow(progress, 1.35));
+      const sparkle = 0.72 + 0.48 * Math.abs(Math.sin(t * 52 + i * 3.3));
+      const hdr = 1.95 * sparkle;
       this.sparkPositions[idx3] = sp.x;
       this.sparkPositions[idx3 + 1] = sp.y;
       this.sparkPositions[idx3 + 2] = sp.z;
-      this.sparkColors[idx3] = 1.0 * fade;
-      this.sparkColors[idx3 + 1] = (0.72 + fade * 0.28) * fade;
-      this.sparkColors[idx3 + 2] = (0.2 + fade * 0.45) * fade;
+      this.sparkVelocities[idx3] = sp.vx;
+      this.sparkVelocities[idx3 + 1] = sp.vy;
+      this.sparkVelocities[idx3 + 2] = sp.vz;
+      this.sparkColors[idx3] = sp.r * hdr;
+      this.sparkColors[idx3 + 1] = (sp.g - progress * 0.24) * hdr;
+      this.sparkColors[idx3 + 2] = Math.max(0.08, sp.b - progress * 0.35) * hdr;
+      this.sparkMeta[idx4] = sp.size * (0.7 + fade * 0.45);
+      this.sparkMeta[idx4 + 1] = fade;
+      this.sparkMeta[idx4 + 2] = 2.4;
+      this.sparkMeta[idx4 + 3] = i % 5 === 0 ? 1 : 0;
     }
     if (anySparkUpdated) {
-      this.sparkPoints.geometry.attributes.position.needsUpdate = true;
-      this.sparkPoints.geometry.attributes.color.needsUpdate = true;
+      this.sparkPoints.geometry.attributes.aPos.needsUpdate = true;
+      this.sparkPoints.geometry.attributes.aVel.needsUpdate = true;
+      this.sparkPoints.geometry.attributes.aColor.needsUpdate = true;
+      this.sparkPoints.geometry.attributes.aMeta.needsUpdate = true;
     }
 
-    // D. 3D Stadium Aerial Fireworks
-    for (let i = this.fwShells.length - 1; i >= 0; i -= 1) {
-      const sh = this.fwShells[i];
-      sh.x += sh.vx * dt;
-      sh.y += sh.vy * dt;
-      sh.vy = Math.max(4.5, sh.vy - 5.2 * dt);
-      sh.trailAccum += dt;
-
-      if (sh.trailAccum >= 0.025) {
-        sh.trailAccum = 0;
-        const p = this.fwParticles[this.fwCursor];
-        this.fwCursor = (this.fwCursor + 1) % this.fwParticleCount;
-        p.active = true;
-        p.x = sh.x + (Math.random() - 0.5) * 0.14;
-        p.y = sh.y;
-        p.z = sh.z;
-        p.vx = (Math.random() - 0.5) * 0.4;
-        p.vy = -1.2;
-        p.vz = (Math.random() - 0.5) * 0.4;
-        p.r = 1.0;
-        p.g = 0.88;
-        p.b = 0.55;
-        p.life = 0;
-        p.maxLife = 0.28;
-      }
-
-      if (sh.y >= sh.apexY) {
-        this.detonateFireworkShell(sh);
-        this.fwShells.splice(i, 1);
-      }
-    }
-
-    let anyFwUpdated = false;
-    for (let i = 0; i < this.fwParticleCount; i += 1) {
-      const p = this.fwParticles[i];
-      const idx3 = i * 3;
-      if (!p.active) {
-        if (this.fwPositions[idx3 + 1] > -50) {
-          this.fwPositions[idx3 + 1] = -60;
-          anyFwUpdated = true;
+    // D2. Ballad Floating Light Motes
+    if (this.balladDustPoints && this.balladDustMat) {
+      const targetDustAlpha = this.lightingState?.isBallad && playing ? 0.56 : 0;
+      this.balladDustAlpha = THREE.MathUtils.damp(this.balladDustAlpha, targetDustAlpha, 2.5, dt);
+      if (this.balladDustAlpha > 0.015) {
+        this.balladDustPoints.visible = true;
+        this.balladDustMat.opacity = this.balladDustAlpha;
+        for (let i = 0; i < this.balladDustCount; i += 1) {
+          const s = this.balladDustSeeds[i];
+          const rise = ((t * s.speed + s.phase) % 6.5);
+          this.balladDustPositions[i * 3] = s.baseX + Math.sin(t * 0.8 + s.phase) * 0.55;
+          this.balladDustPositions[i * 3 + 1] = 0.5 + rise;
+          this.balladDustPositions[i * 3 + 2] = s.baseZ + Math.cos(t * 0.7 + s.phase) * 0.45;
         }
-        continue;
+        this.balladDustPoints.geometry.attributes.position.needsUpdate = true;
+      } else {
+        this.balladDustPoints.visible = false;
       }
-      anyFwUpdated = true;
-      p.life += dt;
-      if (p.life >= p.maxLife) {
-        p.active = false;
-        this.fwPositions[idx3 + 1] = -60;
-        continue;
-      }
-      const drag = Math.pow(0.26, dt);
-      p.vx *= drag;
-      p.vz *= drag;
-      p.vy = p.vy * drag - 3.6 * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.z += p.vz * dt;
-
-      const fade = Math.max(0, 1 - p.life / p.maxLife);
-      const twinkle = 0.82 + 0.18 * Math.sin(t * 32 + i * 2.1);
-      this.fwPositions[idx3] = p.x;
-      this.fwPositions[idx3 + 1] = p.y;
-      this.fwPositions[idx3 + 2] = p.z;
-      this.fwColors[idx3] = p.r * fade * twinkle;
-      this.fwColors[idx3 + 1] = p.g * fade * twinkle;
-      this.fwColors[idx3 + 2] = p.b * fade * twinkle;
-    }
-    if (anyFwUpdated) {
-      this.fwPoints.geometry.attributes.position.needsUpdate = true;
-      this.fwPoints.geometry.attributes.color.needsUpdate = true;
     }
 
     // E. 3D Fluttering Metallic Confetti Cards
@@ -3745,30 +8592,51 @@ export class StageBand {
       this.confettiMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // F. Multi-Beam 3D Concert Laser Sweeps
+    // F. Multi-Beam 3D Concert Laser Sweeps (Activated at 50x+ Streak, BRE, Fever, Encore!)
+    const streakTier = this.lightingState?.streakTier || 0;
+    const laserFanActive = Boolean(this.lightingState?.laserFanActive) || this.breActive;
     const isHighTechVenue =
       this.venueId === 'tokyo-dome' ||
       this.venueId === 'coachella' ||
+      this.venueOverlayId === 'CYBER_NEON' ||
+      this.venueOverlayId === 'ROYAL_OPERA' ||
       this.venueId === 'cyber-tokyo' ||
       this.venueId === 'royal-opera';
-    const isFinaleLaser = this.encoreFinaleActive && (this.encoreGrade === 'S' || this.encoreGrade === 'A' || encore);
-    const laserStrength = isFinaleLaser
-      ? 0.44
+    const isFinaleLaser =
+      (this.encoreFinaleActive || this.grandEncoreActive) &&
+      (this.encoreGrade === 'S' || this.encoreGrade === 'A' || encore || this.grandEncoreActive);
+    const laserStrength = isFinaleLaser || this.breActive
+      ? 0.46
       : fever || encore
-        ? 0.38
-        : playing && combo >= 50
-          ? 0.3
+        ? 0.4
+        : playing && (laserFanActive || combo >= 50)
+          ? 0.34
           : isHighTechVenue && playing
             ? 0.14 + overallE * 0.12
             : 0;
 
+    // 100x+ Continuous Corner Spark Fountains!
+    if (playing && (streakTier >= 3 || this.breActive)) {
+      this.streakPyroCooldown -= dt;
+      if (this.streakPyroCooldown <= 0) {
+        this.streakPyroCooldown = this.breActive ? 0.65 : 1.35;
+        this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 0.95);
+        this.pyroFlameIntensity = Math.max(this.pyroFlameIntensity, 0.72);
+      }
+    } else {
+      this.streakPyroCooldown = 0;
+    }
+
     for (let i = 0; i < this.laserBeams.length; i += 1) {
       const lb = this.laserBeams[i];
       lb.mat.opacity = THREE.MathUtils.damp(lb.mat.opacity, laserStrength, 4.5, dt);
+      if (streakTier >= 2 && this.lightingState?.multiplierColor) {
+        lb.mat.color.lerp(this.lightingState.multiplierColor, 0.12);
+      }
       if (lb.mat.opacity > 0.005) {
         const dir = i < 3 ? 1 : -1;
-        const speed = fever || isFinaleLaser || encore ? 2.15 : 1.35;
-        lb.pivot.rotation.z = Math.sin(t * speed + i * 0.85) * 0.82 * dir;
+        const speed = fever || isFinaleLaser || encore || this.breActive ? 2.25 : streakTier >= 2 ? 1.75 : 1.35;
+        lb.pivot.rotation.z = Math.sin(t * speed + i * 0.85) * 0.84 * dir;
         lb.pivot.rotation.x = 0.28 + Math.cos(t * (speed * 0.75) + i * 0.6) * 0.48;
       }
     }
@@ -3776,7 +8644,7 @@ export class StageBand {
     // G. CO2 Cryo-Jets blasting frosty vertical plumes on Fever, Encore & Chorus Drops
     this.cryoBurstTimer = Math.max(0, this.cryoBurstTimer - dt);
     const cryoTarget =
-      fever || encore || this.encoreFinaleActive || this.cryoBurstTimer > 0
+      fever || encore || this.encoreFinaleActive || this.grandEncoreActive || this.cryoBurstTimer > 0
         ? 0.48
         : playing && overallE > 0.54 && combo >= 20
           ? 0.3
@@ -4033,7 +8901,7 @@ export class StageBand {
    */
   updateBandStageMotion(
     dt,
-    { playing, songTime, bpm, moodId, currentSection, beatGrid, marks, guitarE, bassE, vocalE, fever, encore, sustainHeld }
+    { playing, songTime, bpm, moodId, currentSection, beatGrid, marks, guitarE, bassE, vocalE, fever, encore, sustainHeld, combo = 0 }
   ) {
     const gM = this.memberMotion.guitar;
     const bM = this.memberMotion.bass;
@@ -4167,8 +9035,8 @@ export class StageBand {
         case 'KNEE_DROP_SOLO':
         case 'CENTER_MONITOR_SHRED':
           gM.stanceMode = gM.action === 'KNEE_DROP_SOLO' ? 'KNEE_DROP_SOLO' : 'EDGE_MONITOR';
-          gM.targetX = isSingingGuitarist ? 0 : -0.18;
-          gM.targetZ = 1.38;
+          gM.targetX = isSingingGuitarist ? 0 : gM.action === 'KNEE_DROP_SOLO' ? 0 : 0.45;
+          gM.targetZ = gM.action === 'KNEE_DROP_SOLO' ? 9.45 : 9.35;
           gM.targetRotY = 0.08;
           break;
         case 'BACK_LEAN_BEND':
@@ -4187,8 +9055,8 @@ export class StageBand {
           break;
         case 'ENCORE_POWER_SLIDE':
           gM.stanceMode = 'ENCORE_SLIDE';
-          gM.targetX = -0.65;
-          gM.targetZ = 1.42;
+          gM.targetX = -0.55;
+          gM.targetZ = 9.55;
           gM.targetRotY = 0.14;
           break;
         case 'WINDMILL_STRUM':
@@ -4279,28 +9147,28 @@ export class StageBand {
         break;
       case 'DRUM_RISER_LOCK':
         bM.stanceMode = 'PACE';
-        bM.targetX = 2.35;
-        bM.targetZ = -2.15;
+        bM.targetX = 3.15;
+        bM.targetZ = -0.35;
         bM.targetRotY = -0.45;
         break;
       case 'POWER_LUNGE_FRONT':
       case 'EDGE_SURGE':
         bM.stanceMode = 'POWER_SLIDE';
         bM.targetX = 2.55;
-        bM.targetZ = 1.15;
+        bM.targetZ = 1.65;
         bM.targetRotY = -0.24;
         break;
       case 'TRUSS_STRIDE_R':
         bM.stanceMode = 'TRUSS_STRIDE';
-        bM.targetX = 4.0;
-        bM.targetZ = 0.96;
+        bM.targetX = 4.25;
+        bM.targetZ = 1.15;
         bM.targetRotY = -0.34;
         break;
       case 'MONITOR_GROOVE':
       case 'SUPPORT_STEP_OUT':
         bM.stanceMode = 'EDGE_MONITOR';
         bM.targetX = 2.85;
-        bM.targetZ = 1.08;
+        bM.targetZ = 1.48;
         bM.targetRotY = -0.22;
         break;
       case 'WIDE_POWER_STANCE':
@@ -4308,20 +9176,20 @@ export class StageBand {
       case 'CROWD_FIST_PUMP':
       case 'CROWD_SALUTE_JUMP':
         bM.stanceMode = 'POWER_STANCE';
-        bM.targetX = 2.45;
-        bM.targetZ = 0.68;
+        bM.targetX = 2.65;
+        bM.targetZ = 1.1;
         bM.targetRotY = -0.18;
         break;
       case 'SIDESTEP_SHUFFLE_R':
         bM.stanceMode = 'PACE';
-        bM.targetX = marks.bass.x - 0.72;
-        bM.targetZ = marks.bass.z + 0.55;
+        bM.targetX = marks.bass.x - 0.65;
+        bM.targetZ = marks.bass.z + 0.52;
         bM.targetRotY = -0.18;
         break;
       case 'AMP_BACK_STANCE':
         bM.stanceMode = 'HOME';
-        bM.targetX = marks.bass.x + 0.48;
-        bM.targetZ = marks.bass.z - 0.42;
+        bM.targetX = marks.bass.x + 0.25;
+        bM.targetZ = Math.max(-0.1, marks.bass.z - 0.35);
         bM.targetRotY = -0.34;
         break;
       default:
@@ -4335,35 +9203,56 @@ export class StageBand {
     // 3. Map Vocalist Markov Action + Section
     if (marks.vocals.visible) {
       if (secType === 'GUITAR_SOLO') {
-        // Step gracefully aside to let Lead Guitarist own the center monitor spotlight during solos!
+        // Step gracefully aside to let Lead Guitarist own the T-catwalk spotlight during solos!
         vM.stanceMode = 'PACE';
-        vM.targetX = 2.15;
-        vM.targetZ = -0.25;
+        vM.targetX = 2.6;
+        vM.targetZ = 2.0;
         vM.targetRotY = -0.48;
       } else if (!isPopDiva && vocalE > 0.28 && (vM.action === 'MIC_CENTER_SING' || secType === 'VERSE')) {
         vM.stanceMode = 'MIC_CENTER';
         vM.targetX = 0;
-        vM.targetZ = -0.68;
+        vM.targetZ = marks.vocals.z ?? 2.0;
         vM.targetRotY = 0;
       } else if (vM.action === 'TRUSS_STRIDE_L' || vM.action === 'STAGE_LEFT_PACE') {
         vM.stanceMode = isHighEnergy ? 'TRUSS_STRIDE' : 'PACE';
         vM.targetX = isPopDiva ? -2.05 : -1.55;
-        vM.targetZ = isHighEnergy ? 1.28 : 0.52;
+        vM.targetZ = isHighEnergy ? 2.45 : 1.9;
         vM.targetRotY = 0.22;
       } else if (vM.action === 'TRUSS_STRIDE_R' || vM.action === 'STAGE_RIGHT_PACE') {
         vM.stanceMode = isHighEnergy ? 'TRUSS_STRIDE' : 'PACE';
         vM.targetX = isPopDiva ? 2.05 : 1.55;
-        vM.targetZ = isHighEnergy ? 1.28 : 0.52;
+        vM.targetZ = isHighEnergy ? 2.45 : 1.9;
         vM.targetRotY = -0.22;
       } else if (vM.action === 'EDGE_MONITOR_LEAN' || vM.action === 'EDGE_SURGE' || vM.action === 'CENTER_ANTHEM_BELT') {
         vM.stanceMode = 'EDGE_MONITOR';
         vM.targetX = 0;
-        vM.targetZ = 1.24;
+        vM.targetZ = 7.6;
         vM.targetRotY = 0;
       } else {
         vM.stanceMode = 'MIC_CENTER';
         vM.targetX = 0;
-        vM.targetZ = -0.55;
+        vM.targetZ = marks.vocals.z ?? 2.0;
+        vM.targetRotY = 0;
+      }
+    }
+
+    // 8× Fever streak or Guitar Solo T-catwalk walkout showcase
+    if ((fever && combo >= 30) || secType === 'GUITAR_SOLO') {
+      if (this.activeInstrument === 'guitar' || secType === 'GUITAR_SOLO') {
+        gM.stanceMode = secType === 'GUITAR_SOLO' ? 'KNEE_DROP_SOLO' : 'EDGE_MONITOR';
+        gM.targetX = isSingingGuitarist ? 0 : -0.42;
+        gM.targetZ = 9.05;
+        gM.targetRotY = 0.06;
+      } else if (this.activeInstrument === 'bass' && fever && combo >= 30) {
+        bM.stanceMode = 'EDGE_MONITOR';
+        bM.targetX = 0.48;
+        bM.targetZ = 8.85;
+        bM.targetRotY = -0.08;
+      }
+      if (marks.vocals.visible && fever && combo >= 30 && secType !== 'GUITAR_SOLO') {
+        vM.stanceMode = 'EDGE_MONITOR';
+        vM.targetX = 0;
+        vM.targetZ = 8.45;
         vM.targetRotY = 0;
       }
     }
@@ -4371,13 +9260,13 @@ export class StageBand {
     // Track sustain lean-back & knee-drop / fist-pump weights smoothly
     gM.sustainLean = THREE.MathUtils.damp(
       gM.sustainLean,
-      sustainHeld && this.activeInstrument === 'guitar' ? 1.0 : gM.action === 'BACK_LEAN_BEND' ? 0.72 : 0,
+      sustainHeld && this.activeInstrument === 'guitar' ? 1.15 : gM.action === 'BACK_LEAN_BEND' ? 0.72 : 0,
       7.5,
       dt
     );
     bM.sustainLean = THREE.MathUtils.damp(
       bM.sustainLean,
-      sustainHeld && this.activeInstrument === 'bass' ? 1.0 : 0,
+      sustainHeld && this.activeInstrument === 'bass' ? 1.15 : 0,
       7.5,
       dt
     );
@@ -4405,18 +9294,33 @@ export class StageBand {
       dt
     );
 
-    // 4. Critically Damped Spring-Damper stage traversal + walking stride + spins + jumps!
+    // 4. Critically Damped Spring-Damper stage traversal (with T-catwalk shaft-safe waypoint routing) + jumps!
     const stepMemberSpring = (m, springFreq) => {
-      const dx = m.targetX - m.x;
-      const dz = m.targetZ - m.z;
+      let goalX = m.targetX;
+      let goalZ = m.targetZ;
+      if (m.targetZ > 4.8 && m.z < 4.7 && Math.abs(m.x) > 1.3) {
+        goalX = THREE.MathUtils.clamp(m.targetX, -1.1, 1.1);
+        goalZ = 4.2;
+      } else if (m.targetZ < 4.6 && m.z > 4.75 && Math.abs(m.targetX) > 1.35) {
+        goalX = THREE.MathUtils.clamp(m.x, -1.1, 1.1);
+        goalZ = 4.1;
+      }
+
+      const dx = goalX - m.x;
+      const dz = goalZ - m.z;
       const dist = Math.hypot(dx, dz);
 
-      const [nx, nvx] = stepSpring1D(m.x, m.vx, m.targetX, springFreq, dt);
-      const [nz, nvz] = stepSpring1D(m.z, m.vz, m.targetZ, springFreq, dt);
+      const [nx, nvx] = stepSpring1D(m.x, m.vx, goalX, springFreq, dt);
+      const [nz, nvz] = stepSpring1D(m.z, m.vz, goalZ, springFreq, dt);
       m.x = nx;
       m.vx = nvx;
       m.z = nz;
       m.vz = nvz;
+      if (m.z > 4.65 && m.z < 9.15) {
+        m.x = THREE.MathUtils.clamp(m.x, -1.28, 1.28);
+      } else if (m.z >= 9.15) {
+        m.x = THREE.MathUtils.clamp(m.x, -3.2, 3.2);
+      }
 
       const planarSpeed = Math.hypot(m.vx, m.vz);
       const normalizedSpeed = Math.min(1, planarSpeed / 2.2);
@@ -4505,8 +9409,13 @@ export class StageBand {
     const hypeNorm = Math.max(0, Math.min(1, (stageState?.hype ?? 58) / 100));
     const encore = Boolean(stageState?.isEncore || this.encorePerformanceActive);
     const fever = Boolean(stageState?.feverActive);
+    const combo = stageState?.combo || 0;
     const currentSection = stageState?.currentSection || null;
     const beatGrid = stageState?.beatGrid || null;
+    if (stageState?.trackMeta !== undefined) {
+      this.lastTrackMeta = stageState.trackMeta;
+    }
+    const trackMeta = this.lastTrackMeta;
 
     const drumE = playing ? Math.min(1, (telemetry?.drumEnergy || 0) * 1.65) : 0.12;
     const bassE = playing ? Math.min(1, (telemetry?.bassEnergy || 0) * 1.55) : 0.1;
@@ -4538,7 +9447,8 @@ export class StageBand {
     const marks = this.getLineupMarks();
     const stemActivity = stageState?.stemActivity || { drums: true, bass: true, guitar: true };
 
-    // Dynamic Stage Lighting & Section-Driven Mood Profile interpolation
+    // Dynamic Stage Lighting & Section-Driven Mood Profile interpolation (with live Firework Sky-Bloom & Reflections)
+    const isGrandEncore = Boolean(stageState?.isEncoreActive || this.grandEncoreActive || this.encoreFinaleActive);
     const lightState = this.lightingController.update(dt, {
       playing,
       songTime,
@@ -4546,6 +9456,7 @@ export class StageBand {
       combo: stageState?.combo || 0,
       fever,
       encore,
+      isEncoreActive: isGrandEncore,
       encoreFinaleActive: this.encoreFinaleActive,
       overallEnergy: telemetry?.overallEnergy || 0,
       bassEnergy: bassE,
@@ -4553,24 +9464,204 @@ export class StageBand {
       isWalkOn,
       instrument: this.activeInstrument,
       venueMeta: this.venueEnv?.meta,
+      overlayMeta: this.venueEnv?.overlayMeta || this.overlayMeta || null,
       currentSection,
+      trackMeta,
+      fireworkFlash: this.fireworkFlashState,
     });
     this.lightingState = lightState;
+    this.breActive = Boolean(stageState?.breActive);
+    const streakTier = lightState.streakTier || 0;
 
-    // Apply mood lighting to fog tint, rear band rim light, crowd glow & stage rim
+    const resolvedBeatPhase = Number.isFinite(stageState?.beatPhase)
+      ? stageState.beatPhase
+      : (((songTime * (bpm / 60)) % 1) + 1) % 1;
+
+    // Advance Crowd Event State Machine
+    this.updateCrowdEventState(dt, {
+      playing,
+      isWalkOn,
+      hypeNorm,
+      feverOrEncore: fever || encore || isGrandEncore || this.breActive,
+      sectionType: lightState.sectionType,
+      ambianceType: lightState.ambianceType,
+      streak: combo,
+    });
+
+    // Grand Piano / Crystal Grand animated lidGroup & propStick driven by ballad/chorus dynamics
+    if (this.keyboardAsset?.lidGroup) {
+      const closedAngle = this.keyboardAsset.lidClosedAngle ?? 0.04;
+      const openAngle = this.keyboardAsset.lidOpenAngle ?? 0.64;
+      const targetLidAngle = !playing && !this.encoreFinaleActive && !isGrandEncore
+        ? closedAngle
+        : lightState.isBallad ||
+            lightState.sectionType === 'CHORUS' ||
+            lightState.sectionType === 'OUTRO' ||
+            fever ||
+            encore ||
+            isGrandEncore
+          ? openAngle
+          : 0.38;
+      this.keyboardAsset.lidGroup.rotation.z = THREE.MathUtils.damp(
+        this.keyboardAsset.lidGroup.rotation.z,
+        targetLidAngle,
+        4.2,
+        dt
+      );
+      if (this.keyboardAsset.propStick) {
+        const openRatio = Math.max(
+          0,
+          Math.min(1, (this.keyboardAsset.lidGroup.rotation.z - closedAngle) / Math.max(0.01, openAngle - closedAngle))
+        );
+        this.keyboardAsset.propStick.visible = openRatio > 0.08;
+        this.keyboardAsset.propStick.scale.y = Math.max(0.15, openRatio);
+      }
+    }
+
+    // Apply mood lighting + Shader Sky Dome + Grand Encore deep starry sky (#050816) & firework sky bloom
+    const fwReflect = lightState.fireworkReflectionBoost || 0;
+    if (this.scene.background) {
+      if (isGrandEncore) {
+        this._colorC.copy(this._encoreNightColor);
+        if (fwReflect > 0.01 && lightState.fireworkSkyColor) {
+          this._colorC.lerp(lightState.fireworkSkyColor, Math.min(0.42, fwReflect * 0.28));
+        }
+        this.scene.background.lerp(this._colorC, 1 - Math.exp(-3.4 * dt));
+      } else {
+        this.scene.background.lerp(
+          lightState.skyHorizonColor || this._venueSkyColor,
+          1 - Math.exp(-3.0 * dt)
+        );
+      }
+    }
+    if (this.venueEnv?.dynamicElements?.updateAtmosphere) {
+      this.venueEnv.dynamicElements.updateAtmosphere(lightState, isGrandEncore, dt);
+    } else if (this.venueEnv?.dynamicElements?.skyMat?.color) {
+      const skyMat = this.venueEnv.dynamicElements.skyMat;
+      skyMat.color.lerp(isGrandEncore ? this._encoreNightColor.setHex(0x6b7db3) : this._colorA.setHex(0xffffff), 1 - Math.exp(-3.5 * dt));
+      this._encoreNightColor.setHex(0x050816);
+    }
     if (this.scene.fog && this.venueEnv?.meta) {
-      this._colorC.setHex(this.venueEnv.meta.fogColor).lerp(lightState.fogColor, 0.36);
-      this.scene.fog.color.copy(this._colorC);
+      if (isGrandEncore) {
+        this._colorC.copy(this._encoreNightColor);
+        if (fwReflect > 0.01 && lightState.fireworkSkyColor) {
+          this._colorC.lerp(lightState.fireworkSkyColor, Math.min(0.35, fwReflect * 0.24));
+        }
+        this.scene.fog.color.lerp(this._colorC, 1 - Math.exp(-3.8 * dt));
+        const encoreFogDensity = Math.max(
+          0.0011,
+          (this.venueEnv.meta.fogDensity || 0.003) * (lightState.fogDensityMult || 0.38)
+        );
+        this.scene.fog.density = THREE.MathUtils.damp(this.scene.fog.density, encoreFogDensity, 4.2, dt);
+      } else {
+        this._colorC.setHex(this.venueEnv.meta.fogColor).lerp(lightState.skyHorizonColor || lightState.fogColor, 0.38);
+        this.scene.fog.color.copy(this._colorC);
+        const targetFogDensity = this.venueEnv.meta.fogDensity * (1 + (lightState.hazeBoost || 0) * 0.35);
+        this.scene.fog.density = THREE.MathUtils.damp(this.scene.fog.density, targetFogDensity, 3.5, dt);
+      }
+    }
+    if (this.hazePoints?.material) {
+      const targetHazeOp = Math.max(0.12, (lightState.hazeShaftOpacity || 0.16) + (lightState.hazeBoost || 0) * 0.14);
+      this.hazePoints.material.opacity = THREE.MathUtils.damp(this.hazePoints.material.opacity, targetHazeOp, 4.0, dt);
+    }
+    if (this.hemiLight) {
+      this.hemiLight.color.copy(lightState.hemiSky);
+      this.hemiLight.groundColor.copy(lightState.hemiGround);
+      this.hemiLight.intensity = 0.82 * (lightState.hemiMult || 1.0);
+    }
+    if (this.frontKey) {
+      this.frontKey.color.copy(lightState.keyColor);
     }
     if (this.bandRimLight) {
       this.bandRimLight.color.copy(lightState.bandRimColor);
       this.bandRimLight.intensity = lightState.bandRimIntensity + lightState.strobeFlash * 1.1;
     }
+    if (this.bandRimSideL) {
+      this.bandRimSideL.color.copy(lightState.spotPrimary);
+      this.bandRimSideL.intensity = (1.1 + lightState.rimMult * 0.45) + lightState.strobeFlash * 0.65;
+    }
+    if (this.bandRimSideR) {
+      this.bandRimSideR.color.copy(lightState.spotSecondary);
+      this.bandRimSideR.intensity = (1.1 + lightState.rimMult * 0.45) + lightState.strobeFlash * 0.65;
+    }
     if (this.crowdLight) {
+      this.crowdLight.color.copy(lightState.crowdGlow);
       this.crowdLight.intensity = 16 * lightState.crowdGlowMult + lightState.strobeFlash * 10;
     }
+    if (this.blinderMat) {
+      const bp = lightState.blinderPulse || 0;
+      this.blinderMat.emissiveIntensity = 0.22 + bp * 4.8;
+      if (this.blinderLight) {
+        this.blinderLight.intensity = bp * 58;
+      }
+    }
+
+    // Dynamic Firework Overhead Reflections on Stage Roof Trusses, Stadium Arches & Waterfronts (Manila Bay / Sydney Harbour)
+    if (this.stageTrussMat) {
+      if (fwReflect > 0.01 && lightState.fireworkRimColor) {
+        this.stageTrussMat.emissive.copy(lightState.fireworkRimColor);
+        this.stageTrussMat.emissiveIntensity = Math.min(0.85, fwReflect * 0.52);
+      } else if (this.stageTrussMat.emissiveIntensity > 0.001) {
+        this.stageTrussMat.emissiveIntensity = THREE.MathUtils.damp(this.stageTrussMat.emissiveIntensity, 0, 6.0, dt);
+      }
+    }
+    if (this._venueTrussMats?.length) {
+      for (let i = 0; i < this._venueTrussMats.length; i += 1) {
+        const entry = this._venueTrussMats[i];
+        if (fwReflect > 0.01 && lightState.fireworkRimColor) {
+          entry.mat.emissive.copy(entry.baseEmissive).lerp(lightState.fireworkRimColor, Math.min(0.85, fwReflect * 0.72));
+          entry.mat.emissiveIntensity = entry.baseIntensity + Math.min(0.65, fwReflect * 0.42);
+        } else if (entry.mat.emissiveIntensity > entry.baseIntensity + 0.002) {
+          entry.mat.emissive.lerp(entry.baseEmissive, 1 - Math.exp(-5.0 * dt));
+          entry.mat.emissiveIntensity = THREE.MathUtils.damp(entry.mat.emissiveIntensity, entry.baseIntensity, 5.5, dt);
+        }
+      }
+    }
+    if (this._venueWaterMats?.length) {
+      for (let i = 0; i < this._venueWaterMats.length; i += 1) {
+        const entry = this._venueWaterMats[i];
+        if (fwReflect > 0.01 && lightState.fireworkSkyColor) {
+          const shimmer = 0.85 + 0.15 * Math.sin(t * 14 + i * 2.1);
+          entry.mat.emissive
+            .copy(entry.baseEmissive)
+            .lerp(lightState.fireworkSkyColor, Math.min(0.82, fwReflect * 0.68));
+          entry.mat.emissiveIntensity = entry.baseIntensity + fwReflect * 0.95 * shimmer;
+        } else if (entry.mat.emissiveIntensity > entry.baseIntensity + 0.002) {
+          entry.mat.emissive.lerp(entry.baseEmissive, 1 - Math.exp(-4.5 * dt));
+          entry.mat.emissiveIntensity = THREE.MathUtils.damp(entry.mat.emissiveIntensity, entry.baseIntensity, 4.5, dt);
+        }
+      }
+    }
     if (this.stageRimMat) {
+      if (streakTier >= 1 && lightState.multiplierColor && !fever && !encore) {
+        this.stageRimMat.color.lerp(lightState.multiplierColor, 0.14);
+        this.stageRimMat.emissive.lerp(lightState.multiplierColor, 0.14);
+      }
       this.stageRimMat.emissiveIntensity = 1.45 * lightState.rimMult + lightState.strobeFlash * 0.9;
+    }
+
+    // 100x+ Streak Player Gold Aura positioned smoothly beneath active player's musician!
+    if (this.playerGoldAura) {
+      const auraTarget = playing && !isWalkOn && (streakTier >= 3 || this.breActive) ? 1 : 0;
+      this.playerGoldAuraOpacity = THREE.MathUtils.damp(this.playerGoldAuraOpacity, auraTarget, 5.0, dt);
+      if (this.playerGoldAuraOpacity > 0.015) {
+        const activeRole = this.activeInstrument || 'guitar';
+        const anchorObj = activeRole === 'piano' ? this.pianoRigGroup : this.membersByRole?.[activeRole]?.root;
+        if (anchorObj) {
+          this.playerGoldAura.position.set(
+            anchorObj.position.x,
+            activeRole === 'drums' ? DRUM_RISER_TOP_Y : STAGE_DECK_TOP_Y + 0.02,
+            anchorObj.position.z
+          );
+        }
+        this.playerGoldAura.visible = true;
+        this.playerGoldAura.rotation.y += dt * 1.4;
+        const pulse = 0.85 + Math.sin(t * 7.5) * 0.15;
+        this.playerGoldAuraRingMat.opacity = 0.68 * this.playerGoldAuraOpacity * pulse;
+        this.playerGoldAuraBeamMat.opacity = 0.22 * this.playerGoldAuraOpacity * pulse;
+      } else {
+        this.playerGoldAura.visible = false;
+      }
     }
 
     // Automatically fire stage spark fountains, CO2 cryo-jets & coordinated band jumps on Chorus drops, Solos, Outros & Fever!
@@ -4595,11 +9686,12 @@ export class StageBand {
       const drumMove = Math.min(1, walkP / 0.62);
       const drumEase = 1 - Math.pow(1 - drumMove, 2.2);
       const riserHop = drumMove > 0.55 && drumMove < 0.92 ? Math.sin(((drumMove - 0.55) / 0.37) * Math.PI) * 0.48 : 0;
-      const drumY = (drumMove < 0.65 ? (drumMove / 0.65) * 0.64 : 0.64) + riserHop;
+      const targetDrumY = marks.drums?.y ?? DRUM_RISER_TOP_Y;
+      const drumY = (drumMove < 0.65 ? (drumMove / 0.65) * targetDrumY : targetDrumY) + riserHop;
       this.drummer.root.position.set(
-        THREE.MathUtils.lerp(-6.4, 0, drumEase),
+        THREE.MathUtils.lerp(-6.4, marks.drums?.x ?? 0, drumEase),
         drumY,
-        THREE.MathUtils.lerp(-4.6, -3.56, drumEase)
+        THREE.MathUtils.lerp(-4.6, marks.drums?.z ?? -2.8, drumEase)
       );
       this.drummer.root.rotation.y = THREE.MathUtils.lerp(1.35, 0, drumEase);
       const seatedLerp = Math.max(0, Math.min(1, (walkP - 0.58) / 0.22));
@@ -4609,13 +9701,17 @@ export class StageBand {
       this.drummer.upperBody.rotation.x = 0.08;
       this.drummer.headGroup.rotation.x = Math.sin(t * 6) * 0.1;
       if (seatedLerp > 0.6) {
-        this.drummer.leftArmPivot.rotation.set(-1.05, 0, 0.25);
-        this.drummer.rightArmPivot.rotation.set(-1.15, 0, -0.25);
-        if (this.leftDrumstick) this.leftDrumstick.rotation.x = Math.PI * 0.45 + t * 18;
-        if (this.rightDrumstick) this.rightDrumstick.rotation.x = Math.PI * 0.45 - t * 18;
+        this.drummer.leftArmPivot.rotation.set(-0.62, 0, 0.24);
+        this.drummer.rightArmPivot.rotation.set(-0.66, 0, -0.24);
+        this.drummer.leftElbowPivot.rotation.x = -0.78;
+        this.drummer.rightElbowPivot.rotation.x = -0.82;
+        if (this.leftDrumstick) this.leftDrumstick.rotation.x = Math.PI * 0.44 + t * 18;
+        if (this.rightDrumstick) this.rightDrumstick.rotation.x = Math.PI * 0.44 - t * 18;
       } else {
         this.drummer.leftArmPivot.rotation.set(-stride * 0.6, 0, 0.1);
         this.drummer.rightArmPivot.rotation.set(stride * 0.6, 0, -0.1);
+        this.drummer.leftElbowPivot.rotation.x = -0.28;
+        this.drummer.rightElbowPivot.rotation.x = -0.28;
       }
 
       // 2. LEAD GUITARIST walks in from stage left to lineup mark (left wing or center mic for Singing Guitarist)
@@ -4631,8 +9727,10 @@ export class StageBand {
       this.guitarist.rightLegPivot.rotation.set(-stride * 0.58 * movingFactor, 0, 0);
       const strapLerp = Math.max(0, Math.min(1, (walkP - 0.55) / 0.35));
       this.electricGuitar.rotation.set(0.06, 0.08, THREE.MathUtils.lerp(-0.95, 0.26, strapLerp));
-      this.guitarist.leftArmPivot.rotation.set(THREE.MathUtils.lerp(-0.4, -1.05, strapLerp), 0, 0.26);
-      this.guitarist.rightArmPivot.rotation.set(THREE.MathUtils.lerp(-0.35, -0.92, strapLerp), 0, -0.35);
+      this.guitarist.leftArmPivot.rotation.set(THREE.MathUtils.lerp(-0.4, -0.72, strapLerp), 0, 0.26);
+      this.guitarist.rightArmPivot.rotation.set(THREE.MathUtils.lerp(-0.35, -0.64, strapLerp), 0, -0.35);
+      this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.lerp(-0.22, -0.62, strapLerp);
+      this.guitarist.rightElbowPivot.rotation.x = THREE.MathUtils.lerp(-0.22, -0.56, strapLerp);
 
       // 3. BASSIST walks in from stage right to lineup mark
       const bassMove = Math.min(1, walkP / 0.68);
@@ -4647,8 +9745,10 @@ export class StageBand {
       this.bassist.rightLegPivot.rotation.set(stride * 0.56 * movingFactor, 0, 0);
       this.bassist.upperBody.position.y = 0.96;
       this.bassGuitar.rotation.set(0.05, -0.08, THREE.MathUtils.lerp(-0.9, 0.3, strapLerp));
-      this.bassist.leftArmPivot.rotation.set(THREE.MathUtils.lerp(-0.4, -1.0, strapLerp), 0, 0.28);
-      this.bassist.rightArmPivot.rotation.set(THREE.MathUtils.lerp(-0.35, -0.88, strapLerp), 0, -0.32);
+      this.bassist.leftArmPivot.rotation.set(THREE.MathUtils.lerp(-0.4, -0.68, strapLerp), 0, 0.28);
+      this.bassist.rightArmPivot.rotation.set(THREE.MathUtils.lerp(-0.35, -0.6, strapLerp), 0, -0.32);
+      this.bassist.leftElbowPivot.rotation.x = THREE.MathUtils.lerp(-0.22, -0.58, strapLerp);
+      this.bassist.rightElbowPivot.rotation.x = THREE.MathUtils.lerp(-0.22, -0.52, strapLerp);
 
       // Flash amp LEDs brightly when plugging cables in (~walkP 0.58..0.78)
       const ampPowerFlash = walkP > 0.54 && walkP < 0.82 ? 3.8 : 0.6 + walkEase * 1.1;
@@ -4669,8 +9769,10 @@ export class StageBand {
         this.vocalist.leftLegPivot.rotation.set(stride * 0.52 * movingFactor, 0, 0);
         this.vocalist.rightLegPivot.rotation.set(-stride * 0.52 * movingFactor, 0, 0);
         const waveAmp = Math.sin(t * 10) * 0.36;
-        this.vocalist.leftArmPivot.rotation.set(vocEase > 0.72 ? -2.35 : -stride * 0.5, 0, vocEase > 0.72 ? -0.45 + waveAmp : 0.1);
-        this.vocalist.rightArmPivot.rotation.set(vocEase > 0.72 ? -2.4 : stride * 0.5, 0, vocEase > 0.72 ? 0.45 - waveAmp : -0.1);
+        this.vocalist.leftArmPivot.rotation.set(vocEase > 0.72 ? -2.2 : -stride * 0.5, 0, vocEase > 0.72 ? -0.45 + waveAmp : 0.1);
+        this.vocalist.rightArmPivot.rotation.set(vocEase > 0.72 ? -2.25 : stride * 0.5, 0, vocEase > 0.72 ? 0.45 - waveAmp : -0.1);
+        this.vocalist.leftElbowPivot.rotation.x = vocEase > 0.72 ? -0.35 : -0.25;
+        this.vocalist.rightElbowPivot.rotation.x = vocEase > 0.72 ? -0.35 : -0.25;
         this.vocalist.headGroup.rotation.y = Math.sin(t * 3.5) * 0.28;
       }
     } else {
@@ -4701,13 +9803,24 @@ export class StageBand {
         fever,
         encore,
         sustainHeld: Boolean(stageState?.sustainHeld),
+        combo,
       });
+
+      const isSlowBallad = bpm < 95 || Boolean(lightState.isBallad);
+      const isHeavyRock =
+        bpm > 132 ||
+        lightState.ambianceType === 'METAL_CHAOS' ||
+        lightState.ambianceType === 'ROCK_ANTHEM';
+      const moodIntensity = isSlowBallad ? 0.58 : isHeavyRock ? 1.28 : 0.92;
 
       const gM = this.memberMotion.guitar;
       const bM = this.memberMotion.bass;
       const vM = this.memberMotion.vocals;
-      const bpmBeatPhase = songTime * (bpm / 60) * Math.PI * 2;
-      const bpmHalfPhase = bpmBeatPhase * 0.5;
+      const resolvedBeatPhase = Number.isFinite(stageState?.beatPhase)
+        ? stageState.beatPhase
+        : (((songTime * (bpm / 60)) % 1) + 1) % 1;
+      const bpmBeatPhase = resolvedBeatPhase * Math.PI * 2;
+      const bpmHalfPhase = songTime * (bpm / 60) * Math.PI;
       // Multi-frequency organic sway using irrational frequency ratios (1.0, φ=1.618, e=2.718) so body sway never loops!
       const organicSwayG =
         (Math.sin(t * 1.15) * 0.52 + Math.sin(t * 1.8607) * 0.31 + Math.sin(t * 3.1257) * 0.17);
@@ -4716,12 +9829,58 @@ export class StageBand {
       const organicSwayV =
         (Math.sin(t * 1.25 + 2.3) * 0.52 + Math.sin(t * 2.0225 + 1.1) * 0.31 + Math.sin(t * 3.3975 + 0.4) * 0.17);
 
-      // Drummer stays seated on the elevated rear drum riser
-      this.drummer.root.position.set(0, 0.64, -3.56);
+      // Dynamic Band Facial Expressions driven by section, misses, flinches & song ambiance!
+      if (this.membersByRole) {
+        const isIntenseMoment =
+          lightState.sectionType === 'GUITAR_SOLO' || isHeavyRock;
+        const isClosedBalladMoment =
+          isSlowBallad && (Boolean(stageState?.sustainHeld) || vocalE > 0.3);
+        const isBeltMoment =
+          lightState.isBallad ||
+          Boolean(stageState?.sustainHeld) ||
+          (lightState.sectionType === 'BRIDGE' && vocalE > 0.35);
+        ['guitar', 'bass', 'drums', 'piano', 'vocals'].forEach((role) => {
+          const member = this.membersByRole[role];
+          if (!member?.setExpression) return;
+          const isHurt =
+            this.missedInstruments?.has(role) ||
+            (this.missedInstrument && role === this.missedInstrument) ||
+            (this.flinchTimers?.[role] || 0) > 0;
+          if (isHurt) {
+            member.setExpression('shocked');
+          } else if (isClosedBalladMoment && (role === 'vocals' || role === this.activeInstrument || role === 'piano')) {
+            member.setExpression('closed');
+          } else if (role === 'vocals' && (isBeltMoment || vocalE > 0.48)) {
+            member.setExpression('belt');
+          } else if (isBeltMoment && (role === this.activeInstrument || role === 'piano')) {
+            member.setExpression('belt');
+          } else if (isIntenseMoment && (role === 'guitar' || role === 'drums' || role === 'bass')) {
+            member.setExpression('intense');
+          } else {
+            member.setExpression('grin');
+          }
+        });
+      }
+
+      // Drummer stays seated on elevated rear drum riser (with rapid double-kick pedals & crash-cymbal stand-ups!)
+      const isCountIn = playing && songTime > -2.0 && songTime < -0.05;
+      const crashStandUp =
+        !isCountIn &&
+        this.drumRightTarget === 'crash' &&
+        this.drumRightHit > 0.22 &&
+        (lightState.sectionType === 'OUTRO' || lightState.sectionType === 'CHORUS' || this.breActive)
+          ? Math.sin(this.drumRightHit * Math.PI) * 0.16
+          : 0;
+      const doubleKickPump = Math.sin(bpmBeatPhase * 2) * (0.06 + this.drumKickImpulse * 0.16);
+      this.drummer.root.position.set(
+        marks.drums?.x ?? 0,
+        (marks.drums?.y ?? DRUM_RISER_TOP_Y) + crashStandUp,
+        marks.drums?.z ?? -2.8
+      );
       this.drummer.root.rotation.y = 0;
-      this.drummer.leftLegPivot.rotation.set(-1.15, 0, 0);
-      this.drummer.rightLegPivot.rotation.set(-1.15, 0, 0);
-      this.drummer.upperBody.position.y = 0.72;
+      this.drummer.leftLegPivot.rotation.set(-1.15 + doubleKickPump, 0, 0);
+      this.drummer.rightLegPivot.rotation.set(-1.15 - doubleKickPump, 0, 0);
+      this.drummer.upperBody.position.y = 0.72 + crashStandUp * 0.55;
       if (this.leftDrumstick) this.leftDrumstick.rotation.x = Math.PI * 0.45;
       if (this.rightDrumstick) this.rightDrumstick.rotation.x = Math.PI * 0.45;
 
@@ -4730,61 +9889,74 @@ export class StageBand {
       const bStepBounce = Math.abs(Math.sin(bM.walkPhase)) * 0.085 * bM.moveSpeed * (1 - bM.kneeDrop * 0.85);
       const vStepBounce = Math.abs(Math.sin(vM.walkPhase)) * 0.09 * vM.moveSpeed;
 
-      this.guitarist.root.position.set(gM.x, gM.jumpY + gStepBounce, gM.z);
+      this.guitarist.root.position.set(gM.x, Math.max(0, gM.jumpY + gStepBounce), gM.z);
       this.guitarist.root.rotation.y = gM.rotY;
 
-      this.bassist.root.position.set(bM.x, bM.jumpY + bStepBounce, bM.z);
+      this.bassist.root.position.set(bM.x, Math.max(0, bM.jumpY + bStepBounce), bM.z);
       this.bassist.root.rotation.y = bM.rotY;
 
-      this.vocalist.root.position.set(vM.x, vM.jumpY + vStepBounce, vM.z);
+      this.vocalist.root.position.set(vM.x, Math.max(0, vM.jumpY + vStepBounce), vM.z);
       this.vocalist.root.rotation.y = vM.rotY;
 
-      // 1. DRUMMER — Stick-twirl + slow nod during INTRO/silent breaks; full stick/cymbal animation when active!
+      // 1. DRUMMER — 1-2-3-4 Count-In Stick-Clicks, Overhead Twirls during rests, Crash Stand-Ups & Double-Kick!
       const drumMissed = this.missedInstrument === 'drums';
       const drumSilentIdle = playing && songTime >= 0 && stemActivity.drums === false && this.drumLeftHit < 0.05 && this.drumRightHit < 0.05;
       if (drumMissed) {
-        this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.44, 10, dt);
-        this.drummer.headGroup.rotation.x = THREE.MathUtils.damp(this.drummer.headGroup.rotation.x, 0.35, 10, dt);
+        this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.36, 10, dt);
+        this.drummer.headGroup.rotation.x = THREE.MathUtils.damp(this.drummer.headGroup.rotation.x, 0.28, 10, dt);
         this.drummer.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.drummer.leftArmPivot.rotation.x, 0.15, 10, dt);
         this.drummer.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.drummer.rightArmPivot.rotation.x, 0.15, 10, dt);
+        this.drummer.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.drummer.leftElbowPivot.rotation.x, -0.2, 10, dt);
+        this.drummer.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.drummer.rightElbowPivot.rotation.x, -0.2, 10, dt);
+      } else if (isCountIn) {
+        // Crisp 1-2-3-4 overhead stick-click count-in right before song starts!
+        const clickPulse = Math.pow(Math.max(0, Math.sin(songTime * (bpm / 60) * Math.PI * 2)), 4);
+        this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.05, 10, dt);
+        this.drummer.headGroup.rotation.x = Math.sin(songTime * (bpm / 60) * Math.PI * 2) * 0.14;
+        this.drummer.leftArmPivot.rotation.set(-1.95, 0, -0.26 + clickPulse * 0.22);
+        this.drummer.rightArmPivot.rotation.set(-1.95, 0, 0.26 - clickPulse * 0.22);
+        this.drummer.leftElbowPivot.rotation.x = -0.35;
+        this.drummer.rightElbowPivot.rotation.x = -0.35;
       } else if (drumSilentIdle) {
-        // Intro/silent stick-twirl & relaxed BPM head-nod (or crowd fist-pump in higher energy sections)!
-        const nod = Math.sin(bpmBeatPhase) * 0.16;
-        const isIntroQuiet = lightState.sectionType === 'INTRO' || lightState.sectionType === 'BRIDGE';
-        const rightLift = isIntroQuiet ? -1.18 + Math.sin(bpmHalfPhase) * 0.14 : -2.15 + Math.sin(bpmBeatPhase) * 0.34;
-        this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.04 + Math.abs(nod) * 0.2, 8, dt);
-        this.drummer.headGroup.rotation.x = THREE.MathUtils.damp(this.drummer.headGroup.rotation.x, nod, 10, dt);
-        this.drummer.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.drummer.leftArmPivot.rotation.x, isIntroQuiet ? -0.92 : -0.45, 7, dt);
-        this.drummer.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.leftArmPivot.rotation.z, 0.18, 7, dt);
-        this.drummer.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.drummer.rightArmPivot.rotation.x, rightLift, 9, dt);
-        this.drummer.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.rightArmPivot.rotation.z, -0.26, 9, dt);
-        if (isIntroQuiet) {
-          if (this.rightDrumstick) this.rightDrumstick.rotation.x = Math.PI * 0.45 + t * 14.5;
-          if (this.leftDrumstick) this.leftDrumstick.rotation.x = Math.PI * 0.45 - Math.sin(bpmHalfPhase) * 0.45;
-        }
+        // Relaxed sticks-at-ready near snare + subtle BPM head-nod during silent drum rests
+        const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.11);
+        this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.06 + Math.abs(nod) * 0.12, 8, dt);
+        this.drummer.headGroup.rotation.x = THREE.MathUtils.damp(this.drummer.headGroup.rotation.x, nod, 9, dt);
+        this.drummer.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.drummer.leftArmPivot.rotation.x, -0.44, 8, dt);
+        this.drummer.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.leftArmPivot.rotation.z, 0.14, 8, dt);
+        this.drummer.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.drummer.rightArmPivot.rotation.x, -0.46, 8, dt);
+        this.drummer.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.rightArmPivot.rotation.z, -0.14, 8, dt);
+        this.drummer.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.drummer.leftElbowPivot.rotation.x, -0.68, 8, dt);
+        this.drummer.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.drummer.rightElbowPivot.rotation.x, -0.7, 8, dt);
+        if (this.rightDrumstick) this.rightDrumstick.rotation.x = Math.PI * 0.44;
+        if (this.leftDrumstick) this.leftDrumstick.rotation.x = Math.PI * 0.44;
         if (this.drumKit?.kick) this.drumKit.kick.scale.set(1, 1, 1);
       } else {
-        const autoL = Math.sin(bpmBeatPhase) * (0.2 + drumE * 0.45);
-        const autoR = Math.sin(bpmBeatPhase + Math.PI) * (0.2 + drumE * 0.45);
+        const autoL = Math.sin(bpmBeatPhase) * (0.2 + drumE * 0.45) * moodIntensity;
+        const autoR = Math.sin(bpmBeatPhase + Math.PI) * (0.2 + drumE * 0.45) * moodIntensity;
 
         const strikeL = this.drumLeftHit > 0.05 ? -Math.sin(this.drumLeftHit * Math.PI) * 0.92 : autoL;
         const strikeR = this.drumRightHit > 0.05 ? -Math.sin(this.drumRightHit * Math.PI) * 0.98 : autoR;
 
         const leftAimZ = this.drumLeftTarget === 'hihat' ? 0.38 : -0.14;
         const rightAimZ = this.drumRightTarget === 'crash' ? -0.45 : 0.12;
-        const rightLiftX = this.drumRightTarget === 'crash' && this.drumRightHit > 0.1 ? -0.55 : 0;
+        const rightLiftX = this.drumRightTarget === 'crash' && this.drumRightHit > 0.1 ? -0.58 : 0;
 
         this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(
           this.drummer.upperBody.rotation.x,
-          0.07 + drumE * 0.15 + this.drumKickImpulse * 0.12,
+          0.07 + (drumE * 0.14 + this.drumKickImpulse * 0.1) * moodIntensity + crashStandUp * 0.3,
           12,
           dt
         );
-        this.drummer.headGroup.rotation.x = Math.sin(bpmHalfPhase) * (0.1 + drumE * 0.25);
-        this.drummer.leftArmPivot.rotation.x = -0.82 + strikeL * hypeBoost;
+        this.drummer.headGroup.rotation.x = Math.sin(bpmHalfPhase) * (0.08 + drumE * 0.22) * moodIntensity;
+        this.drummer.leftArmPivot.rotation.x = -0.48 + strikeL * 0.55 * hypeBoost;
         this.drummer.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.leftArmPivot.rotation.z, leftAimZ, 14, dt);
-        this.drummer.rightArmPivot.rotation.x = -0.82 + rightLiftX + strikeR * hypeBoost;
+        this.drummer.rightArmPivot.rotation.x = -0.48 + rightLiftX * 0.65 + strikeR * 0.55 * hypeBoost;
         this.drummer.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.rightArmPivot.rotation.z, rightAimZ, 14, dt);
+        this.drummer.leftElbowPivot.rotation.x = -0.68 + strikeL * 0.45;
+        this.drummer.rightElbowPivot.rotation.x = -0.68 + rightLiftX * 0.35 + strikeR * 0.45;
+        this.drummer.leftWristPivot.rotation.x = strikeL * 0.38;
+        this.drummer.rightWristPivot.rotation.x = strikeR * 0.38;
 
         if (this.drumKit?.cymbals?.length >= 3) {
           this.drumKit.cymbals[0].rotation.z = Math.sin(this.cymbalPhase[0]) * (drumE * 0.1 + this.cymbalWobble[0] * 0.26);
@@ -4848,70 +10020,110 @@ export class StageBand {
         this.guitarist.headGroup.rotation.x = THREE.MathUtils.damp(this.guitarist.headGroup.rotation.x, 0.32, 10, dt);
         this.guitarist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightArmPivot.rotation.x, 0.1, 10, dt);
         this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, 0.1, 10, dt);
+        this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.15, 10, dt);
+        this.guitarist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightElbowPivot.rotation.x, -0.15, 10, dt);
       } else if (guitarSilentIdle) {
-        const nod = Math.sin(bpmBeatPhase) * 0.15;
-        const hypeFist = -2.2 + Math.sin(bpmBeatPhase) * 0.32;
-        this.electricGuitar.rotation.set(0.06, 0.08, THREE.MathUtils.damp(this.electricGuitar.rotation.z, -0.12, 6, dt));
+        // Relaxed guitar-at-ready posture + subtle BPM foot tap & pocket sway
+        const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.11);
+        const footTap = Math.max(0, Math.sin(bpmBeatPhase)) * 0.08;
+        this.electricGuitar.position.set(0.08, 0.42, 0.38);
+        this.electricGuitar.rotation.set(0.06, 0.08, THREE.MathUtils.damp(this.electricGuitar.rotation.z, 0.14, 6, dt));
+        if (gM.moveSpeed < 0.08) {
+          this.guitarist.rightLegPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightLegPivot.rotation.x, footTap, 10, dt);
+        }
         this.guitarist.upperBody.rotation.x = THREE.MathUtils.damp(this.guitarist.upperBody.rotation.x, 0.04, 6, dt);
-        this.guitarist.upperBody.rotation.z = THREE.MathUtils.damp(this.guitarist.upperBody.rotation.z, organicSwayG * 0.07, 6, dt);
-        this.guitarist.headGroup.rotation.x = THREE.MathUtils.damp(this.guitarist.headGroup.rotation.x, nod, 10, dt);
-        this.guitarist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightArmPivot.rotation.x, hypeFist, 8, dt);
-        this.guitarist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.rightArmPivot.rotation.z, -0.34, 8, dt);
-        this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, -0.62, 7, dt);
+        this.guitarist.upperBody.rotation.z = THREE.MathUtils.damp(this.guitarist.upperBody.rotation.z, organicSwayG * 0.06 * moodIntensity, 6, dt);
+        this.guitarist.headGroup.rotation.x = THREE.MathUtils.damp(this.guitarist.headGroup.rotation.x, nod, 9, dt);
+        this.guitarist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightArmPivot.rotation.x, -0.34, 8, dt);
+        this.guitarist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.rightArmPivot.rotation.z, -0.26, 8, dt);
+        this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, -0.44, 7, dt);
         this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, 0.16, 7, dt);
+        this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.44, 8, dt);
+        this.guitarist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightElbowPivot.rotation.x, -0.42, 8, dt);
       } else {
         const isSoloSec = lightState.sectionType === 'GUITAR_SOLO';
+        const behindHeadSolo = isSoloSec && combo >= 25 && !isSingingGuitarist && gKneeDrop < 0.2;
         const neckSkyBoost = gM.action === 'NECK_SKY_SOLO' ? 0.34 : isSoloSec ? 0.22 : 0;
         const guitarNeckTilt = 0.26 + gM.sustainLean * 0.26 + gKneeDrop * 0.28 + neckSkyBoost + (gAirborne ? 0.18 : 0);
-        this.electricGuitar.rotation.set(0.06, 0.08, THREE.MathUtils.damp(this.electricGuitar.rotation.z, guitarNeckTilt, 9, dt));
+        if (behindHeadSolo) {
+          this.electricGuitar.position.set(0.02, 1.06, -0.06);
+          this.electricGuitar.rotation.set(0.18, 0.04, 0.14);
+        } else {
+          this.electricGuitar.position.set(0.08, 0.42, 0.38);
+          this.electricGuitar.rotation.set(0.06, 0.08, THREE.MathUtils.damp(this.electricGuitar.rotation.z, guitarNeckTilt, 9, dt));
+        }
 
-        const strumSpeed = (isSoloSec ? 16 : 10) + guitarE * 14;
-        const baseStrum = Math.sin(t * strumSpeed) * (0.16 + guitarE * 0.48);
+        // Synchronized power-chord chugging bounce on Chorus/Outro downbeats!
+        const chugPulse =
+          (lightState.sectionType === 'CHORUS' || lightState.sectionType === 'OUTRO')
+            ? Math.sin(bpmBeatPhase) * 0.08 * moodIntensity
+            : 0;
+        const strumSpeed = (isSoloSec ? 16 : isSlowBallad ? 6.5 : 10) + guitarE * 14 * moodIntensity;
+        const baseStrum = Math.sin(t * strumSpeed) * (0.14 + guitarE * 0.46) * moodIntensity;
         const impulseStrum = this.guitarStrumImpulse * 0.62 * this.guitarStrumDir;
-        const headBangAmp = (lightState.sectionType === 'INTRO' ? 0.06 : 0.1) + guitarE * 0.22 + this.guitarHeadbangBoost * 0.26;
+        const headBangAmp = ((lightState.sectionType === 'INTRO' ? 0.06 : 0.1) + guitarE * 0.2 + this.guitarHeadbangBoost * 0.22) * moodIntensity;
         const bob = Math.sin(bpmHalfPhase) * headBangAmp;
-        const singLean = isSingingGuitarist ? 0.1 + vocalE * 0.18 : 0;
-        const slideForwardLean = gM.stanceMode === 'POWER_SLIDE' ? 0.22 : gM.stanceMode === 'EDGE_MONITOR' ? 0.14 : 0;
-        const sustainBackLean = -(gM.sustainLean * 0.34 + gKneeDrop * 0.28);
+        const singLean = isSingingGuitarist ? 0.1 + vocalE * 0.15 : 0;
+        const slideForwardLean = gM.stanceMode === 'POWER_SLIDE' ? 0.2 : gM.stanceMode === 'EDGE_MONITOR' ? 0.14 : 0;
+        const sustainBackLean = -(gM.sustainLean * 0.28 + gKneeDrop * 0.24);
 
         this.guitarist.upperBody.rotation.x = THREE.MathUtils.damp(
           this.guitarist.upperBody.rotation.x,
-          Math.abs(bob) * 0.42 + this.guitarHeadbangBoost * 0.14 + singLean + slideForwardLean + sustainBackLean,
+          Math.abs(bob) * 0.38 + this.guitarHeadbangBoost * 0.12 + singLean + slideForwardLean + sustainBackLean + chugPulse,
           11,
           dt
         );
         this.guitarist.upperBody.rotation.z = THREE.MathUtils.damp(
           this.guitarist.upperBody.rotation.z,
-          organicSwayG * (0.07 + guitarE * 0.14) - gStride * 0.12,
+          organicSwayG * (0.07 + guitarE * 0.13) - gStride * 0.12,
           10,
           dt
         );
         this.guitarist.headGroup.rotation.x = isSingingGuitarist
           ? -0.08 + Math.sin(t * 6.0) * (0.05 + vocalE * 0.14)
-          : bob - gM.sustainLean * 0.22 - gKneeDrop * 0.24;
+          : bob - gM.sustainLean * 0.2 - gKneeDrop * 0.2;
         this.guitarist.headGroup.rotation.y = isSingingGuitarist ? organicSwayG * 0.08 : organicSwayG * 0.24;
 
-        // Windmill 360° arm strum flourish during Chorus / Outro!
-        if (gM.windmillTimer > 0) {
+        // Articulated elbow/wrist fretting & strumming (eliminates torso/guitar clipping!)
+        if (behindHeadSolo) {
+          this.guitarist.rightArmPivot.rotation.set(-2.15 + Math.sin(t * 16) * 0.18, 0, -0.45);
+          this.guitarist.leftArmPivot.rotation.set(-2.22 + Math.sin(t * 14) * 0.14, 0, 0.48);
+          this.guitarist.leftElbowPivot.rotation.x = -0.65;
+          this.guitarist.rightElbowPivot.rotation.x = -0.65;
+        } else if (gM.windmillTimer > 0) {
           this.guitarist.rightArmPivot.rotation.x = -0.9 + gM.windmillPhase;
           this.guitarist.rightArmPivot.rotation.z = -0.42 + Math.sin(gM.windmillPhase) * 0.18;
+          this.guitarist.rightElbowPivot.rotation.x = -0.14;
+          const soloShredOsc = isSoloSec ? Math.sin(t * 17.5) * 0.12 : 0;
+          const targetFretZ = 0.12 + this.guitarFretPos * 0.44 + soloShredOsc;
+          const targetFretX = -0.64 + this.guitarFretPos * 0.22 - gM.sustainLean * 0.14 - gKneeDrop * 0.12;
+          this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, targetFretX, 14, dt);
+          this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, targetFretZ, 14, dt);
+          this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.72, 14, dt);
         } else if (gM.fistPumpWeight > 0.35 && this.guitarStrumImpulse < 0.15) {
           this.guitarist.rightArmPivot.rotation.x = THREE.MathUtils.lerp(
-            -0.94 + baseStrum,
-            -2.3 + Math.sin(bpmBeatPhase) * 0.35,
+            -0.55 + baseStrum * 0.55,
+            -2.1 + Math.sin(bpmBeatPhase) * 0.35,
             gM.fistPumpWeight
           );
           this.guitarist.rightArmPivot.rotation.z = -0.35;
+          this.guitarist.rightElbowPivot.rotation.x = THREE.MathUtils.lerp(-0.62, -0.25, gM.fistPumpWeight);
+          this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, -0.64 + this.guitarFretPos * 0.22, 14, dt);
+          this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, 0.12 + this.guitarFretPos * 0.44, 14, dt);
+          this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.72, 14, dt);
         } else {
-          this.guitarist.rightArmPivot.rotation.x = -0.94 + (baseStrum + impulseStrum) * hypeBoost;
+          const strumDelta = (baseStrum + impulseStrum) * hypeBoost;
+          this.guitarist.rightArmPivot.rotation.x = -0.54 + strumDelta * 0.55;
           this.guitarist.rightArmPivot.rotation.z = -0.35;
+          this.guitarist.rightElbowPivot.rotation.x = -0.64 + strumDelta * 0.52;
+          this.guitarist.rightWristPivot.rotation.x = strumDelta * 0.25;
+          const soloShredOsc = isSoloSec ? Math.sin(t * 17.5) * 0.12 : 0;
+          const targetFretZ = 0.12 + this.guitarFretPos * 0.44 + soloShredOsc;
+          const targetFretX = -0.64 + this.guitarFretPos * 0.22 - gM.sustainLean * 0.14 - gKneeDrop * 0.12;
+          this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, targetFretX, 14, dt);
+          this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, targetFretZ, 14, dt);
+          this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.72 + this.guitarFretPos * 0.12, 14, dt);
         }
-
-        const soloShredOsc = isSoloSec ? Math.sin(t * 17.5) * 0.12 : 0;
-        const targetFretZ = 0.12 + this.guitarFretPos * 0.44 + soloShredOsc;
-        const targetFretX = -1.16 + this.guitarFretPos * 0.26 - gM.sustainLean * 0.16 - gKneeDrop * 0.14;
-        this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, targetFretX, 14, dt);
-        this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, targetFretZ, 14, dt);
       }
 
       // 3. BASSIST — Dynamic roaming strides, groove knee-bends, back-to-back duets, Encore slide & organic sway!
@@ -4945,28 +10157,33 @@ export class StageBand {
         this.bassist.headGroup.rotation.x = THREE.MathUtils.damp(this.bassist.headGroup.rotation.x, 0.3, 10, dt);
         this.bassist.leftLegPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftLegPivot.rotation.x, 0, 10, dt);
         this.bassist.rightLegPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightLegPivot.rotation.x, 0, 10, dt);
+        this.bassist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftElbowPivot.rotation.x, -0.15, 10, dt);
+        this.bassist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightElbowPivot.rotation.x, -0.15, 10, dt);
       } else if (bassSilentIdle) {
-        const nod = Math.sin(bpmBeatPhase) * 0.16;
-        const hypeFist = -2.15 + Math.sin(bpmBeatPhase) * 0.3;
-        this.bassGuitar.rotation.set(0.05, -0.08, THREE.MathUtils.damp(this.bassGuitar.rotation.z, -0.06, 6, dt));
+        // Relaxed pocket bass posture + subtle BPM groove nod during rests
+        const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.11);
+        const footTap = Math.max(0, Math.sin(bpmBeatPhase)) * 0.08;
+        this.bassGuitar.rotation.set(0.05, -0.08, THREE.MathUtils.damp(this.bassGuitar.rotation.z, 0.16, 6, dt));
         this.bassist.leftLegPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftLegPivot.rotation.x, bStride + bKneeTuck, 10, dt);
-        this.bassist.rightLegPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightLegPivot.rotation.x, -bStride + bKneeTuck, 10, dt);
+        this.bassist.rightLegPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightLegPivot.rotation.x, bM.moveSpeed < 0.08 ? footTap : -bStride + bKneeTuck, 10, dt);
         this.bassist.upperBody.position.y = THREE.MathUtils.damp(this.bassist.upperBody.position.y, 0.96 - Math.max(0, bM.squash * 0.22), 9, dt);
         this.bassist.upperBody.rotation.x = THREE.MathUtils.damp(this.bassist.upperBody.rotation.x, 0.04, 6, dt);
-        this.bassist.upperBody.rotation.z = THREE.MathUtils.damp(this.bassist.upperBody.rotation.z, organicSwayB * 0.07, 6, dt);
-        this.bassist.headGroup.rotation.x = THREE.MathUtils.damp(this.bassist.headGroup.rotation.x, nod, 10, dt);
-        this.bassist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightArmPivot.rotation.x, hypeFist, 8, dt);
-        this.bassist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.bassist.rightArmPivot.rotation.z, -0.32, 8, dt);
-        this.bassist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.x, -0.62, 7, dt);
-        this.bassist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.z, 0.18, 7, dt);
+        this.bassist.upperBody.rotation.z = THREE.MathUtils.damp(this.bassist.upperBody.rotation.z, organicSwayB * 0.06 * moodIntensity, 6, dt);
+        this.bassist.headGroup.rotation.x = THREE.MathUtils.damp(this.bassist.headGroup.rotation.x, nod, 9, dt);
+        this.bassist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightArmPivot.rotation.x, -0.34, 8, dt);
+        this.bassist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.bassist.rightArmPivot.rotation.z, -0.24, 8, dt);
+        this.bassist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.x, -0.44, 7, dt);
+        this.bassist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.z, 0.16, 7, dt);
+        this.bassist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftElbowPivot.rotation.x, -0.42, 8, dt);
+        this.bassist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightElbowPivot.rotation.x, -0.4, 8, dt);
       } else {
         const bassNeckTilt = 0.3 + bM.sustainLean * 0.24 + bKneeDrop * 0.18 + (bAirborne ? 0.16 : 0);
         this.bassGuitar.rotation.set(0.05, -0.08, THREE.MathUtils.damp(this.bassGuitar.rotation.z, bassNeckTilt, 9, dt));
         const groovePhase = bpmHalfPhase;
         const deepBounceMult = bM.action === 'DEEP_KNEE_BOUNCE' ? 1.45 : 1.0;
-        const kneeBend = Math.abs(Math.sin(groovePhase)) * (0.14 + bassE * 0.28 + this.bassBounceImpulse * 0.2) * deepBounceMult;
-        const grooveSway = organicSwayB * (0.09 + bassE * 0.22) * hypeBoost;
-        const pluck = Math.sin(t * (7 + bassE * 8)) * (0.12 + bassE * 0.32) + this.bassPluckImpulse * 0.48;
+        const kneeBend = Math.abs(Math.sin(groovePhase)) * (0.14 + bassE * 0.28 + this.bassBounceImpulse * 0.2) * deepBounceMult * moodIntensity;
+        const grooveSway = organicSwayB * (0.09 + bassE * 0.22) * hypeBoost * moodIntensity;
+        const pluck = Math.sin(t * ((isSlowBallad ? 5 : 7) + bassE * 8)) * (0.12 + bassE * 0.32) * moodIntensity + this.bassPluckImpulse * 0.48;
         const bSlideLean = bM.stanceMode === 'POWER_SLIDE' ? 0.2 : 0;
 
         this.bassist.leftLegPivot.rotation.x = THREE.MathUtils.damp(
@@ -4994,20 +10211,25 @@ export class StageBand {
           dt
         );
         this.bassist.upperBody.rotation.z = THREE.MathUtils.damp(this.bassist.upperBody.rotation.z, grooveSway * 0.65, 10, dt);
-        this.bassist.headGroup.rotation.x = Math.sin(groovePhase) * (0.1 + bassE * 0.26) - bM.sustainLean * 0.18;
+        this.bassist.headGroup.rotation.x = Math.sin(groovePhase) * (0.1 + bassE * 0.24) * moodIntensity - bM.sustainLean * 0.18;
 
-        this.bassist.rightArmPivot.rotation.x = -0.88 + pluck;
+        this.bassist.rightArmPivot.rotation.x = -0.52 + pluck * 0.52;
         this.bassist.rightArmPivot.rotation.z = -0.32;
+        this.bassist.rightElbowPivot.rotation.x = -0.6 + pluck * 0.45;
+        this.bassist.rightWristPivot.rotation.x = pluck * 0.25;
         const bassFretZ = 0.14 + this.bassFretPos * 0.4;
-        this.bassist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.x, -1.08 + this.bassFretPos * 0.22, 12, dt);
+        this.bassist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.x, -0.6 + this.bassFretPos * 0.2, 12, dt);
         this.bassist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.z, bassFretZ, 12, dt);
+        this.bassist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftElbowPivot.rotation.x, -0.66 + this.bassFretPos * 0.12, 12, dt);
       }
 
-      // 4. VOCALIST — Section-aligned Pop Diva / Rock Frontperson choreography with organic non-repeating sway!
+      // 4. VOCALIST — Mic-Stand Tilts, Hand-Heart/Pop Poses, Stage-Edge Knee Kneels & Crowd Hype!
       if (marks.vocals.visible) {
         const isPopDiva = this.bandLineupId === 'pop-diva';
         const vAirborne = vM.jumpY > 0.05;
-        const vStride = Math.sin(vM.walkPhase) * 0.56 * vM.moveSpeed;
+        const vEdgeKneel = !vAirborne && vM.stanceMode === 'EDGE_MONITOR' && (lightState.sectionType === 'BRIDGE' || lightState.sectionType === 'CHORUS');
+        const vPopHeart = isPopDiva && (lightState.sectionType === 'BRIDGE' || streakTier >= 2);
+        const vStride = Math.sin(vM.walkPhase) * 0.56 * vM.moveSpeed * (vEdgeKneel ? 0.1 : 1);
         const vKneeTuck = vAirborne ? -0.52 : -Math.max(0, vM.squash) * 0.55;
         const crowdHypeRaise =
           fever ||
@@ -5016,25 +10238,62 @@ export class StageBand {
           lightState.sectionType === 'CHORUS' ||
           lightState.sectionType === 'OUTRO' ||
           vocalE > 0.55;
-        const danceSway = isPopDiva ? organicSwayV * (0.14 + vocalE * 0.18) : organicSwayV * (0.08 + vocalE * 0.14);
+        const danceSway = isPopDiva ? organicSwayV * (0.14 + vocalE * 0.16) : organicSwayV * (0.08 + vocalE * 0.13);
 
-        this.vocalist.leftLegPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftLegPivot.rotation.x, vAirborne ? vKneeTuck : vStride + vKneeTuck, 13, dt);
-        this.vocalist.rightLegPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightLegPivot.rotation.x, vAirborne ? vKneeTuck * 0.85 : -vStride + vKneeTuck, 13, dt);
-        this.vocalist.upperBody.position.y = THREE.MathUtils.damp(this.vocalist.upperBody.position.y, 0.96 - Math.max(-0.06, vM.squash * 0.22), 14, dt);
+        this.vocalist.leftLegPivot.rotation.x = THREE.MathUtils.damp(
+          this.vocalist.leftLegPivot.rotation.x,
+          vAirborne ? vKneeTuck : vEdgeKneel ? -0.82 : vStride + vKneeTuck,
+          13,
+          dt
+        );
+        this.vocalist.rightLegPivot.rotation.x = THREE.MathUtils.damp(
+          this.vocalist.rightLegPivot.rotation.x,
+          vAirborne ? vKneeTuck * 0.85 : vEdgeKneel ? 0.72 : -vStride + vKneeTuck,
+          13,
+          dt
+        );
+        this.vocalist.upperBody.position.y = THREE.MathUtils.damp(
+          this.vocalist.upperBody.position.y,
+          0.96 - Math.max(-0.06, vM.squash * 0.22) - (vEdgeKneel ? 0.24 : 0),
+          14,
+          dt
+        );
         this.vocalist.upperBody.rotation.z = danceSway;
         this.vocalist.upperBody.rotation.x = THREE.MathUtils.damp(
           this.vocalist.upperBody.rotation.x,
-          0.06 + vocalE * 0.24,
+          (vEdgeKneel ? 0.24 : 0.06) + vocalE * 0.2,
           10,
           dt
         );
-        this.vocalist.headGroup.rotation.x = -0.06 + Math.sin(t * 6.2) * (0.06 + vocalE * 0.18);
+        this.vocalist.headGroup.rotation.x = -0.06 + Math.sin(t * 6.2) * (0.06 + vocalE * 0.16);
         this.vocalist.headGroup.rotation.y = Math.sin(t * 2.4) * 0.16;
 
-        if (isPopDiva || vM.stanceMode !== 'MIC_CENTER') {
+        // Expressive Mic-Stand Tilt when singing at center mark
+        if (this.micStand && this.micStand.visible) {
+          const micTiltTarget = !isPopDiva && vM.stanceMode === 'MIC_CENTER' ? -0.14 - vocalE * 0.18 : 0;
+          this.micStand.rotation.x = THREE.MathUtils.damp(this.micStand.rotation.x, micTiltTarget, 8, dt);
+        }
+
+        if (vPopHeart) {
+          // Hand-heart / pop star pose raised toward crowd
+          this.vocalist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.x, -1.7, 9, dt);
+          this.vocalist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.z, -0.58, 9, dt);
+          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, -1.7, 9, dt);
+          this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, 0.58, 9, dt);
+          this.vocalist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftElbowPivot.rotation.x, -0.55, 9, dt);
+          this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.55, 9, dt);
+        } else if (vEdgeKneel) {
+          // Reaching out toward front-row fans!
+          this.vocalist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.x, -1.25, 9, dt);
+          this.vocalist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.z, -0.18, 9, dt);
+          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, -1.35 + Math.sin(t * 5) * 0.18, 9, dt);
+          this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, 0.22, 9, dt);
+          this.vocalist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftElbowPivot.rotation.x, -0.35, 9, dt);
+          this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.25, 9, dt);
+        } else if (isPopDiva || vM.stanceMode !== 'MIC_CENTER') {
           this.vocalist.leftArmPivot.rotation.x = THREE.MathUtils.damp(
             this.vocalist.leftArmPivot.rotation.x,
-            crowdHypeRaise ? -2.25 + Math.cos(t * 5.2) * 0.28 : -0.95 - vocalE * 0.75,
+            crowdHypeRaise ? -2.0 + Math.cos(t * 5.2) * 0.28 : -0.7 + vocalE * -0.5,
             8,
             dt
           );
@@ -5044,42 +10303,75 @@ export class StageBand {
             8,
             dt
           );
+          const rightArmTargetX = crowdHypeRaise ? -2.1 + Math.sin(t * 5.2) * 0.32 : -0.65 - vocalE * 0.65;
+          const rightArmTargetZ = crowdHypeRaise ? 0.48 : 0.25 + vocalE * 0.24;
+          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 8, dt);
+          this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, rightArmTargetZ, 8, dt);
+          this.vocalist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftElbowPivot.rotation.x, -0.45, 8, dt);
+          this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.45, 8, dt);
         } else {
-          this.vocalist.leftArmPivot.rotation.x = -0.96;
+          this.vocalist.leftArmPivot.rotation.x = -0.68;
           this.vocalist.leftArmPivot.rotation.z = -0.2;
+          this.vocalist.leftElbowPivot.rotation.x = -0.52;
+          const rightArmTargetX = crowdHypeRaise ? -2.1 + Math.sin(t * 5.2) * 0.32 : -0.65 - vocalE * 0.65;
+          const rightArmTargetZ = crowdHypeRaise ? 0.48 : 0.25 + vocalE * 0.24;
+          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 8, dt);
+          this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, rightArmTargetZ, 8, dt);
+          this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.42, 8, dt);
         }
-        const rightArmTargetX = crowdHypeRaise ? -2.35 + Math.sin(t * 5.2) * 0.32 : -0.85 - vocalE * 0.85;
-        const rightArmTargetZ = crowdHypeRaise ? 0.48 : 0.25 + vocalE * 0.24;
-        this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 8, dt);
-        this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, rightArmTargetZ, 8, dt);
       }
 
-      // 4B. KEYBOARDIST — Expressive two-hand chord strikes, glissando leans, seated Concert Grand vs. standing Keytar shred!
+      // 4B. KEYBOARDIST — Two-Hand Octave Glissandos, Bench Lean-Ins, Keytar Walk-Forward & Crowd-Clap Waves!
       if (this.keyboardist) {
         const pianoMissed = this.missedInstrument === 'piano';
         const isKeytar = Boolean(this.keyboardAsset?.isKeytar);
-        const isSeatedGrand = this.keyboardModelId === 'concert-grand';
+        const isSeatedGrand = this.keyboardModelId === 'concert-grand' || this.keyboardModelId === 'white-crystal-grand';
+        const pianoSilentClap = playing && songTime >= 0 && stemActivity.piano === false && this.pianoHitImpulse < 0.05;
         const keyCenterShift = (this.pianoHandPos - 0.5) * 0.42;
 
+        // Keytar Walk-Forward onto the front stage apron during Choruses/Solos!
+        if (isKeytar) {
+          const walkFwdTargetZ =
+            playing && (lightState.sectionType === 'CHORUS' || lightState.sectionType === 'GUITAR_SOLO' || this.breActive)
+              ? 1.35
+              : 0.15;
+          this.keyboardist.root.position.z = THREE.MathUtils.damp(this.keyboardist.root.position.z, walkFwdTargetZ, 3.2, dt);
+        }
+
         if (isSeatedGrand) {
+          const chorusBenchRise = lightState.sectionType === 'CHORUS' || this.breActive ? 0.08 : 0;
           this.keyboardist.leftLegPivot.rotation.set(-1.12, 0, 0);
           this.keyboardist.rightLegPivot.rotation.set(-1.12 + Math.sin(bpmBeatPhase) * 0.08, 0, 0);
-          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.74, 12, dt);
+          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.74 + chorusBenchRise, 12, dt);
         } else {
-          const stepTap = Math.sin(bpmBeatPhase) * (isKeytar ? 0.16 : 0.08);
+          const stepTap = Math.sin(bpmBeatPhase) * (isKeytar ? 0.22 : 0.08);
           this.keyboardist.leftLegPivot.rotation.set(stepTap, 0, isKeytar ? 0.14 : 0.06);
           this.keyboardist.rightLegPivot.rotation.set(-stepTap, 0, isKeytar ? -0.14 : -0.06);
           this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.96, 12, dt);
         }
 
         if (pianoMissed) {
-          this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(this.keyboardist.upperBody.rotation.x, 0.44, 10, dt);
-          this.keyboardist.headGroup.rotation.x = THREE.MathUtils.damp(this.keyboardist.headGroup.rotation.x, 0.34, 10, dt);
+          this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(this.keyboardist.upperBody.rotation.x, 0.36, 10, dt);
+          this.keyboardist.headGroup.rotation.x = THREE.MathUtils.damp(this.keyboardist.headGroup.rotation.x, 0.28, 10, dt);
           this.keyboardist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.leftArmPivot.rotation.x, 0.12, 10, dt);
           this.keyboardist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.rightArmPivot.rotation.x, 0.12, 10, dt);
+          this.keyboardist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.leftElbowPivot.rotation.x, -0.15, 10, dt);
+          this.keyboardist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.rightElbowPivot.rotation.x, -0.15, 10, dt);
+        } else if (pianoSilentClap && !isKeytar) {
+          // Calm hands-poised-near-keys idle sway during silent piano breaks
+          const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.1);
+          this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(this.keyboardist.upperBody.rotation.x, 0.06, 8, dt);
+          this.keyboardist.upperBody.rotation.z = THREE.MathUtils.damp(this.keyboardist.upperBody.rotation.z, Math.sin(bpmHalfPhase) * 0.07 * moodIntensity, 8, dt);
+          this.keyboardist.headGroup.rotation.x = THREE.MathUtils.damp(this.keyboardist.headGroup.rotation.x, nod, 9, dt);
+          this.keyboardist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.leftArmPivot.rotation.x, -0.48, 8, dt);
+          this.keyboardist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.keyboardist.leftArmPivot.rotation.z, 0.14, 8, dt);
+          this.keyboardist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.rightArmPivot.rotation.x, -0.48, 8, dt);
+          this.keyboardist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.keyboardist.rightArmPivot.rotation.z, -0.14, 8, dt);
+          this.keyboardist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.leftElbowPivot.rotation.x, -0.58, 8, dt);
+          this.keyboardist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.rightElbowPivot.rotation.x, -0.58, 8, dt);
         } else {
           const playEnergy = Math.max(pianoE, this.pianoHitImpulse * 0.85);
-          const sway = Math.sin(bpmHalfPhase) * (0.09 + playEnergy * 0.16) + keyCenterShift * 0.55;
+          const sway = Math.sin(bpmHalfPhase) * (0.09 + playEnergy * 0.15) + keyCenterShift * 0.5;
           const glissLean = this.pianoGlissando * 0.24 * (this.pianoHandPos > 0.5 ? 1 : -1);
 
           this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(
@@ -5094,25 +10386,33 @@ export class StageBand {
             10,
             dt
           );
-          this.keyboardist.headGroup.rotation.x = Math.sin(bpmBeatPhase) * (0.08 + playEnergy * 0.18);
+          this.keyboardist.headGroup.rotation.x = Math.sin(bpmBeatPhase) * (0.08 + playEnergy * 0.16);
           this.keyboardist.headGroup.rotation.y = -keyCenterShift * 0.7;
 
           const fastKeys = Math.sin(t * (11 + playEnergy * 12)) * (0.12 + playEnergy * 0.28);
-          const strikeBoost = this.pianoHitImpulse * 0.34;
+          const strikeBoost = this.pianoHitImpulse * 0.36;
+          const isLeftLead = this.lastPianoHand === 'left';
+          const octaveLean = isLeftLead ? -0.14 : 0.1;
           if (isKeytar) {
-            this.keyboardist.leftArmPivot.rotation.set(-1.12 + this.pianoHandPos * 0.22, 0, 0.2 + this.pianoHandPos * 0.35);
-            this.keyboardist.rightArmPivot.rotation.set(-0.98 + fastKeys + strikeBoost * this.pianoHandAlt, 0, -0.32);
+            this.keyboardist.leftArmPivot.rotation.set(-0.68 + this.pianoHandPos * 0.2, 0, 0.2 + this.pianoHandPos * 0.35);
+            this.keyboardist.rightArmPivot.rotation.set(-0.62 + fastKeys * 0.55 + strikeBoost * 0.5 * this.pianoHandAlt, 0, -0.32);
+            this.keyboardist.leftElbowPivot.rotation.x = -0.68;
+            this.keyboardist.rightElbowPivot.rotation.x = -0.62 + fastKeys * 0.45;
           } else {
             this.keyboardist.leftArmPivot.rotation.set(
-              -1.15 + fastKeys * 0.8 + (this.pianoHandAlt > 0 ? strikeBoost : 0),
+              -0.65 + fastKeys * 0.42 + (isLeftLead ? strikeBoost * 0.45 : strikeBoost * 0.2),
               0,
-              0.12 - keyCenterShift * 0.55
+              0.12 - keyCenterShift * 0.55 + octaveLean * 0.35
             );
             this.keyboardist.rightArmPivot.rotation.set(
-              -1.15 - fastKeys * 0.8 + (this.pianoHandAlt < 0 ? strikeBoost : 0),
+              -0.65 - fastKeys * 0.42 + (!isLeftLead ? strikeBoost * 0.45 : strikeBoost * 0.2),
               0,
-              -0.12 - keyCenterShift * 0.55
+              -0.12 - keyCenterShift * 0.55 + octaveLean * 0.35
             );
+            this.keyboardist.leftElbowPivot.rotation.x = -0.74 + fastKeys * 0.4;
+            this.keyboardist.rightElbowPivot.rotation.x = -0.74 - fastKeys * 0.4;
+            this.keyboardist.leftWristPivot.rotation.x = fastKeys * 0.35;
+            this.keyboardist.rightWristPivot.rotation.x = -fastKeys * 0.35;
           }
         }
 
@@ -5121,16 +10421,79 @@ export class StageBand {
         }
       }
 
-      // 4C. Musician flinch recoil when struck by an angry crowd projectile
-      ['guitar', 'bass', 'drums', 'piano', 'vocals'].forEach((role) => {
-        const ft = this.flinchTimers?.[role] || 0;
-        const member = this.membersByRole?.[role];
-        if (ft > 0 && member) {
-          const pulse = Math.sin((ft / 0.48) * Math.PI);
-          member.upperBody.rotation.x += pulse * 0.34;
-          member.headGroup.rotation.z += pulse * 0.28;
+      // 4C. Signature Star Dance-Style Flourishes, Bounded Flinch & Strict Character Rig Clamping
+      const applyDanceFlourish = (member, active) => {
+        if (!member) return;
+        const dance = active ? (member.getDanceStyle?.() || 'standard') : 'standard';
+        let targetRotY = 0;
+        let targetHeadZ = 0;
+        if (dance === 'samurai-shred') {
+          member.leftLegPivot.rotation.z += 0.08;
+          member.rightLegPivot.rotation.z -= 0.08;
+          member.upperBody.rotation.x += 0.08 + Math.sin(bpmBeatPhase) * 0.06;
+        } else if (dance === 'country-twang') {
+          member.upperBody.rotation.z += Math.sin(bpmHalfPhase) * 0.09;
+          member.headGroup.rotation.x += Math.sin(bpmBeatPhase) * 0.06;
+        } else if (dance === 'funk-spin') {
+          targetRotY = Math.sin(bpmHalfPhase) * 0.22;
+          member.upperBody.rotation.z += Math.cos(bpmBeatPhase) * 0.08;
+        } else if (dance === 'reggae-groove') {
+          member.upperBody.rotation.z += Math.sin(bpmHalfPhase + 0.5) * 0.14;
+          targetHeadZ = Math.sin(bpmHalfPhase) * 0.12;
+        } else if (dance === 'kpop-choreo') {
+          const snap = Math.tanh(Math.sin(bpmBeatPhase * 2) * 3.0);
+          member.upperBody.rotation.z += snap * 0.11;
+          targetRotY = snap * 0.16;
+        } else if (dance === 'grunge-nod') {
+          member.upperBody.rotation.x += 0.12 + Math.max(0, Math.sin(bpmHalfPhase)) * 0.14;
+          member.headGroup.rotation.x += Math.sin(bpmHalfPhase) * 0.18;
+        } else if (dance === 'idol-jump') {
+          member.upperBody.position.y += Math.abs(Math.sin(bpmBeatPhase)) * 0.09;
+          targetHeadZ = Math.sin(bpmHalfPhase) * 0.14;
+        } else if (dance === 'steampunk-bow') {
+          member.upperBody.rotation.x += Math.sin(bpmHalfPhase) * 0.08;
+          targetRotY = Math.cos(bpmHalfPhase * 0.5) * 0.14;
         }
-      });
+        member.upperBody.rotation.y = THREE.MathUtils.damp(member.upperBody.rotation.y, targetRotY, 10, dt);
+        if ((this.flinchTimers?.[member === this.guitarist ? 'guitar' : member === this.bassist ? 'bass' : member === this.keyboardist ? 'piano' : 'vocals'] || 0) <= 0) {
+          member.headGroup.rotation.z = THREE.MathUtils.damp(member.headGroup.rotation.z, targetHeadZ, 10, dt);
+        }
+      };
+
+      applyDanceFlourish(this.guitarist, !guitarMissed && !guitarSilentIdle);
+      applyDanceFlourish(this.bassist, !bassMissed && !bassSilentIdle);
+      applyDanceFlourish(this.vocalist, Boolean(marks.vocals.visible));
+      applyDanceFlourish(this.keyboardist, this.missedInstrument !== 'piano');
+
+      const rigClampRoles = [
+        ['guitar', STAGE_DECK_TOP_Y],
+        ['bass', STAGE_DECK_TOP_Y],
+        ['drums', DRUM_RISER_TOP_Y],
+        ['piano', STAGE_DECK_TOP_Y],
+        ['vocals', STAGE_DECK_TOP_Y],
+      ];
+      for (let r = 0; r < rigClampRoles.length; r += 1) {
+        const [role, minRootY] = rigClampRoles[r];
+        const member = this.membersByRole?.[role];
+        if (!member) continue;
+        const ft = this.flinchTimers?.[role] || 0;
+        if (ft > 0) {
+          // Bounded, non-cumulative 0.35s recoil blended directly toward clamped flinch posture
+          const pulse = Math.sin(Math.min(1, ft / 0.35) * Math.PI);
+          member.upperBody.rotation.x = THREE.MathUtils.lerp(member.upperBody.rotation.x, -0.32, pulse * 0.72);
+          member.headGroup.rotation.z = THREE.MathUtils.lerp(member.headGroup.rotation.z, 0.28, pulse * 0.75);
+        }
+        // Strict hard Euler & root-origin clamping on every single frame
+        member.upperBody.rotation.x = THREE.MathUtils.clamp(member.upperBody.rotation.x, -0.45, 0.45);
+        member.upperBody.rotation.y = THREE.MathUtils.clamp(member.upperBody.rotation.y, -0.45, 0.45);
+        member.upperBody.rotation.z = THREE.MathUtils.clamp(member.upperBody.rotation.z, -0.45, 0.45);
+        member.headGroup.rotation.x = THREE.MathUtils.clamp(member.headGroup.rotation.x, -0.45, 0.45);
+        member.headGroup.rotation.z = THREE.MathUtils.clamp(member.headGroup.rotation.z, -0.45, 0.45);
+        member.upperBody.position.y = THREE.MathUtils.clamp(member.upperBody.position.y, 0.62, 1.04);
+        if (member.root.position.y < minRootY) {
+          member.root.position.y = minRootY;
+        }
+      }
     }
 
     // 5. Moving Overhead SpotLights + Soft Volumetric Fresnel Cones that dynamically follow roaming musicians!
@@ -5141,8 +10504,10 @@ export class StageBand {
         : (THEME_COLORS[this.activeInstrument] || THEME_COLORS.guitar);
 
     Object.entries(this.memberSpots).forEach(([role, bundle], idx) => {
-      const isMissed = this.missedInstrument === role;
-      const isPlayerRole = this.activeInstrument === role;
+      const isMissed = this.missedInstruments?.has(role) || this.missedInstrument === role;
+      const isPlayerRole = Array.isArray(this.activeInstruments)
+        ? this.activeInstruments.includes(role)
+        : this.activeInstrument === role;
       const trackedMember = role === 'piano' ? this.pianoRigGroup : this.membersByRole?.[role]?.root;
 
       const sweepAmp = isWalkOn ? 2.4 : lightState.beamSweepAmp * 0.45;
@@ -5175,8 +10540,9 @@ export class StageBand {
         bundle.coneMat.uniforms.uOpacity.value = Math.min(0.3, (0.13 + (telemetry?.overallEnergy || 0) * 0.09) * lightState.beamOpacityMult);
       } else {
         const moodTint = idx % 2 === 0 ? lightState.spotPrimary : lightState.spotSecondary;
+        const roleHex = THEME_COLORS[role] || activeThemeHex;
         bundle.spot.color
-          .copy(isPlayerRole ? this._colorB.setHex(activeThemeHex) : bundle.baseColor)
+          .copy(isPlayerRole ? this._colorB.setHex(roleHex) : bundle.baseColor)
           .lerp(moodTint, 0.42);
         bundle.coneMat.uniforms.uColor.value.copy(bundle.spot.color);
         const roleEnergy =
@@ -5203,7 +10569,13 @@ export class StageBand {
         dyn.rotatingRings[i].rotation.y += dt * (0.08 + bassE * 0.18);
       }
       if (typeof dyn.update === 'function') {
-        dyn.update(dt, t, telemetry?.overallEnergy || 0);
+        dyn.update(dt, t, telemetry?.overallEnergy || 0, {
+          lightState,
+          beatPhase: resolvedBeatPhase,
+          barPhase: lightState.barPhase,
+          isGrandEncore,
+          feverOrEncore: fever || encore || isGrandEncore,
+        });
       }
     }
 
@@ -5212,47 +10584,147 @@ export class StageBand {
     const ledInterval = this.adaptiveLowPower ? 0.115 : 0.062;
     if (this.ledUpdateTimer >= ledInterval) {
       this.ledUpdateTimer = 0;
-      this.drawLedBackdrop(bassE, guitarE, drumE, fever, encore);
+      this.drawLedBackdrop(bassE, guitarE, drumE, fever, encore || isGrandEncore);
       this.drawVipBanner();
     }
 
-    // 8. Animate 152 Detailed Roblox R15 Fans & Lightsticks synced to BPM + Ballad Sway / Chorus Unison
-    this.updateFullBodiedCrowd(
-      songTime,
-      bpm,
-      isWalkOn ? 0.45 : bassE,
-      isWalkOn ? 0.85 : hypeNorm,
-      fever || encore || this.encoreFinaleActive,
+    // 8. Animate 152 Detailed Roblox R15 Fans & Glowsticks synced to 192 PPQ beatPhase + Crowd Events
+    const activeCamPreset = this.cameraDirector?.currentPreset || '';
+    const isCrowdAngle =
+      activeCamPreset === 'CROWD_POV_FAN_CAM' ||
+      activeCamPreset === 'CROWD_PIT_SURF' ||
+      activeCamPreset === 'STAGE_TO_CROWD_REVERSE' ||
+      activeCamPreset === 'ARENA_UPPER_BOWL_SWEEP' ||
+      activeCamPreset === 'CROWD_PIT_MOSH_CAM' ||
+      activeCamPreset === 'REVERSE_SILHOUETTE_SPOTLIGHT';
+    const crowdAngleBoost = isCrowdAngle ? 1.18 : 1.0;
+
+    this.updateCrowd(
+      dt,
+      {
+        beatPhase: resolvedBeatPhase,
+        barPhase: lightState.barPhase,
+        lightstickBoost: (lightState.crowdLightstickBoost ?? 1.0) * crowdAngleBoost,
+        bassE: isWalkOn ? 0.45 : bassE,
+        overallE: telemetry?.overallEnergy || 0,
+        bpm,
+        songTime,
+        hypeNorm: isWalkOn ? 0.85 : hypeNorm,
+        feverOrEncore: fever || encore || isGrandEncore || this.breActive,
+        isBallad: lightState.isBallad,
+        ambianceType: lightState.ambianceType,
+        multiplierColor: lightState.multiplierColor,
+        streakTier,
+      },
       lightState.sectionType,
-      telemetry?.overallEnergy || 0
+      combo
     );
 
-    // 9. Update 3D Pyrotechnics, Aerial Fireworks, Confetti, Lasers & Pooled Angry Crowd Projectiles
+    // 8B. Procedural WebAudio Crowd Sing-Along Choir & Beat-Locked Acoustic Clap-Along
+    this.crowdAmbience?.update({
+      playing,
+      songTime,
+      bpm,
+      beatPhase: resolvedBeatPhase,
+      combo,
+      hypeNorm,
+      sectionType: lightState.sectionType,
+      fever,
+      encore: encore || isGrandEncore,
+    });
+
+    // 9. Update 3D Aerial Fireworks, Pyrotechnics, Confetti, Lasers & Pooled Angry Crowd Projectiles
+    if (isGrandEncore || this.encoreFinaleActive || this.fwShells.length > 0 || this.hasActiveFireworks || playing) {
+      this.updateFireworks(dt, t, stageState);
+    }
     this.updatePyrotechnics(dt, stageState, telemetry);
     this.updateCrowdProjectiles(dt);
 
     // 10. Update Neversoft-Style Rule-Based Concert Camera Director
     this.updateCamera(dt, stageState, telemetry);
 
+    // 10B. Render Live 30 FPS Offscreen Telephoto IMAG Feed to Jumbotron & Side Screens
+    this.renderJumbotronImag(stageState, telemetry);
+
     this.renderer.render(this.scene, this.camera);
   }
 
   dispose() {
     this.disposed = true;
+    this.crowdAmbience?.dispose?.();
     this.venueEnv?.dispose?.();
     Object.values(this.membersByRole || {}).forEach((m) => m.disposeTextures?.());
     this.guitarAsset?.dispose?.();
     this.bassAsset?.dispose?.();
     this.drumKitAsset?.dispose?.();
     this.keyboardAsset?.dispose?.();
+    if (this.playerGoldAura) {
+      this.playerGoldAura.traverse((obj) => {
+        obj.geometry?.dispose?.();
+        obj.material?.dispose?.();
+      });
+    }
+    if (this.crowdSurferGroup) {
+      this.crowdSurferGroup.traverse((obj) => {
+        obj.geometry?.dispose?.();
+        obj.material?.dispose?.();
+      });
+    }
+    if (this.brawlFxGroup) {
+      this.brawlFxGroup.traverse((obj) => {
+        obj.geometry?.dispose?.();
+        obj.material?.dispose?.();
+      });
+    }
+    [
+      this.crowdBackpackMesh,
+      this.crowdPhoneMesh,
+      this.crowdCollarMesh,
+      this.crowdWristbandMesh,
+      this.crowdFoamFingerMesh,
+    ].forEach((m) => {
+      m?.geometry?.dispose?.();
+      m?.material?.dispose?.();
+    });
+    if (this.stageExtraDisposables) {
+      this.stageExtraDisposables.forEach((d) => d?.dispose?.());
+    }
+    this.balladDustPoints?.geometry?.dispose?.();
+    this.balladDustPoints?.material?.dispose?.();
+    this.crowdTearPoints?.geometry?.dispose?.();
+    this.crowdTearPoints?.material?.dispose?.();
+    this.sparkPoints?.geometry?.dispose?.();
+    this.fwPoints?.geometry?.dispose?.();
+    this.fwPoints?.material?.dispose?.();
+    this.fwSmokePoints?.geometry?.dispose?.();
+    this.fwSmokePoints?.material?.dispose?.();
+    this.fwStreakTex?.dispose?.();
+    this.fwStarTex?.dispose?.();
+    this.fwSmokeTex?.dispose?.();
     this.splatPoints?.geometry?.dispose?.();
     this.splatPoints?.material?.dispose?.();
+    Object.values(this.clothingPbrMaps || {}).forEach((pack) => {
+      pack?.map?.dispose?.();
+      pack?.bumpMap?.dispose?.();
+      pack?.roughnessMap?.dispose?.();
+    });
     this.crowdFaceTex?.dispose();
     this.ledTexture?.dispose();
     this.vipBannerTex?.dispose();
     this.deckTex?.dispose();
+    this.deckMaps?.bumpMap?.dispose?.();
+    this.deckMaps?.roughnessMap?.dispose?.();
+    this.plankDeckMaps?.map?.dispose?.();
+    this.plankDeckMaps?.bumpMap?.dispose?.();
+    this.plankDeckMaps?.roughnessMap?.dispose?.();
+    this.woodMaps?.map?.dispose?.();
+    this.woodMaps?.bumpMap?.dispose?.();
+    this.woodMaps?.roughnessMap?.dispose?.();
+    this.perforatedMaps?.map?.dispose?.();
+    this.perforatedMaps?.bumpMap?.dispose?.();
     this.ampGrillTex?.dispose();
     this.glowTex?.dispose();
+    this.jumbotronTarget?.dispose?.();
     this.envRenderTarget?.dispose();
     this.renderer?.dispose();
   }
