@@ -1579,7 +1579,7 @@ export class RhythmCanvas {
       ctx.fillRect(padCenterX - ringRx * 0.82, ringCy - 1, ringRx * 1.64, 2);
 
       // 5. Beveled Rock Metal Fret Keycap Badge cleanly beneath Fret Pad
-      const capW = Math.min(34, Math.max(24, laneBottomW * 0.34));
+      const capW = Math.min(34, Math.max(24, laneW * 0.34));
       const capH = 19;
       const capX = padCenterX - capW * 0.5;
       const capY = botEdgeY + 5;
