@@ -4517,15 +4517,15 @@ export class StageBand {
   }
 
   /**
-   * Builds 152 Detailed Roblox R15-Style Crowd Characters using batched InstancedMesh layers:
-   *  - Rounded cylindrical LatheGeometry Roblox heads + classic smile/eyes face texture decals
-   *  - Randomized headwear pools: spiky hair, baseball caps with brims, and over-ear headphones
-   *  - Multi-part R15 torsos (upper chest + waist belt) in vibrant concert streetwear + distinct pants
-   *  - Shoulder & elbow-jointed waving arms propagating in smooth front-to-back stadium waves
-   *  - Glowing neon lightsticks held aloft facing stage spotlights
+   * Builds 1,652 Packed Arena Floor & Pit Fans using batched InstancedMesh layers at locked 60 FPS:
+   *  - 192 Detailed 17-part Roblox R15 Front-Barricade Pit Fans (wrapping the T-catwalk & front barricade)
+   *  - 1,460 Dense General Admission Standing Floor Fans packed wall-to-wall across x: [-28, 28], z: [6.0, 42.0]
+   *    all the way back to the FOH sound/lighting booth, leaving a crisp 1.2m security barricade aisle around
+   *    the stage lip (z = 5.0) and T-catwalk (x: [-3.2, 3.2], z: [5, 11.5]) with ZERO empty concrete patches!
+   *  - Diverse concert merch tees/jackets, randomized 0.88x–1.14x scale, raised hands/devil horns, lightsticks & phones.
    */
   buildFullBodiedCrowd3D() {
-    const count = 152;
+    const count = 192;
     this.crowdCount = count;
     this.crowdSeeds = [];
     this.crowdPhase = new Float32Array(count);
@@ -4577,7 +4577,7 @@ export class StageBand {
     this.crowdWristbandMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const foamFingerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.72, metalness: 0.05 });
 
-    // Split headwear counts cleanly across the 152 fans
+    // Split headwear counts cleanly across the 192 front-pit hero fans
     this.hairIndices = [];
     this.capIndices = [];
     this.hpIndices = [];
@@ -4631,39 +4631,46 @@ export class StageBand {
       m.frustumCulled = false;
     });
 
-    // Arrange 152 R15 fans in stadium pit & rising bowl arcs strictly outside T-catwalk & barricade (z >= 6.05)
+    // Helper: enforce 1.2m security barricade aisle around main stage lip (z=5.0) & T-catwalk (x: [-3.2, 3.2], z: [5, 11.5])
+    const enforceBarricadeClearance = (rawX, rawZ, seedIdx) => {
+      let x = rawX;
+      let z = Math.max(6.2 + (seedIdx % 3) * 0.14, rawZ);
+      if (Math.abs(x) < 4.35 && z < 12.65) {
+        const sign = x >= 0 ? 1 : -1;
+        if (z < 11.45) {
+          x = sign * (4.4 + (seedIdx % 5) * 0.36);
+        } else {
+          z = 12.7 + (seedIdx % 4) * 0.28;
+        }
+      }
+      return { x, z };
+    };
+
+    // 1. Pack 192 Articulated Hero Pit Fans tightly along the front barricade & catwalk wings (x: [-16, 16], z: [6.2, 16.5])
     const rows = 8;
     const perRow = Math.ceil(count / rows);
     let idx = 0;
     for (let r = 0; r < rows && idx < count; r += 1) {
       const rowT = r / (rows - 1);
-      const zBase = 6.15 + rowT * 15.0;
-      const spreadX = 9.8 + rowT * 7.4;
+      const zBase = 6.25 + rowT * 10.2;
+      const spreadX = 13.8 + rowT * 3.4;
 
       for (let c = 0; c < perRow && idx < count; c += 1) {
         const colT = perRow > 1 ? c / (perRow - 1) : 0.5;
-        const jitterX = Math.sin(idx * 12.7) * 0.4;
-        const jitterZ = Math.cos(idx * 9.3) * 0.42;
-        let x = (colT * 2 - 1) * spreadX + jitterX;
-        let z = Math.max(6.05 + (idx % 3) * 0.18, zBase + jitterZ);
-        if ((Math.abs(x) < 2.65 && z < 9.35) || (Math.abs(x) < 4.65 && z < 12.15)) {
-          const sign = x >= 0 ? 1 : -1;
-          if (z < 10.6) {
-            const minWingX = z < 9.1 ? 2.72 : 4.72;
-            x = sign * Math.max(minWingX + (idx % 3) * 0.35, Math.abs(x));
-          } else {
-            z = 12.2 + (idx % 4) * 0.28;
-          }
-        }
-        const floorY = -1.2 + Math.max(0, rowT - 0.32) * 1.15;
+        const jitterX = Math.sin(idx * 12.7 + r * 3.1) * 0.42;
+        const jitterZ = Math.cos(idx * 9.3 + c * 2.7) * 0.38;
+        const cleared = enforceBarricadeClearance((colT * 2 - 1) * spreadX + jitterX, zBase + jitterZ, idx);
+        const x = cleared.x;
+        const z = cleared.z;
+        const floorY = -1.2 + Math.max(0, (z - 14.0) / 28.0) * 0.85;
         const facingY = Math.atan2(-x, -1.5 - z);
-        const heightScale = 0.88 + ((idx * 19) % 27) * 0.01;
-        const widthScale = 0.86 + ((idx * 23) % 31) * 0.01;
+        const heightScale = 0.88 + ((idx * 19 + r * 7) % 27) * 0.01; // 0.88x - 1.14x
+        const widthScale = 0.88 + ((idx * 23 + c * 5) % 27) * 0.01;
         const scale = heightScale;
-        const poseVariant = (idx * 3 + r) % 4; // 0: Clap/Fist-Pump, 1: Rock Horns Sway, 2: Neon Stick/Phone Wave, 3: Staggered Bounce
+        const poseVariant = (idx * 3 + r) % 4;
         const baseStickColorHex = CROWD_STICK_COLORS[(idx * 5 + r) % CROWD_STICK_COLORS.length];
         const phase = idx * 0.73 + (r % 3) * 0.41;
-        const waveDelay = rowT * 0.72 + Math.abs(colT - 0.5) * 0.35;
+        const waveDelay = rowT * 0.65 + Math.abs(colT - 0.5) * 0.35;
         const hasStick = poseVariant === 2 || (poseVariant !== 0 && idx % 3 !== 0);
         const hasBackpack = idx % 5 === 1 || idx % 7 === 0;
         const hasPhone = poseVariant === 2 || idx % 3 === 1;
@@ -4690,7 +4697,6 @@ export class StageBand {
           hasFoamFinger,
         });
 
-        // Randomized streetwear shirt, pants, skin tone, glowsticks, wristbands & foam fingers per fan
         this._colorA.setHex(CROWD_SHIRT_COLORS[idx % CROWD_SHIRT_COLORS.length]);
         this.crowdTorsoMesh.setColorAt(idx, this._colorA);
         this.crowdUpperArmLMesh.setColorAt(idx, this._colorA);
@@ -4779,6 +4785,191 @@ export class StageBand {
       this.lightstickMesh,
       this.crowdPhoneMesh
     );
+
+    // 2. Massive Packed General Admission Standing Arena Floor Crowd (1,460 instanced fans -> 1,652 total floor fans!)
+    //    Fills x: [-28, 28], z: [6.0, 42.0] tightly around the catwalk & all the way back to the FOH booth at 60 FPS!
+    const gaFloorSeeds = [];
+    const gaMerchPalette = [
+      0x111827, 0x1e293b, 0x18181b, 0x27272a, 0x3f1d2b, 0x7f1d1d,
+      0x991b1b, 0x1d4ed8, 0x0f766e, 0x3730a3, 0x4c1d95, 0x854d0e,
+      0xb45309, 0xbe123c, 0x0369a1, 0x334155, 0x581c87, 0x065f46,
+      0xd97706, 0x475569, 0xe11d48, 0x2563eb, 0xf8fafc, 0x1f2937,
+    ];
+    let gaIdx = 0;
+
+    // 2A. Dense front-barricade outer wings & mid-pit infill (z: 6.2..17.6, x: -28..28) so front standing floor is wall-to-wall!
+    const frontBandRows = 12;
+    for (let r = 0; r < frontBandRows; r += 1) {
+      const zRow = 6.3 + r * 0.96;
+      const stepX = zRow < 12.6 ? 1.05 : 1.08;
+      for (let gx = -27.6; gx <= 27.6; gx += stepX) {
+        const hash = Math.sin(gaIdx * 17.31 + r * 5.7) * 43758.5453;
+        const randA = hash - Math.floor(hash);
+        const hashB = Math.cos(gaIdx * 11.17 + gx * 3.9) * 28461.231;
+        const randB = hashB - Math.floor(hashB);
+        const x = gx + (randA - 0.5) * 0.62;
+        const z = zRow + (randB - 0.5) * 0.58;
+
+        // Strictly respect 1.2m security barricade aisle around main stage lip & T-catwalk
+        if (z < 6.15) continue;
+        if (Math.abs(x) < 4.35 && z < 12.65) continue;
+
+        // Inside the inner hero pit (|x| < 14.8, z < 15.6), place interstitial fill fans on alternate slots so density is seamless without stacking
+        const insideHeroZone = Math.abs(x) < 14.8 && z < 15.8;
+        if (insideHeroZone && (r + Math.floor((gx + 30) * 0.9)) % 2 === 0) {
+          gaIdx += 1;
+          continue;
+        }
+
+        const scale = 0.88 + randA * 0.26; // 0.88x - 1.14x
+        const widthScale = 0.88 + randB * 0.24;
+        const floorY = -1.2 + Math.max(0, (z - 14.0) / 28.0) * 0.85;
+        gaFloorSeeds.push({
+          x,
+          z,
+          floorY,
+          facingY: Math.atan2(-x, -1.5 - z),
+          heightScale: scale,
+          widthScale,
+          phase: randA * Math.PI * 2 + gaIdx * 0.37,
+          waveDelay: ((z - 6.0) / 36.0) * 1.1 + (Math.abs(x) / 28.0) * 0.45,
+          shirtHex: gaMerchPalette[(gaIdx * 7 + r * 3) % gaMerchPalette.length],
+          pantsHex: CROWD_PANTS_COLORS[(gaIdx * 5) % CROWD_PANTS_COLORS.length],
+          skinHex: CROWD_SKIN_TONES[(gaIdx * 3) % CROWD_SKIN_TONES.length],
+          stickHex: CROWD_STICK_COLORS[(gaIdx * 5 + r) % CROWD_STICK_COLORS.length],
+          hasLight: randB > 0.34, // 66% carry glowing lightstick / phone light
+          isDevilHorns: (gaIdx % 3) === 0,
+        });
+        gaIdx += 1;
+      }
+    }
+
+    // 2B. Full-width General Admission standing floor extending back to the FOH booth (z: 17.8..41.8, x: -28..28)
+    const backRows = 19;
+    for (let r = 0; r < backRows; r += 1) {
+      const zRow = 18.0 + r * 1.24;
+      const stepX = 1.16 + (r / backRows) * 0.24;
+      for (let gx = -27.8; gx <= 27.8; gx += stepX) {
+        if (gaFloorSeeds.length >= 1460) break;
+        const hash = Math.sin(gaIdx * 23.13 + r * 7.1) * 43758.5453;
+        const randA = hash - Math.floor(hash);
+        const hashB = Math.cos(gaIdx * 13.71 + gx * 2.3) * 19531.71;
+        const randB = hashB - Math.floor(hashB);
+        const x = gx + (randA - 0.5) * 0.72;
+        const z = zRow + (randB - 0.5) * 0.68;
+        if (Math.abs(x) > 28.1 || z > 42.0) continue;
+
+        // Subtle cutout right around the FOH mixing desk footprint at far back center if present
+        if (z > 39.2 && Math.abs(x) < 3.4) continue;
+
+        const scale = 0.88 + randA * 0.26;
+        const widthScale = 0.88 + randB * 0.24;
+        const floorY = -1.2 + Math.max(0, (z - 14.0) / 28.0) * 0.92;
+        gaFloorSeeds.push({
+          x,
+          z,
+          floorY,
+          facingY: Math.atan2(-x, -1.5 - z),
+          heightScale: scale,
+          widthScale,
+          phase: randA * Math.PI * 2 + gaIdx * 0.41,
+          waveDelay: ((z - 6.0) / 36.0) * 1.15 + (Math.abs(x) / 28.0) * 0.42,
+          shirtHex: gaMerchPalette[(gaIdx * 11 + r * 5) % gaMerchPalette.length],
+          pantsHex: CROWD_PANTS_COLORS[(gaIdx * 3) % CROWD_PANTS_COLORS.length],
+          skinHex: CROWD_SKIN_TONES[(gaIdx * 5) % CROWD_SKIN_TONES.length],
+          stickHex: CROWD_STICK_COLORS[(gaIdx * 7 + r) % CROWD_STICK_COLORS.length],
+          hasLight: randB > 0.36,
+          isDevilHorns: (gaIdx % 3) === 1,
+        });
+        gaIdx += 1;
+      }
+      if (gaFloorSeeds.length >= 1460) break;
+    }
+
+    this.floorCrowdSeeds = gaFloorSeeds;
+    this.floorCrowdCount = gaFloorSeeds.length;
+    this.floorCrowdColorState = -1;
+    this._floorCrowdFrameTick = 0;
+
+    // Stylized low-poly 5-layer InstancedMesh silhouettes for the 1,460 standing floor fans (5 draw calls total!)
+    const gaLegsGeo = new THREE.BoxGeometry(0.54, 0.74, 0.32);
+    const gaTorsoGeo = mergeSimpleGeometries([
+      new THREE.BoxGeometry(0.7, 0.68, 0.38),
+      (() => {
+        const g = new THREE.BoxGeometry(0.74, 0.14, 0.4);
+        g.translate(0, 0.3, 0);
+        return g;
+      })(),
+    ]);
+    const gaHeadGeo = mergeSimpleGeometries([
+      new THREE.BoxGeometry(0.42, 0.44, 0.42),
+      (() => {
+        const cap = new THREE.BoxGeometry(0.45, 0.13, 0.46);
+        cap.translate(0, 0.22, 0.02);
+        return cap;
+      })(),
+    ]);
+    // Dual raised concert arms with angled rock/devil-horns silhouette pivoted at shoulder y=0
+    const gaArmParts = [];
+    const leftArmG = new THREE.BoxGeometry(0.18, 0.66, 0.18);
+    leftArmG.rotateZ(0.32);
+    leftArmG.translate(-0.46, 0.28, 0.05);
+    gaArmParts.push(leftArmG);
+    const rightArmG = new THREE.BoxGeometry(0.18, 0.68, 0.18);
+    rightArmG.rotateZ(-0.3);
+    rightArmG.translate(0.46, 0.29, 0.05);
+    gaArmParts.push(rightArmG);
+    // Subtle raised devil-horns finger silhouettes on left & right hands
+    const hornL = new THREE.BoxGeometry(0.16, 0.14, 0.08);
+    hornL.translate(-0.58, 0.64, 0.08);
+    gaArmParts.push(hornL);
+    const hornR = new THREE.BoxGeometry(0.16, 0.14, 0.08);
+    hornR.translate(0.58, 0.65, 0.08);
+    gaArmParts.push(hornR);
+    const gaArmsGeo = mergeSimpleGeometries(gaArmParts);
+    gaArmParts.forEach((g) => g.dispose());
+
+    const gaLightGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.52, 5);
+    gaLightGeo.translate(0, 0.26, 0);
+
+    const gaLegsMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88, metalness: 0.04 });
+    const gaTorsoMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.64, metalness: 0.08 });
+    const gaHeadMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.56, metalness: 0.04 });
+    const gaArmsMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, metalness: 0.06 });
+    this.floorCrowdLightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    this.floorCrowdLegsMesh = new THREE.InstancedMesh(gaLegsGeo, gaLegsMat, this.floorCrowdCount);
+    this.floorCrowdTorsoMesh = new THREE.InstancedMesh(gaTorsoGeo, gaTorsoMat, this.floorCrowdCount);
+    this.floorCrowdHeadMesh = new THREE.InstancedMesh(gaHeadGeo, gaHeadMat, this.floorCrowdCount);
+    this.floorCrowdArmsMesh = new THREE.InstancedMesh(gaArmsGeo, gaArmsMat, this.floorCrowdCount);
+    this.floorCrowdLightMesh = new THREE.InstancedMesh(gaLightGeo, this.floorCrowdLightMat, this.floorCrowdCount);
+
+    for (let i = 0; i < this.floorCrowdCount; i += 1) {
+      const s = gaFloorSeeds[i];
+      this._colorA.setHex(s.pantsHex);
+      this.floorCrowdLegsMesh.setColorAt(i, this._colorA);
+      this._colorA.setHex(s.shirtHex);
+      this.floorCrowdTorsoMesh.setColorAt(i, this._colorA);
+      this.floorCrowdArmsMesh.setColorAt(i, this._colorA);
+      this._colorA.setHex(s.skinHex);
+      this.floorCrowdHeadMesh.setColorAt(i, this._colorA);
+      this._colorA.setHex(s.stickHex);
+      this.floorCrowdLightMesh.setColorAt(i, this._colorA);
+    }
+
+    [
+      this.floorCrowdLegsMesh,
+      this.floorCrowdTorsoMesh,
+      this.floorCrowdHeadMesh,
+      this.floorCrowdArmsMesh,
+      this.floorCrowdLightMesh,
+    ].forEach((m) => {
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      m.castShadow = false;
+      m.receiveShadow = false;
+      m.frustumCulled = false;
+      this.scene.add(m);
+    });
 
     // Pre-allocated Crowd Surfer 3D R15 NPC (Zero GC!)
     const surferGroup = new THREE.Group();
@@ -5600,6 +5791,185 @@ export class StageBand {
       }
       if (anyTearUpdated) {
         posAttr.needsUpdate = true;
+      }
+    }
+
+    // 8B. Animate 1,460 Packed General Admission Standing Arena Floor Fans (x: [-28, 28], z: [6.0, 42.0])
+    //     Reacts dynamically to ALL 6 pit events (Moshpit, Suntukan, Crying/Phone Sway, Crowd Surfing, Wall of Death, Stadium Wave)!
+    if (this.floorCrowdCount > 0 && this.floorCrowdTorsoMesh) {
+      this._floorCrowdFrameTick = (this._floorCrowdFrameTick + 1) % 2;
+      const shouldUpdateFloor = !this.adaptiveLowPower || this._floorCrowdFrameTick === 0 || dt === 0;
+      if (shouldUpdateFloor) {
+        const gaWaveFrontX = evType === 'STADIUM_WAVE' || evType === 'HEART_WAVE' ? -28.0 + evProgress * 56.0 : -999;
+        const updateGaLightsColor =
+          this.floorCrowdColorState !== colorStateCode || colorStateCode === 2 || isPhoneLightsEvent;
+        if (updateGaLightsColor) {
+          this.floorCrowdColorState = colorStateCode;
+        }
+
+        const surferX = this.crowdSurferGroup?.visible ? this.crowdSurferGroup.position.x : 999;
+        const surferZ = this.crowdSurferGroup?.visible ? this.crowdSurferGroup.position.z : 999;
+
+        for (let i = 0; i < this.floorCrowdCount; i += 1) {
+          const s = this.floorCrowdSeeds[i];
+          const scH = s.heightScale;
+          const scW = s.widthScale;
+          const phase = s.phase;
+          let fx = s.x;
+          let fz = s.z;
+          let fYaw = s.facingY;
+          let extraPump = 0;
+          let extraJump = 0;
+
+          // Dynamic parting & surging for all 6 random pit events within the dense standing floor!
+          if (evType === 'MOSHPIT' && fz >= 12.6 && fz <= 25.5 && Math.abs(fx - ev.centerX) < 7.2) {
+            const dx = fx - ev.centerX;
+            const dz = fz - ev.centerZ;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 6.2) {
+              const ang = Math.atan2(dz, dx) + t * 2.85;
+              const pitR = Math.max(3.6, Math.min(6.0, dist + 1.4));
+              fx = ev.centerX + Math.cos(ang) * pitR;
+              fz = Math.max(12.65, ev.centerZ + Math.sin(ang) * pitR);
+              fYaw = ang + Math.PI * 0.5;
+              extraJump = Math.abs(Math.sin(beatRad * 2 + phase)) * 0.24 * scH;
+              extraPump = 0.35;
+            }
+          } else if (isWallOfDeath && Math.abs(fx) < 7.4 && fz >= 12.7 && fz <= 26.5) {
+            const side = fx >= 0 ? 1 : -1;
+            if (evProgress < 0.45) {
+              const splitEase = Math.min(1, evProgress / 0.25);
+              fx = THREE.MathUtils.lerp(fx, side * (4.2 + Math.abs(fx) * 0.52), splitEase);
+              fYaw = -side * Math.PI * 0.5;
+            } else {
+              const chargeT = Math.min(1, (evProgress - 0.45) / 0.35);
+              fx = THREE.MathUtils.lerp(side * (4.4 + Math.abs(s.x) * 0.3), side * (0.55 + (i % 5) * 0.32), chargeT);
+              fYaw = -side * Math.PI * 0.5;
+              extraJump = Math.abs(Math.sin(beatRad * 2 + phase)) * 0.26 * scH;
+              extraPump = 0.42;
+            }
+          } else if (evType === 'SUNTUKAN') {
+            const dx = ev.centerX - fx;
+            const dz = ev.centerZ - fz;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 5.6 && fz >= 12.6) {
+              if (dist < 2.2) {
+                const push = (2.4 - dist) / Math.max(0.25, dist);
+                fx -= dx * push * 0.7;
+                fz = Math.max(12.7, fz - dz * push * 0.7);
+              }
+              fYaw = Math.atan2(dx, dz);
+              extraJump = Math.abs(Math.sin(t * 9.0 + phase)) * 0.14 * scH;
+              extraPump = 0.25;
+            }
+          } else if (evType === 'CROWD_SURFING' || evType === 'CROWD_SURF') {
+            const dx = fx - surferX;
+            const dz = fz - surferZ;
+            if (dx * dx + dz * dz < 8.5) {
+              extraPump = 0.55;
+            }
+          }
+
+          const waveBump =
+            evType === 'STADIUM_WAVE' || evType === 'HEART_WAVE'
+              ? Math.exp(-Math.pow((fx - gaWaveFrontX) / 3.4, 2)) * 0.62 * scH
+              : 0;
+          const fanWave = isBalladSway
+            ? beatRad * 0.5 - s.waveDelay * 0.35
+            : beatRad - s.waveDelay * 2.1;
+          const jump = isBalladSway
+            ? 0
+            : (Math.pow(Math.abs(Math.sin(fanWave * 0.5 + phase * 0.4)), 1.6) * (0.06 + energy * 0.22) * scH) +
+              waveBump +
+              extraJump;
+          const baseY = s.floorY + jump;
+          const swayZ = isBalladSway
+            ? Math.sin(beatRad * 0.5 + phase * 0.16) * 0.17
+            : Math.sin(beatRad * 0.5 + phase * 0.5) * 0.08 * (0.6 + energy * 0.4);
+
+          // 1. Legs
+          this._dummy.position.set(fx, baseY + 0.37 * scH, fz);
+          this._dummy.rotation.set(0, fYaw, 0);
+          this._dummy.scale.set(scW, scH, scW);
+          this._dummy.updateMatrix();
+          this.floorCrowdLegsMesh.setMatrixAt(i, this._dummy.matrix);
+
+          // 2. Merch Tee / Jacket Torso
+          this._dummy.position.set(fx, baseY + 1.08 * scH, fz);
+          this._dummy.rotation.set(isBalladSway ? 0.03 : 0.06 * energy, fYaw, swayZ);
+          this._dummy.scale.set(scW, scH, scW);
+          this._dummy.updateMatrix();
+          this.floorCrowdTorsoMesh.setMatrixAt(i, this._dummy.matrix);
+
+          // 3. Head + Hair/Cap Silhouette
+          this._dummy.position.set(fx, baseY + 1.66 * scH, fz);
+          this._dummy.rotation.set(
+            isBalladSway ? -0.04 : Math.sin(beatRad + phase * 0.5) * 0.1 * energy,
+            fYaw,
+            swayZ * 0.85
+          );
+          this._dummy.scale.set(scW, scH, scW);
+          this._dummy.updateMatrix();
+          this.floorCrowdHeadMesh.setMatrixAt(i, this._dummy.matrix);
+
+          // 4. Raised Hands / Devil-Horns Arms
+          const armPump = isBalladSway
+            ? Math.sin(beatRad * 0.5 + phase * 0.2) * 0.14
+            : Math.sin(fanWave + phase * 0.35) * (0.18 + energy * 0.24) + waveBump * 0.9 + extraPump;
+          this._dummy.position.set(fx, baseY + 1.38 * scH + Math.max(0, armPump * 0.14), fz);
+          this._dummy.rotation.set(0.18 + armPump * 0.25, fYaw, swayZ * 1.45);
+          this._dummy.scale.set(scW, scH * (0.94 + Math.max(0, armPump * 0.18)), scW);
+          this._dummy.updateMatrix();
+          this.floorCrowdArmsMesh.setMatrixAt(i, this._dummy.matrix);
+
+          // 5. Glowing Lightstick / Smartphone Light held aloft
+          const showLight = s.hasLight || isBalladMode || isPhoneLightsEvent || feverOrEncore || waveBump > 0.15;
+          if (showLight) {
+            const cosF = Math.cos(fYaw);
+            const sinF = Math.sin(fYaw);
+            const lx = fx + cosF * 0.52 * scW;
+            const lz = fz - sinF * 0.52 * scW;
+            const ly = baseY + (1.98 + Math.max(0, armPump * 0.18)) * scH;
+            const phoneMode = isBalladMode || isPhoneLightsEvent || evType === 'CRYING_SWAY';
+            this._dummy.position.set(lx, ly, lz);
+            this._dummy.rotation.set(0.16, fYaw, swayZ * 1.8);
+            this._dummy.scale.set(
+              phoneMode ? scW * 1.65 : scW * 0.95,
+              phoneMode ? scH * 0.42 : scH * (0.85 + bassE * 0.32 + (lightstickBoost - 1) * 0.2),
+              phoneMode ? scW * 0.55 : scW * 0.95
+            );
+            this._dummy.updateMatrix();
+            this.floorCrowdLightMesh.setMatrixAt(i, this._dummy.matrix);
+          } else {
+            this._dummy.position.set(0, -60, 0);
+            this._dummy.scale.set(0, 0, 0);
+            this._dummy.updateMatrix();
+            this.floorCrowdLightMesh.setMatrixAt(i, this._dummy.matrix);
+          }
+
+          if (updateGaLightsColor) {
+            if (isBalladMode || isPhoneLightsEvent || evType === 'CRYING_SWAY') {
+              this._colorB.setHex(0xfef3c7);
+            } else if (colorStateCode === 0) {
+              this._colorB.setHex(s.stickHex).lerp(this._colorA, 0.28);
+            } else if (colorStateCode === 2) {
+              const fanHue = (t * 0.18 + (i % 16) * 0.0625) % 1;
+              this._colorB.setHSL(fanHue, 0.92, 0.62);
+            } else {
+              this._colorB.copy(this._colorA);
+            }
+            this.floorCrowdLightMesh.setColorAt(i, this._colorB);
+          }
+        }
+
+        this.floorCrowdLegsMesh.instanceMatrix.needsUpdate = true;
+        this.floorCrowdTorsoMesh.instanceMatrix.needsUpdate = true;
+        this.floorCrowdHeadMesh.instanceMatrix.needsUpdate = true;
+        this.floorCrowdArmsMesh.instanceMatrix.needsUpdate = true;
+        this.floorCrowdLightMesh.instanceMatrix.needsUpdate = true;
+        if (updateGaLightsColor && this.floorCrowdLightMesh.instanceColor) {
+          this.floorCrowdLightMesh.instanceColor.needsUpdate = true;
+        }
       }
     }
 
@@ -10682,6 +11052,11 @@ export class StageBand {
       this.crowdCollarMesh,
       this.crowdWristbandMesh,
       this.crowdFoamFingerMesh,
+      this.floorCrowdLegsMesh,
+      this.floorCrowdTorsoMesh,
+      this.floorCrowdHeadMesh,
+      this.floorCrowdArmsMesh,
+      this.floorCrowdLightMesh,
     ].forEach((m) => {
       m?.geometry?.dispose?.();
       m?.material?.dispose?.();

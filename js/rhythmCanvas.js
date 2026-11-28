@@ -331,10 +331,17 @@ export class RhythmCanvas {
     if (multiplierUp && effectiveMultiplier >= 2 && !this.bannerPopup) {
       this.bannerPopup = {
         text: `${state.isTwoPlayerMode?.() ? `P${player} ` : ''}${effectiveMultiplier}× STREAK`,
-        color: feverActive ? '#fde047' : '#f8fafc',
+        color: feverActive ? '#38bdf8' : '#fde047',
         age: 0,
-        duration: 0.95,
+        duration: 1.0,
       };
+      this.spawnBurst(
+        this.width * 0.5,
+        Math.max(36, geom.topY - 34),
+        feverActive ? { base: '#38bdf8', bright: '#ffffff' } : { base: '#facc15', bright: '#fef9c3' },
+        18,
+        true
+      );
     }
   }
 
@@ -359,6 +366,14 @@ export class RhythmCanvas {
       age: 0,
       duration,
     };
+    const geom = this.getHighwayGeometry(1);
+    this.spawnBurst(
+      this.width * 0.5,
+      Math.max(36, geom.topY - 34),
+      { base: color, bright: '#ffffff' },
+      24,
+      true
+    );
   }
 
   /**
@@ -1563,12 +1578,34 @@ export class RhythmCanvas {
       ctx.fillStyle = haloStrength > 0.15 || held || pulse > 0.2 ? '#ffffff' : hexToRgba(baseColor.bright, 0.72);
       ctx.fillRect(padCenterX - ringRx * 0.82, ringCy - 1, ringRx * 1.64, 2);
 
-      // 5. Key label cleanly beneath Fret Pad
-      ctx.font = '700 13px "Oswald", sans-serif';
+      // 5. Beveled Rock Metal Fret Keycap Badge cleanly beneath Fret Pad
+      const capW = Math.min(34, Math.max(24, laneBottomW * 0.34));
+      const capH = 19;
+      const capX = padCenterX - capW * 0.5;
+      const capY = botEdgeY + 5;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(capX + 4, capY);
+      ctx.lineTo(capX + capW, capY);
+      ctx.lineTo(capX + capW - 4, capY + capH);
+      ctx.lineTo(capX, capY + capH);
+      ctx.closePath();
+      ctx.fillStyle = held || haloStrength > 0.25 ? baseColor.base : 'rgba(10, 12, 19, 0.92)';
+      ctx.fill();
+      ctx.lineWidth = held || haloStrength > 0.25 ? 1.8 : 1.25;
+      ctx.strokeStyle = held || haloStrength > 0.25 ? '#ffffff' : hexToRgba(baseColor.bright, 0.72);
+      ctx.stroke();
+
+      ctx.font = '900 13px Impact, Haettenschweiler, "Arial Narrow Bold", "Oswald", sans-serif';
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = held || haloStrength > 0.25 ? '#ffffff' : 'rgba(226, 232, 240, 0.78)';
-      ctx.fillText(laneConfig.keys[i], padCenterX, botEdgeY + 6);
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#05070b';
+      ctx.strokeText(laneConfig.keys[i], padCenterX, capY + capH * 0.52);
+      ctx.fillStyle = held || haloStrength > 0.25 ? '#ffffff' : '#f8fafc';
+      ctx.fillText(laneConfig.keys[i], padCenterX, capY + capH * 0.52);
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -2156,25 +2193,36 @@ export class RhythmCanvas {
       ctx.fill();
     }
 
-    // Center FREESTYLE banner & live bonus tally
+    // Center FREESTYLE banner & live bonus tally (Guitar Hero comic-rock lettering)
     const bannerY = geom.topY + (geom.hitY - geom.topY) * 0.42;
+    ctx.save();
+    ctx.translate(geom.cx, bannerY);
+    ctx.rotate(-0.04);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowColor = '#facc15';
-    ctx.shadowBlur = 22;
-    ctx.fillStyle = '#fef08a';
-    ctx.font = '700 28px "Oswald", sans-serif';
-    ctx.fillText('⚡ BIG ROCK ENDING · FREESTYLE! ⚡', geom.cx, bannerY);
+    ctx.lineJoin = 'round';
+    ctx.font = '900 32px Impact, Haettenschweiler, "Arial Narrow Bold", "Oswald", sans-serif';
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#090504';
+    ctx.shadowColor = '#f97316';
+    ctx.shadowBlur = 24;
+    ctx.strokeText('⚡ BIG ROCK ENDING · FREESTYLE! ⚡', 0, 0);
+    const breGrad = ctx.createLinearGradient(0, -18, 0, 18);
+    breGrad.addColorStop(0, '#ffffff');
+    breGrad.addColorStop(0.45, '#fde047');
+    breGrad.addColorStop(1, '#f97316');
+    ctx.fillStyle = breGrad;
+    ctx.fillText('⚡ BIG ROCK ENDING · FREESTYLE! ⚡', 0, 0);
 
     ctx.shadowColor = '#fb923c';
     ctx.shadowBlur = 14;
+    ctx.font = '900 20px Impact, Haettenschweiler, "Arial Narrow Bold", "Oswald", sans-serif';
+    ctx.lineWidth = 5;
+    const breSub = breBonusPoints > 0 ? `+${breBonusPoints.toLocaleString()} BRE BONUS` : 'MASH ANY FRETS FOR ENCORE BONUS!';
+    ctx.strokeText(breSub, 0, 34);
     ctx.fillStyle = '#ffffff';
-    ctx.font = '700 18px "JetBrains Mono", monospace';
-    ctx.fillText(
-      breBonusPoints > 0 ? `+${breBonusPoints.toLocaleString()} BRE BONUS` : 'MASH ANY FRETS FOR ENCORE BONUS!',
-      geom.cx,
-      bannerY + 30
-    );
+    ctx.fillText(breSub, 0, 34);
+    ctx.restore();
     ctx.restore();
   }
 
@@ -2206,17 +2254,26 @@ export class RhythmCanvas {
     if (songTime >= -0.05 || songTime < -1.85) return;
     const rem = Math.max(0, -songTime);
     const label = rem > 0.95 ? 'GET READY · 2' : 'GET READY · 1';
-    const pulse = 0.72 + 0.28 * Math.sin(this.animClock * 12);
+    const pulse = 0.76 + 0.24 * Math.sin(this.animClock * 12);
 
     ctx.save();
-    ctx.translate(geom.cx, geom.hitY - 92);
+    ctx.translate(geom.cx, geom.hitY - 94);
+    ctx.rotate(-0.045);
     ctx.globalAlpha = Math.min(1, rem * 3.5) * pulse;
-    ctx.font = '700 22px "Oswald", sans-serif';
+    ctx.font = '900 28px Impact, Haettenschweiler, "Arial Narrow Bold", "Oswald", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#05070b';
     ctx.shadowColor = accentHex;
     ctx.shadowBlur = 18;
-    ctx.fillStyle = '#f8fafc';
+    ctx.strokeText(label, 0, 0);
+    const cueGrad = ctx.createLinearGradient(0, -14, 0, 14);
+    cueGrad.addColorStop(0, '#ffffff');
+    cueGrad.addColorStop(0.55, '#fde047');
+    cueGrad.addColorStop(1, '#f97316');
+    ctx.fillStyle = cueGrad;
     ctx.fillText(label, 0, 0);
     ctx.restore();
   }
@@ -2225,44 +2282,164 @@ export class RhythmCanvas {
     if (ps.judgementPopup) {
       const j = ps.judgementPopup;
       const p = j.age / j.duration;
-      const scale = p < 0.15 ? 0.82 + (p / 0.15) * 0.3 : 1.12 - ((p - 0.15) / 0.85) * 0.14;
-      const alpha = p < 0.65 ? 1 : Math.max(0, 1 - (p - 0.65) / 0.35);
-      const lift = p * 28;
+      const scale = p < 0.14 ? 0.74 + (p / 0.14) * 0.44 : 1.18 - ((p - 0.14) / 0.86) * 0.2;
+      const alpha = p < 0.64 ? 1 : Math.max(0, 1 - (p - 0.64) / 0.36);
+      const lift = p * 32;
+      const isPerfect = j.text === 'PERFECT!' || j.text === 'FREESTYLE!';
+      const isGreat = j.text === 'GREAT!' || j.text === 'EARLY';
+      const isMiss = j.text === 'MISS';
+      const tilt = isMiss ? 0.065 : -0.072;
 
       ctx.save();
-      ctx.translate(geom.cx, geom.hitY - 62 - lift);
+      ctx.translate(geom.cx, geom.hitY - 64 - lift);
+      ctx.rotate(tilt);
       ctx.scale(scale, scale);
       ctx.globalAlpha = alpha;
-      ctx.font = '700 28px "Oswald", sans-serif';
+
+      // Radiating spark burst streaks behind PERFECT! / FREESTYLE!
+      if (isPerfect && p < 0.58) {
+        const rayAlpha = (1 - p / 0.58) * 0.88;
+        ctx.save();
+        ctx.globalAlpha = alpha * rayAlpha;
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 2.2;
+        for (let r = 0; r < 8; r += 1) {
+          const ang = (r / 8) * Math.PI * 2 + p * 0.6;
+          const rIn = 34 + p * 18;
+          const rOut = 54 + p * 44;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(ang) * rIn, Math.sin(ang) * rIn * 0.48);
+          ctx.lineTo(Math.cos(ang) * rOut, Math.sin(ang) * rOut * 0.48);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      ctx.font = isPerfect
+        ? '900 36px Impact, Haettenschweiler, "Arial Narrow Bold", "Oswald", sans-serif'
+        : '900 31px Impact, Haettenschweiler, "Arial Narrow Bold", "Oswald", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = j.color;
-      ctx.shadowBlur = 18;
-      ctx.fillStyle = j.color;
+      ctx.lineJoin = 'round';
+
+      // Heavy comic-rock black outline + metallic drop glow
+      ctx.lineWidth = 7.5;
+      ctx.strokeStyle = '#05060a';
+      ctx.shadowColor = isPerfect ? '#f97316' : isGreat ? '#0ea5e9' : isMiss ? '#dc2626' : j.color;
+      ctx.shadowBlur = isPerfect ? 22 : 14;
+      ctx.strokeText(j.text, 0, 2);
+
+      // Fiery-gold / Electric-cyan / Crimson multi-stop fill
+      const textGrad = ctx.createLinearGradient(0, -18, 0, 18);
+      if (isPerfect) {
+        textGrad.addColorStop(0, '#ffffff');
+        textGrad.addColorStop(0.4, '#fef08a');
+        textGrad.addColorStop(0.75, '#f59e0b');
+        textGrad.addColorStop(1, '#ea580c');
+      } else if (isGreat) {
+        textGrad.addColorStop(0, '#ffffff');
+        textGrad.addColorStop(0.45, '#7dd3fc');
+        textGrad.addColorStop(1, '#0284c7');
+      } else if (isMiss) {
+        textGrad.addColorStop(0, '#ffe4e6');
+        textGrad.addColorStop(0.45, '#fb7185');
+        textGrad.addColorStop(1, '#b91c1c');
+      } else {
+        textGrad.addColorStop(0, '#ffffff');
+        textGrad.addColorStop(0.55, j.color);
+        textGrad.addColorStop(1, '#15803d');
+      }
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = textGrad;
       ctx.fillText(j.text, 0, 0);
+
+      // Crisp inner highlight bevel rim
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+      ctx.strokeText(j.text, 0, -0.5);
       ctx.restore();
     }
 
-    // Non-intrusive Streak Milestone & Concert Banners positioned cleanly ABOVE the highway horizon
-    // so they NEVER block incoming notes!
+    // Guitar Hero Comic-Rock Streak Milestone & Concert Banners cleanly ABOVE the highway horizon
     if (showBanner && this.bannerPopup) {
       const b = this.bannerPopup;
       const p = b.age / b.duration;
-      const alpha = p < 0.14 ? p / 0.14 : p < 0.74 ? 1 : Math.max(0, 1 - (p - 0.74) / 0.26);
-      const scale = p < 0.14 ? 0.9 + (p / 0.14) * 0.12 : 1.02 - ((p - 0.14) / 0.86) * 0.04;
+      const alpha = p < 0.12 ? p / 0.12 : p < 0.74 ? 1 : Math.max(0, 1 - (p - 0.74) / 0.26);
+      const scale = p < 0.12 ? 0.84 + (p / 0.12) * 0.22 : 1.06 - ((p - 0.12) / 0.88) * 0.06;
       const bannerX = this.width * 0.5;
-      const bannerY = Math.max(30, geom.topY - 34);
+      const bannerY = Math.max(36, geom.topY - 34);
+      const isCyan = b.color === '#38bdf8' || b.text.includes('FEVER');
 
       ctx.save();
       ctx.translate(bannerX, bannerY);
+      ctx.rotate(-0.032);
       ctx.scale(scale, scale);
       ctx.globalAlpha = alpha;
-      ctx.font = '700 24px "Oswald", sans-serif';
+
+      ctx.font = '900 28px Impact, Haettenschweiler, "Arial Narrow Bold", "Oswald", sans-serif';
+      const measuredW = Math.max(210, ctx.measureText(b.text).width + 54);
+      const plateH = 38;
+      const halfW = measuredW * 0.5;
+      const halfH = plateH * 0.5;
+
+      // Skewed dark-steel & fiery-gold/cyan road-case rock ribbon plate
+      ctx.beginPath();
+      ctx.moveTo(-halfW + 12, -halfH);
+      ctx.lineTo(halfW, -halfH);
+      ctx.lineTo(halfW - 12, halfH);
+      ctx.lineTo(-halfW, halfH);
+      ctx.closePath();
+      const plateGrad = ctx.createLinearGradient(0, -halfH, 0, halfH);
+      plateGrad.addColorStop(0, 'rgba(24, 27, 38, 0.94)');
+      plateGrad.addColorStop(1, 'rgba(7, 9, 15, 0.96)');
+      ctx.fillStyle = plateGrad;
+      ctx.shadowColor = isCyan ? '#38bdf8' : '#f59e0b';
+      ctx.shadowBlur = 20;
+      ctx.fill();
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = isCyan ? '#7dd3fc' : '#fde047';
+      ctx.stroke();
+
+      // Radiating spark flares on left & right wingtips
+      if (p < 0.45) {
+        const sparkAlpha = (1 - p / 0.45) * 0.9;
+        ctx.save();
+        ctx.globalAlpha = alpha * sparkAlpha;
+        ctx.strokeStyle = isCyan ? '#7dd3fc' : '#fef08a';
+        ctx.lineWidth = 2;
+        for (let s = -1; s <= 1; s += 1) {
+          const dy = s * 8;
+          ctx.beginPath();
+          ctx.moveTo(-halfW - 4, dy);
+          ctx.lineTo(-halfW - 18 - p * 26, dy + s * 6);
+          ctx.moveTo(halfW + 4, dy);
+          ctx.lineTo(halfW + 18 + p * 26, dy + s * 6);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = b.color;
-      ctx.shadowBlur = 22;
-      ctx.fillStyle = b.color;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#05060a';
+      ctx.shadowBlur = 12;
+      ctx.strokeText(b.text, 0, 1);
+
+      const bannerGrad = ctx.createLinearGradient(0, -14, 0, 14);
+      if (isCyan) {
+        bannerGrad.addColorStop(0, '#ffffff');
+        bannerGrad.addColorStop(0.5, '#7dd3fc');
+        bannerGrad.addColorStop(1, '#0284c7');
+      } else {
+        bannerGrad.addColorStop(0, '#ffffff');
+        bannerGrad.addColorStop(0.45, '#fef08a');
+        bannerGrad.addColorStop(1, '#f97316');
+      }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = bannerGrad;
       ctx.fillText(b.text, 0, 0);
       ctx.restore();
     }

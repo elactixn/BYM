@@ -50,13 +50,20 @@
         <canvas id="stage-band-canvas"></canvas>
       </div>
 
-      <!-- Concert Broadcast Stage HUD: Top Ticker + Marshall-Amp Score (Bottom-Left) + Analog Rock Meter (Bottom-Right) -->
+      <!-- Concert Broadcast Stage HUD: Riveted Road-Case Ticker + Marshall-Amp Score (Bottom-Left) + Chrome Tachometer Rock Meter (Bottom-Right) -->
       <header class="stage-hud" aria-label="Live performance HUD">
-        <!-- Top-Center Minimal Gig Ticker -->
+        <!-- Top-Center Riveted Dark-Steel Road-Case Gig Ticker -->
         <div class="hud-top-ticker">
+          <span class="hud-rivet is-tl" aria-hidden="true"></span>
+          <span class="hud-rivet is-tr" aria-hidden="true"></span>
+          <span class="hud-rivet is-bl" aria-hidden="true"></span>
+          <span class="hud-rivet is-br" aria-hidden="true"></span>
+
           <div class="hud-ticker-main">
             <div class="hud-ticker-title-row">
-              <h2 id="hud-track-title" class="hud-track-title">—</h2>
+              <div class="hud-title-marquee-wrap">
+                <h2 id="hud-track-title" class="hud-track-title">—</h2>
+              </div>
               <span id="hud-section-badge" class="hud-section-badge">STAGE INTRO</span>
               <div id="hud-loop-readout" class="hud-loop-readout is-hidden">Loop Active</div>
             </div>
@@ -82,16 +89,16 @@
 
           <div class="hud-actions">
             <button id="btn-toggle-trainer" type="button" class="stage-btn" aria-pressed="false" title="Toggle Section Trainer & Practice Loop">
-              Trainer
+              TRAINER
             </button>
             <button id="btn-sfx-mute" type="button" class="stage-btn" aria-pressed="false">
-              SFX On
+              SFX ON
             </button>
-            <button id="btn-pause-stage" type="button" class="stage-btn">
-              Practice / Pause
+            <button id="btn-pause-stage" type="button" class="stage-btn" title="Practice / Pause (Esc)">
+              PRACTICE
             </button>
             <button id="btn-backstage-hud" type="button" class="stage-btn stage-btn-ghost">
-              Backstage
+              BACKSTAGE
             </button>
           </div>
         </div>
@@ -118,74 +125,117 @@
           </div>
         </div>
 
-        <!-- Bottom-Left Diegetic Marshall-Amp Score & Multiplier Unit -->
+        <!-- Bottom-Left Diegetic Marshall-Amp Score & Streak Stack (Textured Tolex + 4 Corner Steel Protectors + White Piping) -->
         <div class="hud-amp-score-unit" aria-label="Score and multiplier unit">
-          <div class="amp-brass-faceplate">
-            <div class="amp-score-top">
-              <div class="hud-stat hud-score-block">
-                <span class="hud-stat-label">SCORE</span>
-                <span id="hud-score" class="hud-stat-value">0</span>
+          <span class="amp-corner-guard is-tl" aria-hidden="true"></span>
+          <span class="amp-corner-guard is-tr" aria-hidden="true"></span>
+          <span class="amp-corner-guard is-bl" aria-hidden="true"></span>
+          <span class="amp-corner-guard is-br" aria-hidden="true"></span>
+
+          <div class="amp-piping-shell">
+            <div class="amp-brass-faceplate">
+              <div class="amp-score-top">
+                <div class="hud-stat hud-score-block">
+                  <span class="hud-stat-label">SCORE</span>
+                  <span id="hud-score" class="hud-stat-value">0</span>
+                </div>
+                <div id="hud-star-rating" class="hud-star-rating" aria-label="Live star rating">
+                  <div id="hud-stars-row" class="hud-stars-row" aria-hidden="true">
+                    <span class="hud-star" data-star="1">★</span>
+                    <span class="hud-star" data-star="2">★</span>
+                    <span class="hud-star" data-star="3">★</span>
+                    <span class="hud-star" data-star="4">★</span>
+                    <span class="hud-star" data-star="5">★</span>
+                  </div>
+                  <div class="hud-star-progress-track" aria-hidden="true">
+                    <div id="hud-star-progress-fill" class="hud-star-progress-fill"></div>
+                  </div>
+                  <span id="hud-star-label" class="hud-star-label is-hidden">GOLD STARS</span>
+                </div>
               </div>
-              <div id="hud-star-rating" class="hud-star-rating" aria-label="Live star rating">
-                <div id="hud-stars-row" class="hud-stars-row" aria-hidden="true">
-                  <span class="hud-star" data-star="1">★</span>
-                  <span class="hud-star" data-star="2">★</span>
-                  <span class="hud-star" data-star="3">★</span>
-                  <span class="hud-star" data-star="4">★</span>
-                  <span class="hud-star" data-star="5">★</span>
+
+              <div class="amp-streak-strip">
+                <div class="amp-combo-readout">
+                  <span class="hud-stat-label">STREAK</span>
+                  <span id="hud-combo" class="hud-stat-value amp-combo-val">0</span>
                 </div>
-                <div class="hud-star-progress-track" aria-hidden="true">
-                  <div id="hud-star-progress-fill" class="hud-star-progress-fill"></div>
+                <div id="hud-streak-bulbs" class="hud-streak-bulbs" aria-label="Multiplier streak bulbs">
+                  <span class="streak-bulb is-lit" data-mult="1">1×</span>
+                  <span class="streak-bulb" data-mult="2">2×</span>
+                  <span class="streak-bulb" data-mult="3">3×</span>
+                  <span class="streak-bulb" data-mult="4">4×</span>
+                  <span class="streak-bulb is-fever-eight" data-mult="8">8×</span>
                 </div>
-                <span id="hud-star-label" class="hud-star-label is-hidden">GOLD STARS</span>
+                <span
+                  id="hud-multiplier"
+                  class="hud-stat-value is-multiplier"
+                  data-tier="1"
+                  data-fever="false"
+                >
+                  1×
+                </span>
               </div>
             </div>
 
-            <div class="amp-streak-strip">
-              <div class="amp-combo-readout">
-                <span class="hud-stat-label">STREAK</span>
-                <span id="hud-combo" class="hud-stat-value amp-combo-val">0</span>
+            <div class="amp-grille-footer">
+              <div class="fever-row">
+                <span id="hud-fever-bulb" class="hud-fever-bulb" aria-hidden="true" title="Star Power / Fever Charge">⚡</span>
+                <div class="gauge-track is-lightning-track" aria-label="Fever charge">
+                  <div id="hud-fever-fill" class="gauge-fill is-fever"></div>
+                </div>
+                <button id="btn-fever-trigger" type="button" class="fever-trigger-btn" disabled>
+                  Fever 0%
+                </button>
               </div>
-              <div id="hud-streak-bulbs" class="hud-streak-bulbs" aria-label="Multiplier streak bulbs">
-                <span class="streak-bulb is-lit" data-mult="1">1×</span>
-                <span class="streak-bulb" data-mult="2">2×</span>
-                <span class="streak-bulb" data-mult="3">3×</span>
-                <span class="streak-bulb" data-mult="4">4×</span>
-                <span class="streak-bulb is-fever-eight" data-mult="8">8×</span>
-              </div>
-              <span
-                id="hud-multiplier"
-                class="hud-stat-value is-multiplier"
-                data-tier="1"
-                data-fever="false"
-              >
-                1×
-              </span>
+              <div id="hud-whammy-tag" class="hud-whammy-tag is-hidden">WHAMMY VIBRATO +FEVER</div>
             </div>
-          </div>
-
-          <div class="amp-grille-footer">
-            <div class="fever-row">
-              <span id="hud-fever-bulb" class="hud-fever-bulb" aria-hidden="true" title="Fever Charge">⚡</span>
-              <div class="gauge-track" aria-label="Fever charge">
-                <div id="hud-fever-fill" class="gauge-fill is-fever"></div>
-              </div>
-              <button id="btn-fever-trigger" type="button" class="fever-trigger-btn" disabled>
-                Fever 0%
-              </button>
-            </div>
-            <div id="hud-whammy-tag" class="hud-whammy-tag is-hidden">WHAMMY VIBRATO +FEVER</div>
           </div>
         </div>
 
-        <!-- Bottom-Right Analog Needle Rock Meter -->
+        <!-- Bottom-Right Distressed Analog Tachometer Rock Meter & Industrial Pyro Switchboard -->
         <div class="hud-rock-meter-unit" aria-label="Crowd morale rock meter">
+          <span class="hud-rivet is-tl" aria-hidden="true"></span>
+          <span class="hud-rivet is-tr" aria-hidden="true"></span>
+          <span class="hud-rivet is-bl" aria-hidden="true"></span>
+          <span class="hud-rivet is-br" aria-hidden="true"></span>
+
           <div class="rock-meter-dial-wrap">
-            <svg class="rock-meter-svg" viewBox="0 0 180 105" aria-hidden="true">
-              <path d="M 18 90 A 72 72 0 0 1 56 26" fill="none" stroke="#ef4444" stroke-width="11" stroke-linecap="butt" />
-              <path d="M 60 24 A 72 72 0 0 1 120 24" fill="none" stroke="#facc15" stroke-width="11" stroke-linecap="butt" />
-              <path d="M 124 26 A 72 72 0 0 1 162 90" fill="none" stroke="#22c55e" stroke-width="11" stroke-linecap="butt" />
-              <path d="M 28 90 A 62 62 0 0 1 152 90" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1.5" />
+            <svg class="rock-meter-svg" viewBox="0 0 180 108" aria-hidden="true">
+              <defs>
+                <linearGradient id="rockBezelChrome" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#f8fafc" />
+                  <stop offset="35%" stop-color="#94a3b8" />
+                  <stop offset="68%" stop-color="#334155" />
+                  <stop offset="100%" stop-color="#cbd5e1" />
+                </linearGradient>
+                <radialGradient id="rockDialFace" cx="50%" cy="88%" r="76%">
+                  <stop offset="0%" stop-color="#1e2433" />
+                  <stop offset="65%" stop-color="#0b0e16" />
+                  <stop offset="100%" stop-color="#05070c" />
+                </radialGradient>
+              </defs>
+              <!-- Recessed tachometer face + heavy chrome outer bezel -->
+              <path d="M 10 92 A 80 80 0 0 1 170 92 Z" fill="url(#rockDialFace)" stroke="url(#rockBezelChrome)" stroke-width="4.5" />
+              <path d="M 16 92 A 74 74 0 0 1 164 92" fill="none" stroke="rgba(15,23,42,0.9)" stroke-width="14" />
+              <!-- Red / Yellow / Green high-contrast rock meter zones -->
+              <path d="M 20 90 A 70 70 0 0 1 57 29" fill="none" stroke="#ef4444" stroke-width="11" stroke-linecap="butt" />
+              <path d="M 61 27 A 70 70 0 0 1 119 27" fill="none" stroke="#facc15" stroke-width="11" stroke-linecap="butt" />
+              <path d="M 123 29 A 70 70 0 0 1 160 90" fill="none" stroke="#22c55e" stroke-width="11" stroke-linecap="butt" />
+              <!-- Inner metallic trim arc & precision tachometer tick marks -->
+              <path d="M 31 90 A 59 59 0 0 1 149 90" fill="none" stroke="rgba(226,232,240,0.28)" stroke-width="1.5" />
+              <g stroke="#f8fafc" stroke-width="1.6" stroke-linecap="round" opacity="0.78">
+                <line x1="25" y1="88" x2="32" y2="88" />
+                <line x1="31" y1="68" x2="37" y2="71" />
+                <line x1="43" y1="50" x2="48" y2="55" />
+                <line x1="60" y1="36" x2="64" y2="42" />
+                <line x1="79" y1="27" x2="81" y2="34" />
+                <line x1="90" y1="25" x2="90" y2="33" stroke="#fef08a" stroke-width="2" />
+                <line x1="101" y1="27" x2="99" y2="34" />
+                <line x1="120" y1="36" x2="116" y2="42" />
+                <line x1="137" y1="50" x2="132" y2="55" />
+                <line x1="149" y1="68" x2="143" y2="71" />
+                <line x1="155" y1="88" x2="148" y2="88" />
+              </g>
             </svg>
             <div id="hud-rock-needle" class="rock-meter-needle" style="transform: rotate(12deg)"></div>
             <div class="rock-meter-pivot"></div>
@@ -204,18 +254,22 @@
             <span>MORALE SHIELD ON</span>
           </div>
 
-          <!-- Interactive Stage Pyrotechnics, Confetti & Crowd Hype Trigger Board -->
+          <!-- Heavy Industrial Stage Pyrotechnics, Confetti & Crowd FX Toggle Switchboard -->
           <div id="stage-fx-board" class="stage-fx-board" aria-label="Live Stage Pyrotechnics and Crowd FX triggers">
             <button id="btn-fx-pyro" type="button" class="fx-board-btn" data-fx="pyro" title="Trigger Flame Columns & Cold-Sparks (Key 7)">
+              <span class="fx-toggle-lever" aria-hidden="true"></span>
               <kbd>7</kbd><span>PYRO</span>
             </button>
             <button id="btn-fx-confetti" type="button" class="fx-board-btn" data-fx="confetti" title="Fire Stadium Confetti Cannons (Key 8)">
+              <span class="fx-toggle-lever" aria-hidden="true"></span>
               <kbd>8</kbd><span>CONFETTI</span>
             </button>
             <button id="btn-fx-cryo" type="button" class="fx-board-btn" data-fx="cryo" title="Blast CO2 Cryo Fog Jets (Key 9)">
+              <span class="fx-toggle-lever" aria-hidden="true"></span>
               <kbd>9</kbd><span>CRYO</span>
             </button>
             <button id="btn-fx-crowd" type="button" class="fx-board-btn" data-fx="crowd" title="Cycle Stadium Wave / Moshpit / Phone Lights / Heart Hands (Key 0)">
+              <span class="fx-toggle-lever" aria-hidden="true"></span>
               <kbd>0</kbd><span>CROWD</span>
             </button>
           </div>
