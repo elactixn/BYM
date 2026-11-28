@@ -245,14 +245,24 @@ export class LightingProfileController {
     this._instColor = new THREE.Color();
     this.multiplierColor = new THREE.Color(0x38bdf8);
 
-    // Live Pyromusical Firework Sky-Bloom & Stadium Reflection state (zero per-frame GC)
+    // Live Pyromusical Firework Multi-Color Sky-Bloom & Stadium Bowl Light Bath state (zero per-frame GC)
     this.fireworkSkyColor = new THREE.Color(0xfacc15);
+    this.fireworkSecondaryColor = new THREE.Color(0xec4899);
     this.fireworkRimColor = new THREE.Color(0xfef08a);
     this._fwColorScratch = new THREE.Color();
     this._fwWhiteScratch = new THREE.Color(0xfffbeb);
     this.fireworkFlashIntensity = 0;
     this.fireworkSkyBloom = 0;
     this.fireworkSubBassFlash = 0;
+    this.stadiumBowlWash = 0;
+
+    // Motorized roof lighting pods, interactive LED stage floor & sub-bass kick excursion (zero GC)
+    this.podTiltX = 0;
+    this.podRollZ = 0;
+    this.podSpinY = 0;
+    this.podLiftY = 0;
+    this.floorPulse = 0;
+    this.subKickPunch = 0;
 
     // Reusable output state returned every frame (zero per-frame allocations)
     this._state = {
@@ -272,11 +282,13 @@ export class LightingProfileController {
       skyHorizonColor: this.skyHorizonColor,
       multiplierColor: this.multiplierColor,
       fireworkSkyColor: this.fireworkSkyColor,
+      fireworkSecondaryColor: this.fireworkSecondaryColor,
       fireworkRimColor: this.fireworkRimColor,
       fireworkFlashIntensity: 0,
       fireworkSkyBloom: 0,
       fireworkSubBassFlash: 0,
       fireworkReflectionBoost: 0,
+      stadiumBowlWash: 0,
       streakTier: 0,
       laserFanActive: false,
       hazeBoost: 0,
@@ -308,6 +320,14 @@ export class LightingProfileController {
       ambianceType: 'ROCK_ANTHEM',
       isBallad: false,
       isGrandEncore: false,
+      podTiltX: 0,
+      podRollZ: 0,
+      podSpinY: 0,
+      podLiftY: 0,
+      podRingIntensity: 1.0,
+      floorPulse: 0,
+      floorWaveSpeed: 1.0,
+      subKickPunch: 0,
     };
   }
 
@@ -568,15 +588,25 @@ export class LightingProfileController {
     const barPhase = Number.isFinite(opts.barPhase) ? opts.barPhase : ((songTime * (bpm / 60)) / 4) % 1;
     const phraseProgress = Number.isFinite(opts.phraseProgress) ? opts.phraseProgress : ((songTime * (bpm / 60)) / 32) % 1;
     const beatPhase = Number.isFinite(opts.beatPhase) ? opts.beatPhase : (songTime * (bpm / 60)) % 1;
-    const kickTransient = Number(opts.transientEnergy?.kick || 0);
-    const snareTransient = Number(opts.transientEnergy?.snare || 0);
+    const kickTransient = Math.max(
+      Number(opts.transientEnergy?.kickImpulse || 0),
+      Number(opts.transientEnergy?.kick || 0)
+    );
+    const snareTransient = Math.max(
+      Number(opts.transientEnergy?.snareImpulse || 0),
+      Number(opts.transientEnergy?.snare || 0)
+    );
+    const isDownbeat = Boolean(opts.isDownbeat ?? opts.transientEnergy?.isDownbeat ?? barPhase < 0.08);
+    const isSnareHit = Boolean(opts.isSnareHit ?? opts.transientEnergy?.isSnareHit ?? false);
 
     this.strobePhase += dt * (bpm / 60) * Math.PI * 4;
     const rawStrobe = Math.pow(Math.max(0, Math.sin(this.strobePhase)), 6);
-    this.strobeFlash = stemDropped ? 0 : rawStrobe * this.strobeStrength * ambianceStrobeScale;
+    this.strobeFlash = stemDropped
+      ? 0
+      : Math.min(1.2, rawStrobe * this.strobeStrength * ambianceStrobeScale + (isSnareHit && snareTransient > 0.52 ? snareTransient * 0.22 * ambianceStrobeScale : 0));
 
-    const downbeatHit = playing && barPhase < 0.08 ? 1 - barPhase / 0.08 : 0;
-    const bassHit = Math.max(opts.bassEnergy || 0, kickTransient);
+    const downbeatHit = playing && (isDownbeat || barPhase < 0.08) ? Math.max(0.82, 1 - Math.min(barPhase, beatPhase) / 0.14) : 0;
+    const bassHit = Math.max(opts.bassEnergy || 0, Number(opts.transientEnergy?.bassGroove || 0), kickTransient);
     const blinderTarget =
       !playing || isWalkOn || stemDropped
         ? 0
@@ -610,68 +640,115 @@ export class LightingProfileController {
     const movingHeadSweep =
       Math.sin(barPhase * Math.PI * 2) * (0.45 + this.beamSweepAmp * 0.12) +
       Math.cos(phraseProgress * Math.PI * 4) * 0.28;
-    const movingHeadTiltOffset = Math.sin(phraseProgress * Math.PI * 2) * 0.26 + snareTransient * 0.14;
+    const movingHeadTiltOffset = Math.sin(phraseProgress * Math.PI * 2) * 0.26 + snareTransient * 0.16;
     const pyroDownbeatAccent = Boolean(
       playing &&
         !isWalkOn &&
         !stemDropped &&
         downbeatHit > 0.78 &&
-        (streakTier >= 2 || fever || encore || isGrandEncore) &&
-        (bassHit > 0.44 || snareTransient > 0.42)
+        (moodId === 'CHORUS_EXPLOSION' || streakTier >= 2 || fever || encore || isGrandEncore) &&
+        (bassHit > 0.36 || snareTransient > 0.36 || fever || encore || isGrandEncore)
     );
 
-    // Pyromusical Aerial Firework Volumetric Sky Bloom, Rim Shimmer & Salute Concussion Flash
+    // Motorized 3-pod overhead moving-head truss rigs + LED stage floor matrix + cardioid sub-bass punch
+    const podAmp = isBallad ? 0.48 : fever || encore || isGrandEncore ? 1.25 : moodId === 'CHORUS_EXPLOSION' ? 1.08 : 0.75;
+    const targetPodTiltX = playing
+      ? Math.sin(phraseProgress * Math.PI * 2) * 0.24 * podAmp + kickTransient * 0.08
+      : Math.sin(songTime * 0.45) * 0.06;
+    const targetPodRollZ = playing
+      ? Math.cos(barPhase * Math.PI * 2) * 0.18 * podAmp
+      : Math.cos(songTime * 0.35) * 0.05;
+    const targetPodLiftY = playing
+      ? (moodId === 'CHORUS_EXPLOSION' || fever || encore || isGrandEncore ? 0.55 : moodId === 'SOLO_SPOTLIGHT' ? -0.45 : 0) +
+        Math.sin(phraseProgress * Math.PI * 2) * 0.34 * podAmp
+      : 0;
+    this.podTiltX = THREE.MathUtils.damp(this.podTiltX, targetPodTiltX, 6.2, dt);
+    this.podRollZ = THREE.MathUtils.damp(this.podRollZ, targetPodRollZ, 6.2, dt);
+    this.podLiftY = THREE.MathUtils.damp(this.podLiftY, targetPodLiftY, 3.8, dt);
+    this.podSpinY = (this.podSpinY + dt * (playing ? (isBallad ? 0.22 : 0.48 + overallEnergy * 0.52) : 0.14)) % (Math.PI * 2);
+
+    const floorPulseTarget = playing
+      ? Math.min(1.4, beatPulse * 0.75 + bassHit * 0.65 + (fever || encore ? 0.32 : 0))
+      : 0.18;
+    this.floorPulse = THREE.MathUtils.damp(
+      this.floorPulse,
+      floorPulseTarget,
+      floorPulseTarget > this.floorPulse ? 22 : 6.5,
+      dt
+    );
+    const subKickTarget = playing ? Math.min(1.25, kickTransient * 1.1 + bassHit * 0.55) : 0;
+    this.subKickPunch = THREE.MathUtils.damp(
+      this.subKickPunch,
+      subKickTarget,
+      subKickTarget > this.subKickPunch ? 34 : 11.5,
+      dt
+    );
+
+    // Pyromusical Aerial Firework Multi-Color Volumetric Sky Bloom, Stadium Bowl Bath & Salute Concussion Flash
     const fwFlash = opts.fireworkFlash || null;
-    const targetFwInt = fwFlash ? Math.min(1.6, Math.max(0, fwFlash.intensity || 0)) : 0;
-    const targetFwBloom = fwFlash ? Math.min(1.25, Math.max(0, fwFlash.skyBloom || 0)) : 0;
-    const targetFwSub = fwFlash ? Math.min(1.2, Math.max(0, fwFlash.subBassFlash || 0)) : 0;
+    const targetFwInt = fwFlash ? Math.min(1.85, Math.max(0, fwFlash.intensity || 0)) : 0;
+    const targetFwBloom = fwFlash ? Math.min(1.45, Math.max(0, fwFlash.skyBloom || 0)) : 0;
+    const targetFwSub = fwFlash ? Math.min(1.35, Math.max(0, fwFlash.subBassFlash || 0)) : 0;
     this.fireworkFlashIntensity = THREE.MathUtils.damp(
       this.fireworkFlashIntensity,
       targetFwInt,
-      targetFwInt > this.fireworkFlashIntensity ? 26 : 5.4,
+      targetFwInt > this.fireworkFlashIntensity ? 28 : 4.8,
       dt
     );
     this.fireworkSkyBloom = THREE.MathUtils.damp(
       this.fireworkSkyBloom,
       targetFwBloom,
-      targetFwBloom > this.fireworkSkyBloom ? 18 : 3.4,
+      targetFwBloom > this.fireworkSkyBloom ? 20 : 3.1,
       dt
     );
     this.fireworkSubBassFlash = THREE.MathUtils.damp(
       this.fireworkSubBassFlash,
       targetFwSub,
-      targetFwSub > this.fireworkSubBassFlash ? 34 : 9.0,
+      targetFwSub > this.fireworkSubBassFlash ? 34 : 8.5,
+      dt
+    );
+    const targetBowlWash = Math.min(1.65, this.fireworkFlashIntensity * 0.65 + this.fireworkSkyBloom * 0.55 + this.fireworkSubBassFlash * 0.45);
+    this.stadiumBowlWash = THREE.MathUtils.damp(
+      this.stadiumBowlWash,
+      targetBowlWash,
+      targetBowlWash > this.stadiumBowlWash ? 16 : 3.6,
       dt
     );
     if (fwFlash?.color && (targetFwInt > 0.01 || targetFwBloom > 0.01)) {
       const colorMix = 1 - Math.exp(-(targetFwInt > 0.2 ? 18 : 7.5) * dt);
       this.fireworkSkyColor.lerp(fwFlash.color, colorMix);
+      if (fwFlash.secondaryColor) {
+        this.fireworkSecondaryColor.lerp(fwFlash.secondaryColor, colorMix);
+      } else {
+        this.fireworkSecondaryColor.lerp(fwFlash.color, colorMix * 0.6);
+      }
       this._fwColorScratch.copy(fwFlash.color).lerp(this._fwWhiteScratch, 0.28 + this.fireworkSubBassFlash * 0.45);
       this.fireworkRimColor.lerp(this._fwColorScratch, colorMix);
     }
 
-    const fwSkyMix = Math.min(0.82, this.fireworkSkyBloom * 0.62);
-    const fwRimMix = Math.min(0.85, this.fireworkFlashIntensity * 0.48);
+    const fwSkyMix = Math.min(0.88, this.fireworkSkyBloom * 0.66);
+    const fwRimMix = Math.min(0.9, this.fireworkFlashIntensity * 0.52);
     const fwSalute = this.fireworkSubBassFlash;
     if (fwSkyMix > 0.004 || fwRimMix > 0.004 || fwSalute > 0.004) {
-      this.skyTopColor.lerp(this.fireworkSkyColor, Math.min(0.45, fwSkyMix * 0.34));
-      this.skyMidColor.lerp(this.fireworkSkyColor, Math.min(0.75, fwSkyMix * 0.78));
-      this.skyHorizonColor.lerp(this.fireworkRimColor, Math.min(0.68, fwSkyMix * 0.56));
-      this.fogColor.lerp(this.fireworkSkyColor, Math.min(0.42, fwSkyMix * 0.36));
-      this.hemiSky.lerp(this.fireworkRimColor, Math.min(0.65, fwRimMix * 0.72));
-      this.rimColor.lerp(this.fireworkRimColor, Math.min(0.72, fwRimMix * 0.85));
-      this.bandRimColor.lerp(this.fireworkRimColor, Math.min(0.62, fwRimMix * 0.68));
-      this.crowdGlow.lerp(this.fireworkSkyColor, Math.min(0.55, fwRimMix * 0.58));
+      this.skyTopColor.lerp(this.fireworkSkyColor, Math.min(0.5, fwSkyMix * 0.38));
+      this.skyMidColor.lerp(this.fireworkSkyColor, Math.min(0.8, fwSkyMix * 0.82));
+      this.skyHorizonColor.lerp(this.fireworkSecondaryColor, Math.min(0.72, fwSkyMix * 0.6));
+      this.fogColor.lerp(this.fireworkSkyColor, Math.min(0.46, fwSkyMix * 0.4));
+      this.hemiSky.lerp(this.fireworkRimColor, Math.min(0.72, fwRimMix * 0.76));
+      this.hemiGround.lerp(this.fireworkSecondaryColor, Math.min(0.42, this.stadiumBowlWash * 0.28));
+      this.rimColor.lerp(this.fireworkRimColor, Math.min(0.78, fwRimMix * 0.88));
+      this.bandRimColor.lerp(this.fireworkRimColor, Math.min(0.68, fwRimMix * 0.72));
+      this.crowdGlow.lerp(this.fireworkSecondaryColor, Math.min(0.62, fwRimMix * 0.62));
 
       if (fwSalute > 0.01) {
-        const saluteMix = Math.min(0.72, fwSalute * 0.58);
-        this.skyMidColor.lerp(this._fwWhiteScratch, saluteMix * 0.6);
-        this.hemiSky.lerp(this._fwWhiteScratch, saluteMix * 0.52);
-        this.bandRimColor.lerp(this._fwWhiteScratch, saluteMix * 0.65);
+        const saluteMix = Math.min(0.76, fwSalute * 0.62);
+        this.skyMidColor.lerp(this._fwWhiteScratch, saluteMix * 0.62);
+        this.hemiSky.lerp(this._fwWhiteScratch, saluteMix * 0.55);
+        this.bandRimColor.lerp(this._fwWhiteScratch, saluteMix * 0.68);
       }
     }
 
-    const fwReflectBoost = Math.min(1.5, this.fireworkFlashIntensity * 0.72 + this.fireworkSkyBloom * 0.45 + fwSalute * 0.55);
+    const fwReflectBoost = Math.min(1.75, this.fireworkFlashIntensity * 0.78 + this.fireworkSkyBloom * 0.5 + fwSalute * 0.58);
     const dropDim = stemDropped ? 0.72 : 1.0;
     const s = this._state;
     s.moodId = moodId;
@@ -682,11 +759,13 @@ export class LightingProfileController {
     s.streakTier = streakTier;
     s.multiplierColor = this.multiplierColor;
     s.fireworkSkyColor = this.fireworkSkyColor;
+    s.fireworkSecondaryColor = this.fireworkSecondaryColor;
     s.fireworkRimColor = this.fireworkRimColor;
     s.fireworkFlashIntensity = this.fireworkFlashIntensity;
     s.fireworkSkyBloom = this.fireworkSkyBloom;
     s.fireworkSubBassFlash = fwSalute;
     s.fireworkReflectionBoost = fwReflectBoost;
+    s.stadiumBowlWash = this.stadiumBowlWash;
     s.laserFanActive = playing && !isWalkOn && (streakTier >= 2 || fever || encore || isGrandEncore);
     s.hazeBoost = hazeBoost + this.fireworkSkyBloom * 0.22;
     s.fogDensityMult = isGrandEncore ? 0.38 : this.fogDensityMult + hazeBoost * 0.32;
@@ -742,6 +821,14 @@ export class LightingProfileController {
     s.feverEntered = feverEntered;
     s.ledBgTop = isBallad && moodId !== 'FEVER_OVERDRIVE' ? '#1e1635' : p.ledBgTop;
     s.ledAccent = isBallad && moodId !== 'FEVER_OVERDRIVE' ? '#fbbf24' : p.ledAccent;
+    s.podTiltX = this.podTiltX;
+    s.podRollZ = this.podRollZ;
+    s.podSpinY = this.podSpinY;
+    s.podLiftY = this.podLiftY;
+    s.podRingIntensity = (1.1 + this.floorPulse * 0.95 + this.blinderPulse * 0.65) * dropDim;
+    s.floorPulse = this.floorPulse;
+    s.floorWaveSpeed = playing ? (isBallad ? 0.55 : (bpm / 120) * (fever || encore ? 1.45 : 1.0)) : 0.35;
+    s.subKickPunch = this.subKickPunch;
 
     return s;
   }

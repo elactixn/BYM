@@ -388,8 +388,8 @@ const CROWD_SHIRT_COLORS = [
 const CROWD_PANTS_COLORS = [0x0f172a, 0x1e293b, 0x1f2937, 0x172554, 0x27272a, 0x312e81];
 
 const STAGE_DECK_TOP_Y = 0;
-const DRUM_RISER_TOP_Y = 0.8;
-const KEYS_RISER_TOP_Y = 0.5;
+const DRUM_RISER_TOP_Y = 0.65;
+const KEYS_RISER_TOP_Y = 0.45;
 
 function setHierarchyFrustumCulled(root, culled = false) {
   if (!root) return;
@@ -2475,105 +2475,136 @@ function createVolumetricSpotlightMaterial(hexColor, initialOpacity = 0.1) {
 
 function buildAmpStack(accentColor, grillTex, perfMaps = null) {
   const group = new THREE.Group();
-  const cabMat = new THREE.MeshStandardMaterial({ color: 0x10131b, roughness: 0.68, metalness: 0.22 });
+  const cabMat = new THREE.MeshStandardMaterial({ color: 0x0e1118, roughness: 0.66, metalness: 0.24 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.24, metalness: 0.88 });
   const grillMat = new THREE.MeshStandardMaterial({
     map: grillTex,
     bumpMap: perfMaps?.bumpMap || null,
     bumpScale: perfMaps ? 0.035 : 0,
     color: 0xffffff,
-    roughness: 0.56,
-    metalness: 0.45,
+    roughness: 0.54,
+    metalness: 0.46,
   });
-  const goldFaceMat = new THREE.MeshStandardMaterial({ color: 0xd4a017, roughness: 0.28, metalness: 0.82 });
+  const goldFaceMat = new THREE.MeshStandardMaterial({ color: 0xd4a017, roughness: 0.26, metalness: 0.86 });
   const ledMat = new THREE.MeshStandardMaterial({
     color: accentColor,
     emissive: accentColor,
-    emissiveIntensity: 1.5,
+    emissiveIntensity: 1.75,
+  });
+  const jewelMat = new THREE.MeshStandardMaterial({
+    color: 0xff3b3b,
+    emissive: 0xff1e1e,
+    emissiveIntensity: 2.6,
+    roughness: 0.14,
   });
 
-  const lowerCab = new THREE.Mesh(new THREE.BoxGeometry(1.62, 1.38, 0.94), cabMat);
-  lowerCab.position.y = 0.69;
-  const lowerGrill = new THREE.Mesh(new THREE.BoxGeometry(1.42, 1.18, 0.06), grillMat);
-  lowerGrill.position.set(0, 0.69, 0.46);
+  // Twin side-by-side Marshall/Ampeg 4x12 full-stack wall-of-sound!
+  const subCones = [];
+  [-0.92, 0.92].forEach((sx, idx) => {
+    const colGroup = new THREE.Group();
+    colGroup.position.x = sx;
 
-  const upperCab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.26, 0.88), cabMat);
-  upperCab.position.y = 2.0;
-  const upperGrill = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.06, 0.06), grillMat);
-  upperGrill.position.set(0, 2.0, 0.43);
+    const lowerCab = new THREE.Mesh(new THREE.BoxGeometry(1.66, 1.42, 0.96), cabMat);
+    lowerCab.position.y = 0.71;
+    const lowerGrill = new THREE.Mesh(new THREE.BoxGeometry(1.46, 1.22, 0.06), grillMat);
+    lowerGrill.position.set(0, 0.71, 0.47);
+    const lowerPiping = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.04, 0.07), trimMat);
+    lowerPiping.position.set(0, 1.38, 0.47);
 
-  const headAmp = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.48, 0.78), cabMat);
-  headAmp.position.y = 2.86;
-  const goldFace = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.14, 0.04), goldFaceMat);
-  goldFace.position.set(0, 2.8, 0.39);
-  const ledStrip = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.06, 0.06), ledMat);
-  ledStrip.position.set(0, 2.97, 0.39);
+    const upperCab = new THREE.Mesh(new THREE.BoxGeometry(1.64, 1.3, 0.9), cabMat);
+    upperCab.position.y = 2.08;
+    const upperGrill = new THREE.Mesh(new THREE.BoxGeometry(1.44, 1.1, 0.06), grillMat);
+    upperGrill.position.set(0, 2.08, 0.44);
 
-  // Pulsing floor subwoofer cabinet tucked beside the amp stack
-  const subCab = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.92, 0.92), cabMat);
-  subCab.position.set(0, 0.46, 0.98);
-  const subCone = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.22, 0.08, 16), grillMat);
-  subCone.rotation.x = Math.PI * 0.5;
-  subCone.position.set(0, 0.46, 1.44);
+    const headAmp = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.52, 0.8), cabMat);
+    headAmp.position.y = 2.98;
+    const goldFace = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.16, 0.04), goldFaceMat);
+    goldFace.position.set(0, 2.92, 0.4);
+    const ledStrip = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.055, 0.06), ledMat);
+    ledStrip.position.set(0, 3.12, 0.4);
+    // Glowing ruby jewel power pilot lamp + rotary knobs on amp head
+    const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.036, 8, 8), jewelMat);
+    jewel.position.set(0.56, 2.92, 0.43);
 
-  group.add(lowerCab, lowerGrill, upperCab, upperGrill, headAmp, goldFace, ledStrip, subCab, subCone);
-  return { group, ledMat, subCone, grillMat };
+    colGroup.add(lowerCab, lowerGrill, lowerPiping, upperCab, upperGrill, headAmp, goldFace, ledStrip, jewel);
+    if (idx === 0) {
+      const subCab = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.94, 0.94), cabMat);
+      subCab.position.set(0.92, 0.47, 1.0);
+      const subCone = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.24, 0.08, 16), grillMat);
+      subCone.rotation.x = Math.PI * 0.5;
+      subCone.position.set(0.92, 0.47, 1.48);
+      colGroup.add(subCab, subCone);
+      subCones.push(subCone);
+    }
+    group.add(colGroup);
+  });
+
+  return { group, ledMat, subCone: subCones[0], grillMat, jewelMat };
 }
 
 /**
- * Builds a towering curved hanging Line-Array Concert Speaker Stack suspended from the truss,
- * complete with dual bass-reactive pulsing woofer cones per cabinet!
+ * Builds a towering curved 12-cabinet L-Acoustics/JBL-style hanging Line-Array PA banana
+ * suspended from outrigger trusses, complete with flying hardware, waveguides & pulsing woofers.
  */
 function buildLineArrayStack(side, ledMat, perfMaps = null) {
   const group = new THREE.Group();
   const woofers = [];
-  const cabMat = new THREE.MeshStandardMaterial({ color: 0x0f131d, roughness: 0.52, metalness: 0.46 });
+  const cabMat = new THREE.MeshStandardMaterial({ color: 0x0d111a, roughness: 0.48, metalness: 0.48 });
   const grillMat = new THREE.MeshStandardMaterial({
     map: perfMaps?.map || null,
     bumpMap: perfMaps?.bumpMap || null,
-    bumpScale: perfMaps ? 0.03 : 0,
+    bumpScale: perfMaps ? 0.032 : 0,
     color: 0x334155,
-    roughness: 0.46,
-    metalness: 0.68,
+    roughness: 0.44,
+    metalness: 0.7,
   });
-  const wooferMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.48, metalness: 0.55 });
-  const dustCapMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3, metalness: 0.75 });
-  const riggingMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.32, metalness: 0.88 });
+  const wooferMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.46, metalness: 0.58 });
+  const dustCapMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.28, metalness: 0.78 });
+  const riggingMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.28, metalness: 0.9 });
 
-  // Top bumper rigging frame + cables
-  const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.16, 0.94), riggingMat);
-  bumper.position.set(0, 0.15, 0);
-  group.add(bumper);
+  // Heavy-duty flying bumper frame + dual steel hoist chains
+  const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.2, 1.12), riggingMat);
+  bumper.position.set(0, 0.16, 0);
+  const bumperSpine = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 1.24), riggingMat);
+  bumperSpine.position.set(0, 0.34, 0);
+  group.add(bumper, bumperSpine);
 
-  [-0.5, 0.5].forEach((cx) => {
-    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.5, 6), riggingMat);
-    cable.position.set(cx, 0.92, 0);
+  [-0.58, 0.58].forEach((cx) => {
+    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.85, 6), riggingMat);
+    cable.position.set(cx, 1.12, 0);
     group.add(cable);
   });
 
-  const wooferGeo = new THREE.CylinderGeometry(0.135, 0.085, 0.06, 12);
-  const capGeo = new THREE.SphereGeometry(0.055, 8, 8);
+  const wooferGeo = new THREE.CylinderGeometry(0.15, 0.095, 0.06, 12);
+  const capGeo = new THREE.SphereGeometry(0.06, 8, 8);
+  const splayLinkGeo = new THREE.BoxGeometry(0.06, 0.44, 0.12);
 
-  // 14 curved J-array speaker cabinets descending downward (pro arena touring array)
-  const count = 14;
+  // 12 curved L-Acoustics / JBL J-array PA cabinets forming an authentic stadium acoustic banana
+  const count = 12;
+  let curY = -0.34;
+  let curZ = 0;
   for (let i = 0; i < count; i += 1) {
-    const pitch = i * 0.068;
-    const y = -0.32 - i * 0.43;
-    const zOffset = -Math.pow(i, 1.38) * 0.032;
-
+    const pitch = 0.03 + Math.pow(i / (count - 1), 1.55) * 0.72;
     const unit = new THREE.Group();
-    unit.position.set(0, y, zOffset);
+    unit.position.set(0, curY, curZ);
     unit.rotation.x = pitch;
 
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.39, 0.78), cabMat);
-    const grill = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.32, 0.05), grillMat);
-    grill.position.z = 0.37;
-    const accent = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.08), ledMat);
-    accent.position.set(side * -0.58, 0, 0.37);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.42, 0.88), cabMat);
+    const grill = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.34, 0.05), grillMat);
+    grill.position.z = 0.42;
+    const waveguide = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 0.07), riggingMat);
+    waveguide.position.z = 0.43;
+    const accent = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.34, 0.09), ledMat);
+    accent.position.set(side * -0.68, 0, 0.42);
+    const linkL = new THREE.Mesh(splayLinkGeo, riggingMat);
+    linkL.position.set(-0.76, 0, 0.24);
+    const linkR = new THREE.Mesh(splayLinkGeo, riggingMat);
+    linkR.position.set(0.76, 0, 0.24);
 
-    // Dual pulsing woofer drivers per curved line-array cabinet
-    [-0.3, 0.3].forEach((wx) => {
+    // Dual pulsing 12" woofer cones per curved line-array cabinet
+    [-0.38, 0.38].forEach((wx) => {
       const coneGroup = new THREE.Group();
-      coneGroup.position.set(wx, 0, 0.39);
+      coneGroup.position.set(wx, 0, 0.44);
       const cone = new THREE.Mesh(wooferGeo, wooferMat);
       cone.rotation.x = Math.PI * 0.5;
       const cap = new THREE.Mesh(capGeo, dustCapMat);
@@ -2583,8 +2614,11 @@ function buildLineArrayStack(side, ledMat, perfMaps = null) {
       woofers.push(coneGroup);
     });
 
-    unit.add(cab, grill, accent);
+    unit.add(cab, grill, waveguide, accent, linkL, linkR);
     group.add(unit);
+
+    curY -= Math.cos(pitch) * 0.46;
+    curZ -= Math.sin(pitch) * 0.44;
   }
 
   return { group, woofers };
@@ -3244,7 +3278,7 @@ export class StageBand {
     const stageGroup = new THREE.Group();
     this.stageExtraDisposables = [];
 
-    // Scuffed dark concert timber plank stage deck + diamond plate steel riser + perforated steel grilles
+    // Scuffed dark concert timber plank stage deck + diamond plate steel risers + perforated grilles
     this.deckTex = createBrushedMetalTexture();
     this.deckMaps = createDiamondPlateMaps();
     this.plankDeckMaps = createPlankDeckMaps();
@@ -3270,18 +3304,18 @@ export class StageBand {
       if (tex) tex.anisotropy = maxAniso;
     });
 
-    // Main timber plank deck (top surface strictly at y = 0) with clearcoat sheen for realistic spotlight & firework reflections
+    // Main timber plank deck material (top strictly at STAGE_DECK_TOP_Y = 0) with clearcoat sheen
     const plankDeckMat = new THREE.MeshPhysicalMaterial({
       map: this.plankDeckMaps.map,
       bumpMap: this.plankDeckMaps.bumpMap,
       bumpScale: 0.026,
       roughnessMap: this.plankDeckMaps.roughnessMap,
       color: 0xe2e8f0,
-      roughness: 0.38,
+      roughness: 0.36,
       metalness: 0.16,
-      clearcoat: 0.42,
-      clearcoatRoughness: 0.28,
-      reflectivity: 0.72,
+      clearcoat: 0.44,
+      clearcoatRoughness: 0.26,
+      reflectivity: 0.74,
     });
     const deckMat = new THREE.MeshStandardMaterial({
       map: this.deckTex,
@@ -3292,71 +3326,150 @@ export class StageBand {
       roughness: 0.34,
       metalness: 0.72,
     });
-    // Main 28m x 16m timber plank deck (top surface strictly at y = 0, x: [-14, 14], z: [-11, 5])
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(28.0, 2.2, 16.0), plankDeckMat);
-    deck.position.set(0, -1.1, -3.0);
+
+    // 1. EXPANDED 38m MULTI-WING STADIUM DECK
+    //    Main performance deck: x: [-16, 16] (32m wide), z: [-8.5, 5.5] (14m deep), top strictly at y = 0
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(32.0, 2.2, 14.0), plankDeckMat);
+    deck.position.set(0, -1.1, -1.5);
     deck.receiveShadow = true;
     stageGroup.add(deck);
 
-    // T-Catwalk Thrust Extension (top flush at y = 0, shaft z: [5.0, 9.6], T-end x: [-3.8, 3.8], z: [9.2, 11.2])
-    const catwalkShaft = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.2, 4.6), plankDeckMat);
-    catwalkShaft.position.set(0, -1.1, 7.3);
-    catwalkShaft.receiveShadow = true;
-    const catwalkHead = new THREE.Mesh(new THREE.BoxGeometry(7.6, 2.2, 2.0), plankDeckMat);
-    catwalkHead.position.set(0, -1.1, 10.2);
-    catwalkHead.receiveShadow = true;
-    stageGroup.add(catwalkShaft, catwalkHead);
+    //    Angled Left & Right PA / Monitor Thrust Wings (x: [-21, -16] and [16, 21], flush at y = 0)
+    [-1, 1].forEach((side) => {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(5.6, 2.2, 11.2), plankDeckMat);
+      wing.position.set(side * 18.4, -1.1, -0.8);
+      wing.rotation.y = side * -0.18;
+      wing.receiveShadow = true;
+      stageGroup.add(wing);
 
-    // Lower front stage apron fascia with procedural wood-grain trim
+      const wingEdge = new THREE.Mesh(new THREE.BoxGeometry(5.7, 0.12, 0.14), deckMat);
+      wingEdge.position.set(side * 18.4, -0.02, 4.72);
+      wingEdge.rotation.y = side * -0.18;
+      stageGroup.add(wingEdge);
+    });
+
+    //    Extended Center T-Catwalk (z: [5.5, 11.0], width 3.2m) terminating in Illuminated Octagonal B-Stage (radius: 3.4m, centered at z = 11.0)
+    const catwalkShaft = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 5.8), plankDeckMat);
+    catwalkShaft.position.set(0, -1.1, 8.3);
+    catwalkShaft.receiveShadow = true;
+
+    const bStageGeo = new THREE.CylinderGeometry(3.4, 3.58, 2.2, 8);
+    const bStageDeck = new THREE.Mesh(bStageGeo, plankDeckMat);
+    bStageDeck.position.set(0, -1.1, 11.0);
+    bStageDeck.rotation.y = Math.PI / 8;
+    bStageDeck.receiveShadow = true;
+    stageGroup.add(catwalkShaft, bStageDeck);
+
+    // 2. INTERACTIVE ANIMATED LED STAGE FLOOR MATRIX + WARM ADDRESSABLE EDGE STEP-STRIPS
+    this.stageFloorCanvas = document.createElement('canvas');
+    this.stageFloorCanvas.width = 512;
+    this.stageFloorCanvas.height = 512;
+    this.stageFloorCtx = this.stageFloorCanvas.getContext('2d');
+    this.stageFloorTex = new THREE.CanvasTexture(this.stageFloorCanvas);
+    this.stageFloorTex.colorSpace = THREE.SRGBColorSpace;
+    this.stageFloorTex.anisotropy = maxAniso;
+
+    this.stageFloorMat = new THREE.MeshStandardMaterial({
+      map: this.stageFloorTex,
+      emissiveMap: this.stageFloorTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.94,
+      roughness: 0.24,
+      metalness: 0.32,
+      transparent: true,
+      opacity: 0.88,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+    });
+    const mainLedFloor = new THREE.Mesh(new THREE.PlaneGeometry(25.6, 11.4), this.stageFloorMat);
+    mainLedFloor.rotation.x = -Math.PI * 0.5;
+    mainLedFloor.position.set(0, 0.012, -1.1);
+    const catwalkLedFloor = new THREE.Mesh(new THREE.PlaneGeometry(2.45, 5.4), this.stageFloorMat);
+    catwalkLedFloor.rotation.x = -Math.PI * 0.5;
+    catwalkLedFloor.position.set(0, 0.014, 8.2);
+    const bStageLedPad = new THREE.Mesh(new THREE.CircleGeometry(2.96, 8), this.stageFloorMat);
+    bStageLedPad.rotation.x = -Math.PI * 0.5;
+    bStageLedPad.rotation.z = Math.PI / 8;
+    bStageLedPad.position.set(0, 0.016, 11.0);
+    stageGroup.add(mainLedFloor, catwalkLedFloor, bStageLedPad);
+
+    // Lower front stage apron fascia with wood-grain trim
     const apronMat = new THREE.MeshStandardMaterial({
       map: this.woodMaps.map,
       bumpMap: this.woodMaps.bumpMap,
       bumpScale: 0.024,
       roughnessMap: this.woodMaps.roughnessMap,
-      color: 0x2a1d19,
+      color: 0x241a18,
       roughness: 0.56,
-      metalness: 0.22,
+      metalness: 0.24,
     });
-    [-7.95, 7.95].forEach((ax) => {
-      const apronWing = new THREE.Mesh(new THREE.BoxGeometry(12.3, 0.52, 0.55), apronMat);
-      apronWing.position.set(ax, -0.96, 5.15);
+    [-8.9, 8.9].forEach((ax) => {
+      const apronWing = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.56, 0.54), apronMat);
+      apronWing.position.set(ax, -0.96, 5.64);
       stageGroup.add(apronWing);
     });
-    const catwalkApron = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.52, 0.48), apronMat);
-    catwalkApron.position.set(0, -0.96, 11.35);
-    stageGroup.add(catwalkApron);
 
-    // Glowing stage LED trim (main wings + T-catwalk perimeter + apron)
+    // Primary beat-reactive LED trim + warm addressable edge step-strips
     this.stageRimMat = new THREE.MeshStandardMaterial({
       color: THEME_COLORS.guitar,
       emissive: THEME_COLORS.guitar,
-      emissiveIntensity: 1.7,
+      emissiveIntensity: 1.75,
+      roughness: 0.2,
+    });
+    this.stepStripMat = new THREE.MeshStandardMaterial({
+      color: 0xfff7ed,
+      emissive: 0xffb347,
+      emissiveIntensity: 1.45,
       roughness: 0.22,
     });
-    [-7.9, 7.9].forEach((rx) => {
-      const wingRim = new THREE.Mesh(new THREE.BoxGeometry(12.2, 0.11, 0.12), this.stageRimMat);
-      wingRim.position.set(rx, -0.02, 5.0);
-      const wingApronRim = new THREE.Mesh(new THREE.BoxGeometry(12.2, 0.07, 0.09), this.stageRimMat);
-      wingApronRim.position.set(rx, -0.74, 5.43);
-      stageGroup.add(wingRim, wingApronRim);
+    this.venueTrussTrimMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 1.35,
+      roughness: 0.22,
+      metalness: 0.68,
     });
-    [-1.82, 1.82].forEach((cx) => {
-      const shaftRim = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 4.3), this.stageRimMat);
-      shaftRim.position.set(cx, -0.02, 7.15);
-      stageGroup.add(shaftRim);
+    this.riserFasciaMat = new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0ea5e9,
+      emissiveIntensity: 0.85,
+      roughness: 0.16,
+      metalness: 0.08,
+      clearcoat: 1.0,
     });
-    const tEndFrontRim = new THREE.Mesh(new THREE.BoxGeometry(7.64, 0.11, 0.12), this.stageRimMat);
-    tEndFrontRim.position.set(0, -0.02, 11.2);
-    const tEndApronRim = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.07, 0.09), this.stageRimMat);
-    tEndApronRim.position.set(0, -0.74, 11.58);
-    [-3.82, 3.82].forEach((tx) => {
-      const sideRim = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 2.04), this.stageRimMat);
-      sideRim.position.set(tx, -0.02, 10.2);
-      stageGroup.add(sideRim);
-    });
-    stageGroup.add(tEndFrontRim, tEndApronRim);
 
-    // Glowing Stadium Front-Row Crowd Barricade Perimeter (strictly outside 28m stage + T-catwalk)
+    [-8.8, 8.8].forEach((rx) => {
+      const wingRim = new THREE.Mesh(new THREE.BoxGeometry(14.5, 0.11, 0.12), this.stageRimMat);
+      wingRim.position.set(rx, -0.02, 5.52);
+      const wingStepStrip = new THREE.Mesh(new THREE.BoxGeometry(14.4, 0.04, 0.06), this.stepStripMat);
+      wingStepStrip.position.set(rx, 0.022, 5.44);
+      const wingApronRim = new THREE.Mesh(new THREE.BoxGeometry(14.5, 0.07, 0.09), this.stageRimMat);
+      wingApronRim.position.set(rx, -0.74, 5.92);
+      stageGroup.add(wingRim, wingStepStrip, wingApronRim);
+    });
+    [-1.62, 1.62].forEach((cx) => {
+      const shaftRim = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 5.1), this.stageRimMat);
+      shaftRim.position.set(cx, -0.02, 8.0);
+      const shaftStep = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 5.0), this.stepStripMat);
+      shaftStep.position.set(cx * 0.94, 0.022, 8.0);
+      stageGroup.add(shaftRim, shaftStep);
+    });
+    // Octagonal B-Stage glowing perimeter rim & step-strip halo
+    const bStageRim = new THREE.Mesh(new THREE.TorusGeometry(3.42, 0.075, 8, 8), this.stageRimMat);
+    bStageRim.rotation.x = Math.PI * 0.5;
+    bStageRim.rotation.z = Math.PI / 8;
+    bStageRim.position.set(0, -0.03, 11.0);
+    const bStageStepHalo = new THREE.Mesh(new THREE.TorusGeometry(3.22, 0.035, 6, 8), this.stepStripMat);
+    bStageStepHalo.rotation.x = Math.PI * 0.5;
+    bStageStepHalo.rotation.z = Math.PI / 8;
+    bStageStepHalo.position.set(0, 0.024, 11.0);
+    const bStageApronHalo = new THREE.Mesh(new THREE.TorusGeometry(3.54, 0.055, 6, 8), this.stageRimMat);
+    bStageApronHalo.rotation.x = Math.PI * 0.5;
+    bStageApronHalo.rotation.z = Math.PI / 8;
+    bStageApronHalo.position.set(0, -0.78, 11.0);
+    stageGroup.add(bStageRim, bStageStepHalo, bStageApronHalo);
+
+    // 3. GLOWING FRONT-ROW CROWD BARRICADE PERIMETER (strictly wrapping 38m stage + catwalk + circular B-stage)
     const barFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.38, metalness: 0.82 });
     const barPanelMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.75, metalness: 0.25 });
     const addBarricadeSegment = (x1, z1, x2, z2, posts = 4) => {
@@ -3384,21 +3497,39 @@ export class StageBand {
         stageGroup.add(post);
       }
     };
-    addBarricadeSegment(-14.2, 5.6, -2.2, 5.6, 5);
-    addBarricadeSegment(2.2, 5.6, 14.2, 5.6, 5);
-    addBarricadeSegment(-2.2, 5.6, -2.2, 8.9, 2);
-    addBarricadeSegment(2.2, 5.6, 2.2, 8.9, 2);
-    addBarricadeSegment(-2.2, 8.9, -4.18, 8.9, 2);
-    addBarricadeSegment(2.2, 8.9, 4.18, 8.9, 2);
-    addBarricadeSegment(-4.18, 8.9, -4.18, 11.65, 2);
-    addBarricadeSegment(4.18, 8.9, 4.18, 11.65, 2);
-    addBarricadeSegment(-4.18, 11.65, 4.18, 11.65, 4);
+    addBarricadeSegment(-21.2, 5.2, -16.6, 6.25, 3);
+    addBarricadeSegment(-16.6, 6.25, -2.4, 6.25, 6);
+    addBarricadeSegment(2.4, 6.25, 16.6, 6.25, 6);
+    addBarricadeSegment(16.6, 6.25, 21.2, 5.2, 3);
+    addBarricadeSegment(-2.4, 6.25, -2.4, 8.2, 2);
+    addBarricadeSegment(2.4, 6.25, 2.4, 8.2, 2);
+    // Octagonal B-Stage wraparound barricade at radius 4.05m centered at (0, 11.0)
+    const bBarR = 4.05;
+    const bBarAngles = [-2.18, -1.52, -0.88, -0.3, 0.3, 0.88, 1.52, 2.18];
+    const bBarPts = bBarAngles.map((a) => ({ x: Math.sin(a) * bBarR, z: 11.0 + Math.cos(a) * bBarR }));
+    addBarricadeSegment(-2.4, 8.2, bBarPts[0].x, bBarPts[0].z, 2);
+    for (let i = 0; i < bBarPts.length - 1; i += 1) {
+      addBarricadeSegment(bBarPts[i].x, bBarPts[i].z, bBarPts[i + 1].x, bBarPts[i + 1].z, 2);
+    }
+    addBarricadeSegment(bBarPts[bBarPts.length - 1].x, bBarPts[bBarPts.length - 1].z, 2.4, 8.2, 2);
 
-    // Elevated center drum riser (top surface strictly at DRUM_RISER_TOP_Y = 0.8, centered at x = 0, z = -2.8)
-    const riser = new THREE.Mesh(new THREE.BoxGeometry(5.6, DRUM_RISER_TOP_Y, 3.8), deckMat);
-    riser.position.set(0, DRUM_RISER_TOP_Y * 0.5, -2.8);
+    // 4. MULTI-TIERED ILLUMINATED BAND RISERS (2-Tier Drum Riser at DRUM_RISER_TOP_Y = 0.65m + Flanking 0.45m Risers)
+    const lowerDrumH = 0.28;
+    const upperDrumH = DRUM_RISER_TOP_Y - lowerDrumH;
+    const drumLowerPlinth = new THREE.Mesh(new THREE.BoxGeometry(7.2, lowerDrumH, 4.6), deckMat);
+    drumLowerPlinth.position.set(0, lowerDrumH * 0.5, -2.8);
+    drumLowerPlinth.receiveShadow = true;
+    const drumLowerFascia = new THREE.Mesh(new THREE.BoxGeometry(7.24, lowerDrumH * 0.72, 0.08), this.riserFasciaMat);
+    drumLowerFascia.position.set(0, lowerDrumH * 0.48, -0.49);
+    const drumLowerStep = new THREE.Mesh(new THREE.BoxGeometry(7.26, 0.04, 0.06), this.stepStripMat);
+    drumLowerStep.position.set(0, lowerDrumH + 0.01, -0.5);
+
+    const riser = new THREE.Mesh(new THREE.BoxGeometry(5.6, upperDrumH, 3.8), deckMat);
+    riser.position.set(0, lowerDrumH + upperDrumH * 0.5, -2.8);
     riser.receiveShadow = true;
-    stageGroup.add(riser);
+    const drumUpperFascia = new THREE.Mesh(new THREE.BoxGeometry(5.64, upperDrumH * 0.72, 0.08), this.riserFasciaMat);
+    drumUpperFascia.position.set(0, lowerDrumH + upperDrumH * 0.48, -0.89);
+    stageGroup.add(drumLowerPlinth, drumLowerFascia, drumLowerStep, riser, drumUpperFascia);
 
     const rugMat = new THREE.MeshStandardMaterial({ color: 0x1e1b2e, roughness: 0.92, metalness: 0.04 });
     const drumRug = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.018, 2.8), rugMat);
@@ -3406,7 +3537,7 @@ export class StageBand {
     drumRug.receiveShadow = true;
     stageGroup.add(drumRug);
 
-    // Curved transparent Perspex acrylic acoustic drum shield wrapping front-sides of kit cleanly
+    // Curved transparent Perspex acrylic acoustic drum shield
     const shieldMat = new THREE.MeshPhysicalMaterial({
       color: 0xdbeafe,
       transparent: true,
@@ -3422,92 +3553,138 @@ export class StageBand {
     drumShield.position.set(0, DRUM_RISER_TOP_Y + 0.72, -3.12);
     stageGroup.add(drumShield);
 
-    const riserTrim = new THREE.Mesh(new THREE.BoxGeometry(5.64, 0.09, 0.09), this.stageRimMat);
-    riserTrim.position.set(0, DRUM_RISER_TOP_Y - 0.02, -0.89);
-    const riserBackTrim = new THREE.Mesh(new THREE.BoxGeometry(5.64, 0.07, 0.08), this.stageRimMat);
-    riserBackTrim.position.set(0, DRUM_RISER_TOP_Y - 0.02, -4.71);
+    const riserTrim = new THREE.Mesh(new THREE.BoxGeometry(5.66, 0.06, 0.07), this.stepStripMat);
+    riserTrim.position.set(0, DRUM_RISER_TOP_Y - 0.01, -0.88);
+    const riserBackTrim = new THREE.Mesh(new THREE.BoxGeometry(5.66, 0.06, 0.07), this.stageRimMat);
+    riserBackTrim.position.set(0, DRUM_RISER_TOP_Y - 0.01, -4.71);
     stageGroup.add(riserTrim, riserBackTrim);
 
-    const chromeRailMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.18, metalness: 0.92 });
-    [-3.12, 3.12].forEach((sx) => {
-      const stepLow = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.27, 1.08), deckMat);
-      stepLow.position.set(sx, 0.135, -1.75);
-      const stepMid = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.54, 0.72), deckMat);
-      stepMid.position.set(sx, 0.27, -2.55);
-      stageGroup.add(stepLow, stepMid);
+    const chromeRailMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.16, metalness: 0.94 });
+    [-3.18, 3.18].forEach((sx) => {
+      const stepLow = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.22, 1.15), deckMat);
+      stepLow.position.set(sx, 0.11, -1.68);
+      const stepMid = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.44, 0.78), deckMat);
+      stepMid.position.set(sx, 0.22, -2.54);
+      const stepLed = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.03, 0.05), this.stepStripMat);
+      stepLed.position.set(sx, 0.44, -2.14);
+      stageGroup.add(stepLow, stepMid, stepLed);
     });
-    [-2.72, 0, 2.72].forEach((rx) => {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.84, 8), chromeRailMat);
-      post.position.set(rx, DRUM_RISER_TOP_Y + 0.42, -4.64);
+    [-2.74, -1.35, 0, 1.35, 2.74].forEach((rx) => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.88, 8), chromeRailMat);
+      post.position.set(rx, DRUM_RISER_TOP_Y + 0.44, -4.64);
       stageGroup.add(post);
     });
-    const backTopRail = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 5.5, 8), chromeRailMat);
+    const backTopRail = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 5.56, 8), chromeRailMat);
     backTopRail.rotation.z = Math.PI * 0.5;
-    backTopRail.position.set(0, DRUM_RISER_TOP_Y + 0.82, -4.64);
-    stageGroup.add(backTopRail);
+    backTopRail.position.set(0, DRUM_RISER_TOP_Y + 0.86, -4.64);
+    const backMidRail = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 5.56, 8), chromeRailMat);
+    backMidRail.rotation.z = Math.PI * 0.5;
+    backMidRail.position.set(0, DRUM_RISER_TOP_Y + 0.48, -4.64);
+    stageGroup.add(backTopRail, backMidRail);
 
-    // Elevated Stage-Right Piano / Keys Riser (top surface strictly at KEYS_RISER_TOP_Y = 0.5, centered at x = +6.5, z = -1.8)
-    const pianoRiser = new THREE.Mesh(new THREE.BoxGeometry(3.4, KEYS_RISER_TOP_Y, 3.0), deckMat);
+    // Flanking Stage-Right Keyboard / Synth Riser (top surface strictly at KEYS_RISER_TOP_Y = 0.45m, x = +6.5, z = -1.8)
+    const pianoRiser = new THREE.Mesh(new THREE.BoxGeometry(3.8, KEYS_RISER_TOP_Y, 3.2), deckMat);
     pianoRiser.position.set(6.5, KEYS_RISER_TOP_Y * 0.5, -1.8);
     pianoRiser.receiveShadow = true;
-    const pianoRiserTrim = new THREE.Mesh(new THREE.BoxGeometry(3.44, 0.07, 0.08), this.stageRimMat);
-    pianoRiserTrim.position.set(6.5, KEYS_RISER_TOP_Y - 0.02, -0.29);
-    const pianoStep = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.25, 0.96), deckMat);
-    pianoStep.position.set(4.52, 0.125, -1.5);
-    stageGroup.add(pianoRiser, pianoRiserTrim, pianoStep);
+    const pianoFascia = new THREE.Mesh(new THREE.BoxGeometry(3.82, KEYS_RISER_TOP_Y * 0.72, 0.08), this.riserFasciaMat);
+    pianoFascia.position.set(6.5, KEYS_RISER_TOP_Y * 0.48, -0.19);
+    const pianoRiserTrim = new THREE.Mesh(new THREE.BoxGeometry(3.86, 0.05, 0.07), this.stepStripMat);
+    pianoRiserTrim.position.set(6.5, KEYS_RISER_TOP_Y - 0.01, -0.18);
+    const pianoStep = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.22, 1.05), deckMat);
+    pianoStep.position.set(4.32, 0.11, -1.5);
+    stageGroup.add(pianoRiser, pianoFascia, pianoRiserTrim, pianoStep);
 
-    // 14m Pro-Touring Aluminum Box-Truss Rig + 3D Instanced Diagonal Cross-Bracing + Hydraulic Actuators
+    // Symmetric Stage-Left Backing / Tech Monitor Riser (0.45m, x = -6.5, z = -3.8)
+    const leftBackRiser = new THREE.Mesh(new THREE.BoxGeometry(3.6, KEYS_RISER_TOP_Y, 2.8), deckMat);
+    leftBackRiser.position.set(-6.5, KEYS_RISER_TOP_Y * 0.5, -3.8);
+    leftBackRiser.receiveShadow = true;
+    const leftBackFascia = new THREE.Mesh(new THREE.BoxGeometry(3.62, KEYS_RISER_TOP_Y * 0.72, 0.08), this.riserFasciaMat);
+    leftBackFascia.position.set(-6.5, KEYS_RISER_TOP_Y * 0.48, -2.39);
+    const leftBackTrim = new THREE.Mesh(new THREE.BoxGeometry(3.66, 0.05, 0.07), this.stepStripMat);
+    leftBackTrim.position.set(-6.5, KEYS_RISER_TOP_Y - 0.01, -2.38);
+    stageGroup.add(leftBackRiser, leftBackFascia, leftBackTrim);
+
+    // 5. ARTICULATED 4-PILLAR 15.5m BOX-TRUSS ROOF SUPERSTRUCTURE + CATWALKS + HOISTS + 3 MOTORIZED LIGHT PODS
     const trussMat = new THREE.MeshStandardMaterial({
       color: 0x64748b,
       bumpMap: this.deckMaps.bumpMap,
       bumpScale: 0.018,
-      roughness: 0.28,
-      metalness: 0.9,
+      roughness: 0.26,
+      metalness: 0.92,
       emissive: 0x000000,
       emissiveIntensity: 0,
     });
     this.stageTrussMat = trussMat;
 
+    const TRUSS_H = 15.5;
     const towerCoords = [
-      [-13.2, -8.2],
-      [13.2, -8.2],
-      [-13.2, 3.8],
-      [13.2, 3.8],
+      [-16.2, -8.4],
+      [16.2, -8.4],
+      [-16.2, 4.8],
+      [16.2, 4.8],
     ];
     towerCoords.forEach(([tx, tz]) => {
-      const tower = new THREE.Mesh(new THREE.BoxGeometry(0.46, 14.0, 0.46), trussMat);
-      tower.position.set(tx, 6.8, tz);
-      stageGroup.add(tower);
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(0.62, TRUSS_H, 0.62), trussMat);
+      tower.position.set(tx, TRUSS_H * 0.5, tz);
+      const basePlate = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.16, 1.45), barFrameMat);
+      basePlate.position.set(tx, 0.08, tz);
+      // Venue-adaptive vertical LED/metallic accent strip along each truss column
+      const colTrim = new THREE.Mesh(new THREE.BoxGeometry(0.1, TRUSS_H - 1.2, 0.1), this.venueTrussTrimMat);
+      colTrim.position.set(tx, TRUSS_H * 0.5, tz + (tz > 0 ? 0.34 : -0.34));
+      stageGroup.add(tower, basePlate, colTrim);
 
-      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 2.3, 10), barFrameMat);
-      sleeve.position.set(tx * 1.035, 1.15, tz);
-      const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 1.8, 10), chromeRailMat);
-      piston.position.set(tx * 1.035, 2.75, tz);
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 2.6, 10), barFrameMat);
+      sleeve.position.set(tx * 1.032, 1.3, tz);
+      const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 2.2, 10), chromeRailMat);
+      piston.position.set(tx * 1.032, 3.1, tz);
       stageGroup.add(sleeve, piston);
     });
 
-    const frontBridge = new THREE.Mesh(new THREE.BoxGeometry(26.8, 0.42, 0.46), trussMat);
-    frontBridge.position.set(0, 13.6, 3.8);
-    const midBridge = new THREE.Mesh(new THREE.BoxGeometry(26.8, 0.4, 0.42), trussMat);
-    midBridge.position.set(0, 13.6, -2.2);
-    const rearBridge = new THREE.Mesh(new THREE.BoxGeometry(26.8, 0.42, 0.46), trussMat);
-    rearBridge.position.set(0, 13.6, -8.2);
-    stageGroup.add(frontBridge, midBridge, rearBridge);
+    // Overhead 32.8m primary steel box-truss bridges + venue accent fascia trim
+    const frontBridge = new THREE.Mesh(new THREE.BoxGeometry(33.2, 0.54, 0.58), trussMat);
+    frontBridge.position.set(0, TRUSS_H - 0.35, 4.8);
+    const frontTrim = new THREE.Mesh(new THREE.BoxGeometry(32.8, 0.11, 0.08), this.venueTrussTrimMat);
+    frontTrim.position.set(0, TRUSS_H - 0.08, 5.12);
+    const midBridge = new THREE.Mesh(new THREE.BoxGeometry(33.2, 0.48, 0.52), trussMat);
+    midBridge.position.set(0, TRUSS_H - 0.35, -1.8);
+    const rearBridge = new THREE.Mesh(new THREE.BoxGeometry(33.2, 0.54, 0.58), trussMat);
+    rearBridge.position.set(0, TRUSS_H - 0.35, -8.4);
+    stageGroup.add(frontBridge, frontTrim, midBridge, rearBridge);
 
-    [-13.2, 13.2].forEach((sx) => {
-      const sideSpan = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 12.4), trussMat);
-      sideSpan.position.set(sx, 13.6, -2.2);
-      stageGroup.add(sideSpan);
+    // Side truss spans + Outrigger PA Cantilever Booms extending out to x = ±19.6m for curved Line-Arrays
+    [-1, 1].forEach((side) => {
+      const sideSpan = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.52, 13.8), trussMat);
+      sideSpan.position.set(side * 16.2, TRUSS_H - 0.35, -1.8);
+      const paBoom = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.46, 0.54), trussMat);
+      paBoom.position.set(side * 18.2, TRUSS_H - 0.5, 3.2);
+      const paStay = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 4.4, 6), chromeRailMat);
+      paStay.position.set(side * 17.5, TRUSS_H + 0.55, 3.2);
+      paStay.rotation.z = side * 0.52;
+      stageGroup.add(sideSpan, paBoom, paStay);
     });
 
-    // Instanced 3D diagonal cross-bracing struts across 14m vertical towers & 26.8m bridges
-    const braceGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.78, 6);
-    const braceInst = new THREE.InstancedMesh(braceGeo, chromeRailMat, 180);
+    // Overhead Rigging Catwalk grating & safety handrails + Chain Hoist motors
+    const catwalkWalkway = new THREE.Mesh(new THREE.BoxGeometry(31.4, 0.08, 1.15), deckMat);
+    catwalkWalkway.position.set(0, TRUSS_H + 0.04, 3.85);
+    const catwalkRail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 31.4, 8), chromeRailMat);
+    catwalkRail.rotation.z = Math.PI * 0.5;
+    catwalkRail.position.set(0, TRUSS_H + 0.92, 4.38);
+    stageGroup.add(catwalkWalkway, catwalkRail);
+
+    [-14.5, -7.6, 0, 7.6, 14.5].forEach((hx) => {
+      const hoistMotor = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.56, 0.46), barFrameMat);
+      hoistMotor.position.set(hx, TRUSS_H + 0.35, -0.6);
+      stageGroup.add(hoistMotor);
+    });
+
+    // Instanced 3D diagonal cross-bracing struts across 15.5m vertical towers & 33.2m roof bridges
+    const braceGeo = new THREE.CylinderGeometry(0.036, 0.036, 0.9, 6);
+    const braceInst = new THREE.InstancedMesh(braceGeo, chromeRailMat, 260);
     braceInst.frustumCulled = false;
     let braceIdx = 0;
     towerCoords.forEach(([tx, tz]) => {
-      for (let b = 0; b < 13 && braceIdx < 180; b += 1) {
-        this._dummy.position.set(tx, 0.65 + b * 0.98, tz + 0.25);
+      for (let b = 0; b < 15 && braceIdx < 260; b += 1) {
+        this._dummy.position.set(tx, 0.72 + b * 0.98, tz + 0.34);
         this._dummy.rotation.set(0, 0, (b % 2 === 0 ? 1 : -1) * 0.72);
         this._dummy.scale.set(1, 1, 1);
         this._dummy.updateMatrix();
@@ -3515,9 +3692,9 @@ export class StageBand {
         braceIdx += 1;
       }
     });
-    [3.8, -2.2, -8.2].forEach((bz) => {
-      for (let bx = -12.2; bx <= 12.2 && braceIdx < 180; bx += 1.15) {
-        this._dummy.position.set(bx, 13.6, bz + 0.25);
+    [4.8, -1.8, -8.4].forEach((bz) => {
+      for (let bx = -15.2; bx <= 15.2 && braceIdx < 260; bx += 1.25) {
+        this._dummy.position.set(bx, TRUSS_H - 0.35, bz + 0.32);
         this._dummy.rotation.set(0, 0, ((Math.round(bx * 10) % 2 === 0) ? 1 : -1) * 0.78);
         this._dummy.scale.set(1, 1, 1);
         this._dummy.updateMatrix();
@@ -3530,16 +3707,77 @@ export class StageBand {
     stageGroup.add(braceInst);
     this.stageExtraDisposables.push(braceGeo);
 
-    const fixtureMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.8 });
-    [-10.2, -6.8, -3.4, 0, 3.4, 6.8, 10.2].forEach((fx) => {
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.38, 0.44), fixtureMat);
-      head.position.set(fx, 13.28, 3.74);
-      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.08, 10), this.stageRimMat);
-      lens.position.set(fx, 13.06, 3.74);
+    // 3 Motorized Hexagonal / Triangular Moving-Head Light Pods suspended above the band
+    const fixtureMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.82 });
+    this.podRingMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 1.55,
+      roughness: 0.2,
+    });
+    const podBeamMat = createVolumetricSpotlightMaterial(0x38bdf8, 0.08);
+    this.podBeamMat = podBeamMat;
+    this.motorizedLightPods = [];
+
+    [
+      { x: -7.8, y: 12.1, z: 0.9, radius: 1.85, sides: 3, phase: 0 },
+      { x: 0.0, y: 12.65, z: -0.6, radius: 2.45, sides: 6, phase: 2.1 },
+      { x: 7.8, y: 12.1, z: 0.9, radius: 1.85, sides: 3, phase: 4.2 },
+    ].forEach((cfg) => {
+      const podPivot = new THREE.Group();
+      podPivot.position.set(cfg.x, cfg.y, cfg.z);
+
+      // Suspension steel cables up to overhead 15.5m truss
+      const cableLen = Math.max(1.2, TRUSS_H - 0.4 - cfg.y);
+      [-cfg.radius * 0.55, cfg.radius * 0.55].forEach((cx) => {
+        const hoistLine = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, cableLen, 5), chromeRailMat);
+        hoistLine.position.set(cx, cableLen * 0.5, 0);
+        podPivot.add(hoistLine);
+      });
+
+      const podBody = new THREE.Group();
+      const trussFrame = new THREE.Mesh(new THREE.TorusGeometry(cfg.radius, 0.14, 6, cfg.sides), trussMat);
+      trussFrame.rotation.x = Math.PI * 0.5;
+      const ledRing = new THREE.Mesh(new THREE.TorusGeometry(cfg.radius * 0.92, 0.06, 6, cfg.sides), this.podRingMat);
+      ledRing.rotation.x = Math.PI * 0.5;
+      ledRing.position.y = -0.14;
+      podBody.add(trussFrame, ledRing);
+
+      // Articulated moving-head wash fixtures + volumetric beam cones mounted on pod vertices
+      const headCount = cfg.sides === 6 ? 6 : 3;
+      for (let h = 0; h < headCount; h += 1) {
+        const ang = (h / headCount) * Math.PI * 2;
+        const hx = Math.cos(ang) * cfg.radius;
+        const hz = Math.sin(ang) * cfg.radius;
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.36), fixtureMat);
+        head.position.set(hx, -0.28, hz);
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 10), this.podRingMat);
+        lens.position.set(hx, -0.47, hz);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(1.45, 7.6, 12, 1, true), podBeamMat);
+        cone.position.set(hx, -4.3, hz);
+        podBody.add(head, lens, cone);
+      }
+
+      podPivot.add(podBody);
+      stageGroup.add(podPivot);
+      this.motorizedLightPods.push({
+        pivot: podPivot,
+        body: podBody,
+        baseY: cfg.y,
+        phase: cfg.phase,
+        isCenter: cfg.sides === 6,
+      });
+    });
+
+    // Overhead front truss moving fixtures & warm tungsten Audience Blinders spanning 32m bridge
+    [-13.2, -9.9, -6.6, -3.3, 0, 3.3, 6.6, 9.9, 13.2].forEach((fx) => {
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.4, 0.46), fixtureMat);
+      head.position.set(fx, TRUSS_H - 0.72, 4.74);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.08, 10), this.stageRimMat);
+      lens.position.set(fx, TRUSS_H - 0.94, 4.74);
       stageGroup.add(head, lens);
     });
 
-    // Warm Tungsten Audience Blinder Pods along front overhead 14m bridge (driven by lightState.blinderPulse)
     this.blinderMat = new THREE.MeshStandardMaterial({
       color: 0xfff3d1,
       emissive: 0xffb347,
@@ -3547,85 +3785,116 @@ export class StageBand {
       roughness: 0.18,
       metalness: 0.3,
     });
-    [-8.4, -5.0, -1.6, 1.6, 5.0, 8.4].forEach((bx) => {
-      const podHousing = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.36, 0.24), fixtureMat);
-      podHousing.position.set(bx, 13.3, 4.02);
+    [-11.8, -8.2, -4.6, -1.4, 1.4, 4.6, 8.2, 11.8].forEach((bx) => {
+      const podHousing = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.38, 0.26), fixtureMat);
+      podHousing.position.set(bx, TRUSS_H - 0.68, 5.06);
       podHousing.rotation.x = 0.35;
-      const cellL = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), this.blinderMat);
+      const cellL = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.06, 12), this.blinderMat);
       cellL.rotation.x = Math.PI * 0.5 + 0.35;
-      cellL.position.set(bx - 0.18, 13.28, 4.13);
-      const cellR = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), this.blinderMat);
+      cellL.position.set(bx - 0.2, TRUSS_H - 0.7, 5.18);
+      const cellR = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.06, 12), this.blinderMat);
       cellR.rotation.x = Math.PI * 0.5 + 0.35;
-      cellR.position.set(bx + 0.18, 13.28, 4.13);
+      cellR.position.set(bx + 0.2, TRUSS_H - 0.7, 5.18);
       stageGroup.add(podHousing, cellL, cellR);
     });
-    this.blinderLight = new THREE.PointLight(0xffb85c, 0, 44, 1.35);
-    this.blinderLight.position.set(0, 12.0, 5.2);
+    this.blinderLight = new THREE.PointLight(0xffb85c, 0, 52, 1.3);
+    this.blinderLight.position.set(0, 13.4, 6.2);
     this.scene.add(this.blinderLight);
 
-    // Side Amp Wing Risers at x = ±9.8, z = -3.5
-    [-9.8, 9.8].forEach((ax) => {
-      const sideRiser = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.28, 2.8), deckMat);
-      sideRiser.position.set(ax, 0.14, -3.5);
-      sideRiser.receiveShadow = true;
-      const sideRiserLed = new THREE.Mesh(new THREE.BoxGeometry(3.24, 0.06, 0.08), this.stageRimMat);
-      sideRiserLed.position.set(ax, 0.26, -2.09);
-      stageGroup.add(sideRiser, sideRiserLed);
-    });
-
-    // Towering Left & Right 14-Cabinet Hanging Curved Line-Array Speaker Stacks
+    // 6. CURVED 12-CABINET LINE-ARRAY PA WINGS (x = ±17.8m) + CARDIOID SUBWOOFER ARRAYS + PA SCRIM BANNERS
     const leftArrayBuilt = buildLineArrayStack(-1, this.stageRimMat, this.perforatedMaps);
-    leftArrayBuilt.group.position.set(-12.8, 11.8, 2.6);
-    leftArrayBuilt.group.rotation.y = 0.26;
+    leftArrayBuilt.group.position.set(-17.8, 13.4, 3.2);
+    leftArrayBuilt.group.rotation.y = 0.24;
     stageGroup.add(leftArrayBuilt.group);
 
     const rightArrayBuilt = buildLineArrayStack(1, this.stageRimMat, this.perforatedMaps);
-    rightArrayBuilt.group.position.set(12.8, 11.8, 2.6);
-    rightArrayBuilt.group.rotation.y = -0.26;
+    rightArrayBuilt.group.position.set(17.8, 13.4, 3.2);
+    rightArrayBuilt.group.rotation.y = -0.24;
     stageGroup.add(rightArrayBuilt.group);
 
     this.lineArrayWoofers = [...leftArrayBuilt.woofers, ...rightArrayBuilt.woofers];
 
-    // Marshall-style woven-grille amp stacks seated on outer wing risers (x = ±9.8, z = -3.5)
+    // Venue-Adaptive Side PA Scrim Banners hanging beside the outer line-arrays (x = ±19.8m)
+    this.scrimBannerCanvas = document.createElement('canvas');
+    this.scrimBannerCanvas.width = 256;
+    this.scrimBannerCanvas.height = 768;
+    this.scrimBannerCtx = this.scrimBannerCanvas.getContext('2d');
+    this.scrimBannerTex = new THREE.CanvasTexture(this.scrimBannerCanvas);
+    this.scrimBannerTex.colorSpace = THREE.SRGBColorSpace;
+    this.scrimBannerTex.anisotropy = maxAniso;
+    const scrimMat = new THREE.MeshStandardMaterial({
+      map: this.scrimBannerTex,
+      emissiveMap: this.scrimBannerTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.42,
+      roughness: 0.65,
+      metalness: 0.08,
+      side: THREE.DoubleSide,
+    });
+    [-1, 1].forEach((side) => {
+      const scrim = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 8.2), scrimMat);
+      scrim.position.set(side * 19.7, 7.8, 2.2);
+      scrim.rotation.y = side * -0.26;
+      stageGroup.add(scrim);
+    });
+
+    // Twin Wall-of-Sound Marshall / Ampeg Amp Stack Risers (x = ±11.6, z = -3.8)
+    [-11.6, 11.6].forEach((ax) => {
+      const sideRiser = new THREE.Mesh(new THREE.BoxGeometry(4.2, KEYS_RISER_TOP_Y, 2.9), deckMat);
+      sideRiser.position.set(ax, KEYS_RISER_TOP_Y * 0.5, -3.8);
+      sideRiser.receiveShadow = true;
+      const sideRiserLed = new THREE.Mesh(new THREE.BoxGeometry(4.24, 0.06, 0.08), this.stageRimMat);
+      sideRiserLed.position.set(ax, KEYS_RISER_TOP_Y - 0.02, -2.34);
+      stageGroup.add(sideRiser, sideRiserLed);
+    });
+
     const leftAmp = buildAmpStack(THEME_COLORS.guitar, this.ampGrillTex, this.perforatedMaps);
-    leftAmp.group.position.set(-9.8, 0.28, -3.5);
+    leftAmp.group.position.set(-11.6, KEYS_RISER_TOP_Y, -3.8);
     leftAmp.group.rotation.y = 0.34;
     stageGroup.add(leftAmp.group);
 
     const rightAmp = buildAmpStack(THEME_COLORS.bass, this.ampGrillTex, this.perforatedMaps);
-    rightAmp.group.position.set(9.8, 0.28, -3.5);
+    rightAmp.group.position.set(11.6, KEYS_RISER_TOP_Y, -3.8);
     rightAmp.group.rotation.y = -0.34;
     stageGroup.add(rightAmp.group);
 
     this.ampLedMats = [leftAmp.ledMat, rightAmp.ledMat];
     this.ampGrillMats = [leftAmp.grillMat, rightAmp.grillMat];
     this.subCones = [leftAmp.subCone, rightAmp.subCone];
+    this.cardioidSubGrilles = [];
 
-    // Ground Subwoofer Walls on outer stage wings (x = ±12.8, z = 2.8)
-    const groundSubCabMat = new THREE.MeshStandardMaterial({ color: 0x0b0e16, roughness: 0.72, metalness: 0.28 });
+    // Ground-Stacked Cardioid Subwoofer Arrays beneath the angled PA Wings (x = ±17.8m, vibrate on 30-110Hz kick hits)
+    const groundSubCabMat = new THREE.MeshStandardMaterial({ color: 0x090c14, roughness: 0.72, metalness: 0.3 });
     const groundSubGrillMat = new THREE.MeshStandardMaterial({
       map: this.perforatedMaps.map,
       bumpMap: this.perforatedMaps.bumpMap,
-      bumpScale: 0.032,
+      bumpScale: 0.036,
       color: 0x1e293b,
-      roughness: 0.52,
-      metalness: 0.58,
+      roughness: 0.5,
+      metalness: 0.62,
     });
-    [-12.8, 12.8].forEach((sx) => {
-      for (let col = -1; col <= 1; col += 2) {
+    [-1, 1].forEach((side) => {
+      const subArrayGroup = new THREE.Group();
+      subArrayGroup.position.set(side * 17.8, 0, 2.8);
+      subArrayGroup.rotation.y = side * -0.18;
+      for (let col = -1; col <= 1; col += 1) {
         for (let stack = 0; stack < 3; stack += 1) {
-          const cx = sx + col * 0.64;
-          const subBox = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.72, 0.96), groundSubCabMat);
-          subBox.position.set(cx, 0.36 + stack * 0.74, 2.8);
-          const subGrill = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.6, 0.05), groundSubGrillMat);
-          subGrill.position.set(cx, 0.36 + stack * 0.74, 3.29);
-          stageGroup.add(subBox, subGrill);
-          this.subCones.push(subGrill);
+          const cx = col * 1.34;
+          const cy = 0.4 + stack * 0.8;
+          const subBox = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.76, 1.08), groundSubCabMat);
+          subBox.position.set(cx, cy, 0);
+          const subGrill = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.64, 0.06), groundSubGrillMat);
+          subGrill.position.set(cx, cy, 0.55);
+          const portLed = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.035, 0.04), this.stageRimMat);
+          portLed.position.set(cx, cy - 0.31, 0.56);
+          subArrayGroup.add(subBox, subGrill, portLed);
+          this.cardioidSubGrilles.push(subGrill);
         }
       }
+      stageGroup.add(subArrayGroup);
     });
 
-    // Low-profile glowing Guitar & Bass Pedalboards flush at wing marks + gaffer-tape cable runs
+    // Low-profile glowing Guitar & Bass Pedalboards + gaffer-tape XLR cable runs
     const pedalBoardMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5, metalness: 0.6 });
     const gafferMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9, metalness: 0.05 });
     [
@@ -3641,13 +3910,13 @@ export class StageBand {
         stomp.position.set(pb.x + p * 0.22, 0.052, pb.z);
         stageGroup.add(stomp);
       }
-      const gaffer = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 2.2), gafferMat);
-      gaffer.position.set(pb.x * 1.15, 0.005, pb.z - 1.15);
+      const gaffer = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 2.5), gafferMat);
+      gaffer.position.set(pb.x * 1.15, 0.005, pb.z - 1.25);
       stageGroup.add(board, gaffer);
       this.stageExtraDisposables.push(stompMat);
     });
 
-    // Stage Floor Monitor Wedges along 28m main edge + T-catwalk thrust tip
+    // Stage Floor Monitor Wedges + Coiled XLR Cables along 32m main stage lip & circular B-Stage perimeter
     const wedgeMat = new THREE.MeshStandardMaterial({
       bumpMap: this.woodMaps.bumpMap,
       bumpScale: 0.02,
@@ -3658,38 +3927,117 @@ export class StageBand {
     });
     const cableMat = new THREE.MeshStandardMaterial({ color: 0x090b10, roughness: 0.85, metalness: 0.1 });
     [
-      { x: -8.6, z: 4.35 },
-      { x: -5.4, z: 4.35 },
-      { x: -2.8, z: 4.35 },
-      { x: 2.8, z: 4.35 },
-      { x: 5.4, z: 4.35 },
-      { x: 8.6, z: 4.35 },
-      { x: -2.4, z: 10.65 },
-      { x: 0.0, z: 10.65 },
-      { x: 2.4, z: 10.65 },
+      { x: -13.2, z: 4.85, ry: 0.08 },
+      { x: -9.8, z: 4.85, ry: 0.04 },
+      { x: -6.2, z: 4.85, ry: 0 },
+      { x: -3.0, z: 4.85, ry: 0 },
+      { x: 3.0, z: 4.85, ry: 0 },
+      { x: 6.2, z: 4.85, ry: 0 },
+      { x: 9.8, z: 4.85, ry: -0.04 },
+      { x: 13.2, z: 4.85, ry: -0.08 },
+      // B-Stage octagon perimeter wedges facing inward toward the frontperson
+      { x: -2.0, z: 13.0, ry: -0.62 },
+      { x: 0.0, z: 13.65, ry: 0 },
+      { x: 2.0, z: 13.0, ry: 0.62 },
     ].forEach((wPos) => {
       const wedgeGroup = new THREE.Group();
       wedgeGroup.position.set(wPos.x, 0.17, wPos.z);
-      wedgeGroup.rotation.x = -0.34;
-      const wedge = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.34, 0.5), wedgeMat);
-      const wedgeLed = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.04, 0.04), this.stageRimMat);
+      wedgeGroup.rotation.set(-0.34, wPos.ry, 0);
+      const wedge = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.34, 0.5), wedgeMat);
+      const wedgeLed = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.04, 0.04), this.stageRimMat);
       wedgeLed.position.set(0, 0.16, 0.25);
       wedgeGroup.add(wedge, wedgeLed);
       stageGroup.add(wedgeGroup);
 
       const cableCoil = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.02, 6, 16), cableMat);
       cableCoil.rotation.x = Math.PI * 0.5;
-      cableCoil.position.set(wPos.x * 0.88, 0.02, wPos.z - 0.52);
+      cableCoil.position.set(wPos.x * 0.9, 0.02, wPos.z - 0.56);
       stageGroup.add(cableCoil);
     });
 
+    // Spare Stage-Left & Stage-Right Pro Boom Mic Stands for backing vocals/stage detail
+    [-6.5, -13.6, 13.6].forEach((mx, idx) => {
+      const baseY = idx === 0 ? KEYS_RISER_TOP_Y : STAGE_DECK_TOP_Y;
+      const mz = idx === 0 ? -3.1 : 2.2;
+      const micBase = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.04, 12), barFrameMat);
+      micBase.position.set(mx, baseY + 0.02, mz);
+      const micPole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 1.52, 8), chromeRailMat);
+      micPole.position.set(mx, baseY + 0.78, mz);
+      const micCap = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), chromeRailMat);
+      micCap.position.set(mx, baseY + 1.56, mz + 0.12);
+      stageGroup.add(micBase, micPole, micCap);
+    });
+
     this.stageExtraDisposables.push(
-      plankDeckMat, deckMat, apronMat, barFrameMat, barPanelMat, rugMat,
-      shieldMat, chromeRailMat, trussMat, fixtureMat, this.blinderMat,
-      groundSubCabMat, groundSubGrillMat, pedalBoardMat, gafferMat, wedgeMat, cableMat
+      plankDeckMat, deckMat, bStageGeo, this.stageFloorMat, apronMat, this.stepStripMat,
+      this.venueTrussTrimMat, this.riserFasciaMat, barFrameMat, barPanelMat, rugMat,
+      shieldMat, chromeRailMat, trussMat, fixtureMat, this.podRingMat, podBeamMat,
+      this.blinderMat, scrimMat, groundSubCabMat, groundSubGrillMat, pedalBoardMat,
+      gafferMat, wedgeMat, cableMat
     );
 
-    // Oversized Curved Center LED Video Wall + Flanking Left/Right IMAG Screens (Live 30 FPS Offscreen Camera + HUD Overlay)
+    // 7. PANORAMIC CURVED BACKWALL LED VIDEO WALL (24m x 9.5m) + CENTER 30 FPS LIVE IMAG JUMBOTRON + TWIN PORTRAIT SIDE SCREENS
+    const ledFrameMat = new THREE.MeshStandardMaterial({ color: 0x0a0e18, roughness: 0.4, metalness: 0.8 });
+
+    // 7A. Panoramic 24m x 9.5m Curved Backwall Concert Visual Wall (audio spectrum waves, tour graphics, venue themes)
+    this.backwallLedCanvas = document.createElement('canvas');
+    this.backwallLedCanvas.width = 768;
+    this.backwallLedCanvas.height = 320;
+    this.backwallLedCtx = this.backwallLedCanvas.getContext('2d');
+    this.backwallLedTex = new THREE.CanvasTexture(this.backwallLedCanvas);
+    this.backwallLedTex.colorSpace = THREE.SRGBColorSpace;
+
+    const panoRadius = 28.0;
+    const panoSpan = 0.86; // arc length = 28 * 0.86 = 24.08m wide x 9.5m tall!
+    const panoFrameGeo = new THREE.CylinderGeometry(
+      panoRadius + 0.22,
+      panoRadius + 0.22,
+      10.05,
+      40,
+      1,
+      true,
+      Math.PI - panoSpan * 0.5,
+      panoSpan
+    );
+    const panoFrame = new THREE.Mesh(panoFrameGeo, ledFrameMat);
+    panoFrame.position.set(0, 7.1, panoRadius - 8.55);
+    stageGroup.add(panoFrame);
+
+    const panoScreenGeo = new THREE.CylinderGeometry(
+      panoRadius,
+      panoRadius,
+      9.5,
+      40,
+      1,
+      true,
+      Math.PI - (panoSpan - 0.018) * 0.5,
+      panoSpan - 0.018
+    );
+    const panoUv = panoScreenGeo.attributes.uv;
+    for (let i = 0; i < panoUv.count; i += 1) {
+      panoUv.setX(i, 1 - panoUv.getX(i));
+    }
+    const panoMat = new THREE.MeshStandardMaterial({
+      map: this.backwallLedTex,
+      emissiveMap: this.backwallLedTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.96,
+      roughness: 0.28,
+      metalness: 0.1,
+      toneMapped: false,
+      side: THREE.BackSide,
+    });
+    const panoWallMesh = new THREE.Mesh(panoScreenGeo, panoMat);
+    panoWallMesh.position.set(0, 7.1, panoRadius - 8.42);
+    stageGroup.add(panoWallMesh);
+
+    [-11.0, -5.5, 5.5, 11.0].forEach((lx) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.36, 2.6, 0.36), trussMat);
+      leg.position.set(lx, 1.3, -8.2);
+      stageGroup.add(leg);
+    });
+
+    // 7B. Center 30 FPS Live IMAG Jumbotron cleanly framed inside the panoramic backwall
     this.ledCanvas = document.createElement('canvas');
     this.ledCanvas.width = 512;
     this.ledCanvas.height = 288;
@@ -3697,25 +4045,36 @@ export class StageBand {
     this.ledTexture = new THREE.CanvasTexture(this.ledCanvas);
     this.ledTexture.colorSpace = THREE.SRGBColorSpace;
 
-    const ledFrameMat = new THREE.MeshStandardMaterial({ color: 0x0b0f1a, roughness: 0.42, metalness: 0.78 });
-    const curveRadius = 22.0;
-    const curveSpan = 0.62;
-    const curvedFrameGeo = new THREE.CylinderGeometry(curveRadius + 0.16, curveRadius + 0.16, 8.0, 32, 1, true, Math.PI - curveSpan * 0.5, curveSpan);
-    const ledFrame = new THREE.Mesh(curvedFrameGeo, ledFrameMat);
-    ledFrame.position.set(0, 6.45, curveRadius - 9.45);
-    stageGroup.add(ledFrame);
-
-    [-7.2, 7.2].forEach((lx) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.32, 2.8, 0.32), trussMat);
-      leg.position.set(lx, 1.4, -9.05);
-      stageGroup.add(leg);
-    });
-
-    const curvedScreenGeo = new THREE.CylinderGeometry(curveRadius, curveRadius, 7.45, 32, 1, true, Math.PI - (curveSpan - 0.02) * 0.5, curveSpan - 0.02);
+    const imagRadius = 27.4;
+    const imagSpan = 0.44; // ~12.0m x 6.6m curved center IMAG window
+    const curvedScreenGeo = new THREE.CylinderGeometry(
+      imagRadius,
+      imagRadius,
+      6.6,
+      28,
+      1,
+      true,
+      Math.PI - imagSpan * 0.5,
+      imagSpan
+    );
     const uvAttr = curvedScreenGeo.attributes.uv;
     for (let i = 0; i < uvAttr.count; i += 1) {
       uvAttr.setX(i, 1 - uvAttr.getX(i));
     }
+    const imagBezelGeo = new THREE.CylinderGeometry(
+      imagRadius + 0.08,
+      imagRadius + 0.08,
+      6.95,
+      28,
+      1,
+      true,
+      Math.PI - (imagSpan + 0.016) * 0.5,
+      imagSpan + 0.016
+    );
+    const imagBezel = new THREE.Mesh(imagBezelGeo, ledFrameMat);
+    imagBezel.position.set(0, 7.1, imagRadius - 8.18);
+    stageGroup.add(imagBezel);
+
     const imagVideoTex = this.jumbotronTarget ? this.jumbotronTarget.texture : null;
     const imagVideoMatBack = new THREE.MeshStandardMaterial({
       map: imagVideoTex,
@@ -3736,14 +4095,14 @@ export class StageBand {
       side: THREE.BackSide,
     });
     const centerImagVideo = new THREE.Mesh(curvedScreenGeo, imagVideoMatBack);
-    centerImagVideo.position.set(0, 6.45, curveRadius - 9.3);
+    centerImagVideo.position.set(0, 7.1, imagRadius - 8.08);
     const centerImagHud = new THREE.Mesh(curvedScreenGeo, imagHudMatBack);
-    centerImagHud.position.set(0, 6.45, curveRadius - 9.26);
+    centerImagHud.position.set(0, 7.1, imagRadius - 8.03);
     stageGroup.add(centerImagVideo, centerImagHud);
 
-    // Flanking Left & Right 16:9 IMAG Side Screens (5.6m x 3.15m)
-    const sideScreenFrameGeo = new THREE.BoxGeometry(5.88, 3.42, 0.18);
-    const sideScreenGeo = new THREE.PlaneGeometry(5.6, 3.15);
+    // 7C. Twin Flanking Portrait IMAG Side Screens (4.0m x 6.4m) mounted cleanly on stage wings
+    const sideScreenFrameGeo = new THREE.BoxGeometry(4.32, 6.72, 0.22);
+    const sideScreenGeo = new THREE.PlaneGeometry(4.0, 6.4);
     const imagVideoMatFront = new THREE.MeshStandardMaterial({
       map: imagVideoTex,
       emissiveMap: imagVideoTex,
@@ -3763,25 +4122,27 @@ export class StageBand {
 
     this.imagMeshes = [centerImagVideo, centerImagHud];
     [
-      { x: -10.8, rotY: 0.36 },
-      { x: 10.8, rotY: -0.36 },
+      { x: -13.9, rotY: 0.34 },
+      { x: 13.9, rotY: -0.34 },
     ].forEach((sideCfg) => {
       const wingGroup = new THREE.Group();
-      wingGroup.position.set(sideCfg.x, 7.6, -4.1);
+      wingGroup.position.set(sideCfg.x, 7.3, -4.6);
       wingGroup.rotation.y = sideCfg.rotY;
 
       const sFrame = new THREE.Mesh(sideScreenFrameGeo, ledFrameMat);
+      const sTrim = new THREE.Mesh(new THREE.BoxGeometry(4.38, 0.09, 0.26), this.venueTrussTrimMat);
+      sTrim.position.y = 3.38;
       const sVideo = new THREE.Mesh(sideScreenGeo, imagVideoMatFront);
-      sVideo.position.z = 0.1;
+      sVideo.position.z = 0.12;
       const sHud = new THREE.Mesh(sideScreenGeo, imagHudMatFront);
-      sHud.position.z = 0.12;
+      sHud.position.z = 0.14;
 
-      wingGroup.add(sFrame, sVideo, sHud);
+      wingGroup.add(sFrame, sTrim, sVideo, sHud);
       stageGroup.add(wingGroup);
       this.imagMeshes.push(sVideo, sHud);
     });
 
-    // World Tour Front-Row Stage Apron LED Banner (mounted on T-catwalk thrust face)
+    // World Tour Front-Row Stage Apron LED Banner wrapping the front octagon B-Stage face
     this.vipBannerCanvas = document.createElement('canvas');
     this.vipBannerCanvas.width = 1024;
     this.vipBannerCanvas.height = 96;
@@ -3791,26 +4152,312 @@ export class StageBand {
     this.drawVipBanner();
 
     const vipBannerFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(7.2, 0.56, 0.08),
+      new THREE.CylinderGeometry(3.48, 3.52, 0.56, 8, 1, true, -Math.PI * 0.38, Math.PI * 0.76),
       ledFrameMat
     );
-    vipBannerFrame.position.set(0, -0.34, 11.24);
+    vipBannerFrame.position.set(0, -0.38, 11.0);
+    const vipBannerGeo = new THREE.CylinderGeometry(3.54, 3.56, 0.44, 16, 1, true, -Math.PI * 0.36, Math.PI * 0.72);
     const vipBannerMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(6.95, 0.44),
-      new THREE.MeshBasicMaterial({ map: this.vipBannerTex })
+      vipBannerGeo,
+      new THREE.MeshBasicMaterial({ map: this.vipBannerTex, side: THREE.FrontSide })
     );
-    vipBannerMesh.position.set(0, -0.34, 11.29);
+    vipBannerMesh.position.set(0, -0.38, 11.0);
     stageGroup.add(vipBannerFrame, vipBannerMesh);
 
     this.stageExtraDisposables.push(
-      ledFrameMat, curvedFrameGeo, curvedScreenGeo, sideScreenFrameGeo, sideScreenGeo,
-      imagVideoMatBack, imagHudMatBack, imagVideoMatFront, imagHudMatFront,
-      vipBannerFrame.geometry, vipBannerMesh.geometry, vipBannerMesh.material
+      ledFrameMat, panoFrameGeo, panoScreenGeo, panoMat, imagBezelGeo, curvedScreenGeo,
+      sideScreenFrameGeo, sideScreenGeo, imagVideoMatBack, imagHudMatBack, imagVideoMatFront,
+      imagHudMatFront, vipBannerFrame.geometry, vipBannerGeo, vipBannerMesh.material
     );
 
+    this.drawScrimBanner();
+    this.drawStageFloorLed(0.2, 0.2, 0.2, false, false);
+    this.drawBackwallLed(0.2, 0.2, 0.2, false, false);
     this.drawLedBackdrop(0.2, 0.2, 0.2, false, false);
 
     this.scene.add(stageGroup);
+  }
+
+  /**
+   * Renders venue/overlay-adaptive vertical PA Scrim Banners beside the curved Line-Array wings.
+   */
+  drawScrimBanner() {
+    const ctx = this.scrimBannerCtx;
+    if (!ctx) return;
+    const w = 256;
+    const h = 768;
+    const theme = this.venueEnv?.stageTheme || {
+      scrimBgCss: '#0b1020',
+      scrimBorderCss: '#38bdf8',
+      scrimTitle: 'STAGE HERO 3D',
+      scrimSubtitle: 'WORLD TOUR LIVE',
+      ledPrimaryCss: '#38bdf8',
+      ledSecondaryCss: '#facc15',
+      motif: 'STANDARD',
+    };
+
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+    bgGrad.addColorStop(0, theme.scrimBgCss);
+    bgGrad.addColorStop(0.5, '#090d1a');
+    bgGrad.addColorStop(1, theme.scrimBgCss);
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle acoustic speaker mesh weave pattern
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    for (let y = 0; y < h; y += 12) {
+      ctx.fillRect(14, y, w - 28, 2);
+    }
+
+    // Double glowing border
+    ctx.strokeStyle = theme.scrimBorderCss;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(10, 10, w - 20, h - 20);
+    ctx.strokeStyle = theme.ledSecondaryCss || '#facc15';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(22, 22, w - 44, h - 44);
+
+    // Top & bottom emblem chevrons
+    ctx.fillStyle = theme.ledPrimaryCss || '#38bdf8';
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5, 48);
+    ctx.lineTo(w - 46, 102);
+    ctx.lineTo(w * 0.5, 86);
+    ctx.lineTo(46, 102);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5, h - 48);
+    ctx.lineTo(w - 46, h - 102);
+    ctx.lineTo(w * 0.5, h - 86);
+    ctx.lineTo(46, h - 102);
+    ctx.closePath();
+    ctx.fill();
+
+    // Vertical World Tour typography
+    ctx.save();
+    ctx.translate(w * 0.5, h * 0.5);
+    ctx.rotate(-Math.PI * 0.5);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = theme.scrimBorderCss;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '800 44px Oswald, sans-serif';
+    ctx.fillText(theme.scrimTitle || 'WORLD TOUR', 0, -24);
+    ctx.fillStyle = theme.ledSecondaryCss || '#facc15';
+    ctx.font = '700 22px Oswald, sans-serif';
+    ctx.fillText(`★ ${theme.scrimSubtitle || 'LIVE IN CONCERT'} ★`, 0, 26);
+    ctx.restore();
+
+    this.scrimBannerTex.needsUpdate = true;
+  }
+
+  /**
+   * Draws the Interactive Animated LED Stage Floor Matrix across the main deck, catwalk, and octagonal B-Stage:
+   * radial beat shockwaves, equalizer chevrons, and song-section color gradients.
+   */
+  drawStageFloorLed(bassE, midE, highE, feverActive, encoreActive) {
+    const ctx = this.stageFloorCtx;
+    if (!ctx) return;
+    const w = 512;
+    const h = 512;
+    const theme = this.venueEnv?.stageTheme;
+    const secType = this.lightingState?.sectionType || 'VERSE';
+    const floorPulse = this.lightingState?.floorPulse ?? (bassE * 0.8);
+    const waveSpeed = this.lightingState?.floorWaveSpeed ?? 1.0;
+
+    let primary = theme?.ledPrimaryCss || '#38bdf8';
+    let secondary = theme?.ledSecondaryCss || '#facc15';
+    let bgDark = '#050814';
+    if (feverActive) {
+      primary = '#facc15';
+      secondary = '#f97316';
+      bgDark = '#1c1004';
+    } else if (encoreActive) {
+      primary = '#ec4899';
+      secondary = '#38bdf8';
+      bgDark = '#18071b';
+    } else if (secType === 'GUITAR_SOLO') {
+      primary = '#ef4444';
+      secondary = '#facc15';
+      bgDark = '#190608';
+    } else if (secType === 'CHORUS') {
+      primary = theme?.ledPrimaryCss || '#22d3ee';
+      secondary = '#f43f5e';
+      bgDark = '#081226';
+    } else if (secType === 'INTRO' || secType === 'BRIDGE') {
+      primary = '#6366f1';
+      secondary = theme?.ledPrimaryCss || '#38bdf8';
+      bgDark = '#060718';
+    }
+
+    const bgGrad = ctx.createRadialGradient(w * 0.5, h * 0.55, 18, w * 0.5, h * 0.5, w * 0.65);
+    bgGrad.addColorStop(0, primary);
+    bgGrad.addColorStop(0.28, bgDark);
+    bgGrad.addColorStop(1, '#03050c');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle LED tile grid
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 16; i += 1) {
+      const p = (i / 16) * w;
+      ctx.beginPath();
+      ctx.moveTo(p, 0);
+      ctx.lineTo(p, h);
+      ctx.moveTo(0, p);
+      ctx.lineTo(w, p);
+      ctx.stroke();
+    }
+
+    // Concentric beat-driven shockwave rings radiating out from center stage
+    const phase = (this.clock * 0.9 * waveSpeed) % 1;
+    for (let r = 0; r < 3; r += 1) {
+      const rp = (phase + r / 3) % 1;
+      const rad = 24 + rp * 230;
+      const alpha = Math.max(0, (1 - rp) * (0.35 + floorPulse * 0.45));
+      ctx.strokeStyle = r % 2 === 0 ? primary : secondary;
+      ctx.globalAlpha = Math.min(0.92, alpha);
+      ctx.lineWidth = 4 + floorPulse * 5;
+      ctx.beginPath();
+      ctx.arc(w * 0.5, h * 0.52, rad, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Animated equalizer chevrons marching forward down the catwalk axis
+    const chevCount = 5;
+    for (let c = 0; c < chevCount; c += 1) {
+      const cp = ((this.clock * 0.75 * waveSpeed + c / chevCount) % 1);
+      const cy = cp * h;
+      ctx.strokeStyle = c % 2 === 0 ? secondary : primary;
+      ctx.globalAlpha = 0.25 + midE * 0.55;
+      ctx.lineWidth = 4 + bassE * 4;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.18, cy - 36);
+      ctx.lineTo(w * 0.5, cy);
+      ctx.lineTo(w * 0.82, cy - 36);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Symmetric side audio EQ bars along left & right wings
+    const barCount = 12;
+    for (let b = 0; b < barCount; b += 1) {
+      const barH = Math.min(1, 0.16 + ((b % 3 === 0 ? bassE : b % 2 === 0 ? midE : highE) * (0.72 + Math.sin(this.clock * 8 + b) * 0.24)));
+      const y = (b / barCount) * h + 8;
+      const bw = 22 + barH * 88;
+      ctx.fillStyle = b % 2 === 0 ? primary : secondary;
+      ctx.globalAlpha = 0.55 + floorPulse * 0.35;
+      ctx.fillRect(8, y, bw, 22);
+      ctx.fillRect(w - 8 - bw, y, bw, 22);
+    }
+    ctx.globalAlpha = 1;
+
+    this.stageFloorTex.needsUpdate = true;
+  }
+
+  /**
+   * Draws the 24m x 9.5m Panoramic Curved Backwall LED Screen framing the live center IMAG Jumbotron:
+   * sweeping audio spectrum waves, tour typography, song section graphics, and venue theme visuals.
+   */
+  drawBackwallLed(bassE, midE, highE, feverActive, encoreActive) {
+    const ctx = this.backwallLedCtx;
+    if (!ctx) return;
+    const w = 768;
+    const h = 320;
+    const theme = this.venueEnv?.stageTheme;
+    const secType = this.lightingState?.sectionType || 'LIVE';
+
+    const c1 = feverActive ? '#facc15' : encoreActive ? '#ec4899' : (theme?.ledPrimaryCss || '#38bdf8');
+    const c2 = feverActive ? '#f97316' : encoreActive ? '#38bdf8' : (theme?.ledSecondaryCss || '#facc15');
+    const c3 = theme?.ledGoldCss || '#f43f5e';
+
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#040713');
+    bg.addColorStop(0.5, feverActive ? '#261404' : encoreActive ? '#230824' : '#0b1530');
+    bg.addColorStop(1, '#03050d');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    // Sweeping perspective synth horizon grid on outer wings (flanking center IMAG window)
+    ctx.strokeStyle = c1;
+    ctx.globalAlpha = 0.22 + bassE * 0.28;
+    ctx.lineWidth = 2;
+    for (let row = 0; row < 6; row += 1) {
+      const y = h * 0.54 + Math.pow(row / 5, 1.5) * (h * 0.44);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Dual sweeping audio spectrum waveforms across the full 24m panoramic span
+    const drawWave = (color, ampScale, freq, phaseShift, yCenter) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 12) {
+        const u = x / w;
+        const env = Math.sin(u * Math.PI);
+        const y =
+          yCenter +
+          Math.sin(u * Math.PI * freq + this.clock * 4.2 + phaseShift) * (18 + bassE * 68) * ampScale * env +
+          Math.cos(u * Math.PI * (freq * 1.8) - this.clock * 6.5) * (10 + highE * 34) * env;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    };
+    drawWave(c1, 1.0, 6, 0, h * 0.5);
+    drawWave(c2, 0.78, 9, 1.8, h * 0.52);
+
+    // Left & Right Panoramic Equalizer Towers (clearly visible beside the center IMAG Jumbotron)
+    const barsPerSide = 10;
+    for (let i = 0; i < barsPerSide; i += 1) {
+      const e = i % 3 === 0 ? bassE : i % 2 === 0 ? midE : highE;
+      const lvl = Math.min(1, 0.14 + e * (0.65 + 0.35 * Math.abs(Math.sin(this.clock * 7.5 + i * 0.7))));
+      const bh = lvl * (h * 0.74);
+      const bxL = 16 + i * 16;
+      const bxR = w - 28 - i * 16;
+      ctx.fillStyle = i % 2 === 0 ? c1 : c2;
+      ctx.globalAlpha = 0.82;
+      ctx.fillRect(bxL, h - 18 - bh, 11, bh);
+      ctx.fillRect(bxR, h - 18 - bh, 11, bh);
+    }
+    ctx.globalAlpha = 1;
+
+    // Top & Bottom Tour Typography + Active Song Section Graphics flanking the panoramic border
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.72)';
+    ctx.fillRect(0, 0, w, 38);
+    ctx.fillRect(0, h - 34, w, 34);
+    ctx.fillStyle = c1;
+    ctx.fillRect(0, 38, w, 3);
+    ctx.fillStyle = c2;
+    ctx.fillRect(0, h - 37, w, 3);
+
+    const tourName = (theme?.venueName || 'STAGE HERO 3D WORLD TOUR').toUpperCase();
+    const sectionLabel = feverActive ? '★ STAR POWER OVERDRIVE ★' : encoreActive ? '★ GRAND ENCORE ★' : secType.replace(/_/g, ' ');
+    ctx.font = '800 20px Oswald, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f8fafc';
+    ctx.textAlign = 'left';
+    ctx.fillText(`⚡ ${tourName}`, 18, 20);
+    ctx.fillStyle = c2;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${sectionLabel} ⚡`, w - 18, 20);
+
+    ctx.font = '700 16px Oswald, sans-serif';
+    ctx.fillStyle = c3;
+    ctx.textAlign = 'center';
+    const trackBanner = (this.currentTrackTitle || 'LIVE IN CONCERT').toUpperCase().slice(0, 36);
+    ctx.fillText(`STAGE HERO 3D  ·  ${trackBanner}  ·  ${(theme?.scrimSubtitle || 'WORLD TOUR').toUpperCase()}`, w * 0.5, h - 16);
+
+    this.backwallLedTex.needsUpdate = true;
   }
 
   drawVipBanner() {
@@ -3818,6 +4465,8 @@ export class StageBand {
     if (!ctx) return;
     const w = 1024;
     const h = 96;
+    const theme = this.venueEnv?.stageTheme;
+    const accent = theme?.ledPrimaryCss || '#38bdf8';
 
     const grad = ctx.createLinearGradient(0, 0, w, 0);
     grad.addColorStop(0, '#091124');
@@ -3828,14 +4477,14 @@ export class StageBand {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = accent;
     ctx.lineWidth = 4;
     ctx.strokeRect(4, 4, w - 8, h - 8);
 
     const venueName = (this.venueEnv?.meta?.name || 'WORLD TOUR ARENA').toUpperCase();
     const songTitle = (this.currentTrackTitle || 'LIVE IN CONCERT').toUpperCase().slice(0, 26);
     ctx.save();
-    ctx.shadowColor = '#38bdf8';
+    ctx.shadowColor = accent;
     ctx.shadowBlur = 12;
     ctx.fillStyle = '#fef08a';
     ctx.font = '700 36px Oswald, sans-serif';
@@ -4631,16 +5280,26 @@ export class StageBand {
       m.frustumCulled = false;
     });
 
-    // Helper: enforce 1.2m security barricade aisle around main stage lip (z=5.0) & T-catwalk (x: [-3.2, 3.2], z: [5, 11.5])
+    // Helper: enforce barricade clearance around expanded 38m deck (z=5.5), extended catwalk (|x|>3.6), and circular B-Stage (center z=11.0, r=3.4 -> clear > 4.65m / z > 14.8)
     const enforceBarricadeClearance = (rawX, rawZ, seedIdx) => {
       let x = rawX;
-      let z = Math.max(6.2 + (seedIdx % 3) * 0.14, rawZ);
-      if (Math.abs(x) < 4.35 && z < 12.65) {
+      let z = Math.max(6.8 + (seedIdx % 3) * 0.16, rawZ);
+      if (z < 11.0 && Math.abs(x) < 3.7) {
         const sign = x >= 0 ? 1 : -1;
-        if (z < 11.45) {
-          x = sign * (4.4 + (seedIdx % 5) * 0.36);
+        x = sign * (3.75 + (seedIdx % 5) * 0.34);
+      }
+      const distB = Math.hypot(x, z - 11.0);
+      if (distB < 4.68) {
+        const dz = z - 11.0;
+        const pushR = 4.74 + (seedIdx % 4) * 0.28;
+        if (dz < 0) {
+          const sign = x >= 0 ? 1 : -1;
+          const reqX = Math.sqrt(Math.max(0.25, pushR * pushR - dz * dz));
+          x = sign * Math.max(Math.abs(x), reqX);
         } else {
-          z = 12.7 + (seedIdx % 4) * 0.28;
+          const ang = Math.atan2(x, Math.max(0.25, dz));
+          x = Math.sin(ang) * pushR;
+          z = Math.max(14.85, 11.0 + Math.cos(ang) * pushR);
         }
       }
       return { x, z };
@@ -4810,12 +5469,13 @@ export class StageBand {
         const x = gx + (randA - 0.5) * 0.62;
         const z = zRow + (randB - 0.5) * 0.58;
 
-        // Strictly respect 1.2m security barricade aisle around main stage lip & T-catwalk
-        if (z < 6.15) continue;
-        if (Math.abs(x) < 4.35 && z < 12.65) continue;
+        // Strictly respect security barricade aisle around 38m main stage lip (z > 6.7), catwalk (|x| > 3.6) & circular B-stage (r > 4.65 / z > 14.8)
+        if (z < 6.75) continue;
+        if (z < 11.0 && Math.abs(x) < 3.65) continue;
+        if (Math.hypot(x, z - 11.0) < 4.62) continue;
 
-        // Inside the inner hero pit (|x| < 14.8, z < 15.6), place interstitial fill fans on alternate slots so density is seamless without stacking
-        const insideHeroZone = Math.abs(x) < 14.8 && z < 15.8;
+        // Inside the inner hero pit (|x| < 16.0, z < 16.8), place interstitial fill fans on alternate slots so density is seamless without stacking
+        const insideHeroZone = Math.abs(x) < 16.0 && z < 16.8;
         if (insideHeroZone && (r + Math.floor((gx + 30) * 0.9)) % 2 === 0) {
           gaIdx += 1;
           continue;
@@ -6004,17 +6664,27 @@ export class StageBand {
   }
 
   buildPyrotechnicsAndFX() {
-    // 1. 6 Front-Apron Volumetric 3D Flame Pillars + Pyro Light (flanking T-catwalk mouth on 28m apron)
-    this.pyroNozzleXs = [-8.4, -5.6, -2.6, 2.6, 5.6, 8.4];
+    // 1. Tier-1 Stage-Lip & Catwalk/B-Stage Perimeter V-Angled Gold/Crimson Flame Columns (y: 1.5m–9m)
+    this.pyroNozzleXs = [-12.4, -8.8, -5.6, -2.5, 2.5, 5.6, 8.8, 12.4];
+    this.catwalkSparkNozzles = [
+      { x: -1.72, z: 6.5, tiltX: -0.18 },
+      { x: 1.72, z: 6.5, tiltX: 0.18 },
+      { x: -1.72, z: 8.8, tiltX: -0.2 },
+      { x: 1.72, z: 8.8, tiltX: 0.2 },
+      { x: -2.85, z: 11.2, tiltX: -0.24 },
+      { x: 2.85, z: 11.2, tiltX: 0.24 },
+      { x: -2.25, z: 13.1, tiltX: -0.2 },
+      { x: 2.25, z: 13.1, tiltX: 0.2 },
+    ];
     this.flamePillars = [];
 
-    const outerConeGeo = new THREE.ConeGeometry(0.52, 4.3, 10, 1, true);
-    outerConeGeo.translate(0, 2.15, 0);
-    const innerConeGeo = new THREE.ConeGeometry(0.28, 3.1, 8, 1, true);
-    innerConeGeo.translate(0, 1.55, 0);
+    const outerConeGeo = new THREE.ConeGeometry(0.62, 6.2, 10, 1, true);
+    outerConeGeo.translate(0, 3.1, 0);
+    const innerConeGeo = new THREE.ConeGeometry(0.32, 4.4, 8, 1, true);
+    innerConeGeo.translate(0, 2.2, 0);
 
     const outerFlameMat = new THREE.MeshBasicMaterial({
-      color: 0xf97316,
+      color: 0xf43f5e,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
@@ -6035,34 +6705,60 @@ export class StageBand {
     const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
     const nozzleGeo = new THREE.CylinderGeometry(0.14, 0.18, 0.16, 8);
 
-    this.pyroNozzleXs.forEach((nx, idx) => {
+    const flamePods = [
+      ...this.pyroNozzleXs.map((nx, idx) => ({
+        x: nx,
+        z: 5.18,
+        vTilt: (idx % 2 === 0 ? 1 : -1) * 0.24 + (nx < 0 ? 0.08 : -0.08),
+        xTilt: 0.08,
+        heightMult: 1.15,
+      })),
+      // Catwalk & B-Stage perimeter V-angled flame pods angled safely outward away from performers
+      { x: -1.82, z: 7.4, vTilt: 0.32, xTilt: 0.06, heightMult: 0.92 },
+      { x: 1.82, z: 7.4, vTilt: -0.32, xTilt: 0.06, heightMult: 0.92 },
+      { x: -2.92, z: 11.4, vTilt: 0.36, xTilt: 0.14, heightMult: 1.02 },
+      { x: 2.92, z: 11.4, vTilt: -0.36, xTilt: 0.14, heightMult: 1.02 },
+    ];
+
+    flamePods.forEach((pod, idx) => {
       const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
-      nozzle.position.set(nx, 0.08, 4.62);
+      nozzle.position.set(pod.x, 0.08, pod.z);
+      nozzle.rotation.z = pod.vTilt;
       this.scene.add(nozzle);
 
       const pillar = new THREE.Group();
-      pillar.position.set(nx, 0.12, 4.62);
+      pillar.position.set(pod.x, 0.12, pod.z);
+      pillar.rotation.z = pod.vTilt;
+      pillar.rotation.x = pod.xTilt;
       const outer = new THREE.Mesh(outerConeGeo, outerFlameMat);
       const inner = new THREE.Mesh(innerConeGeo, innerFlameMat);
       pillar.add(outer, inner);
       pillar.visible = false;
       this.scene.add(pillar);
-      this.flamePillars.push({ group: pillar, phase: idx * 1.13 });
+      this.flamePillars.push({
+        group: pillar,
+        outer,
+        inner,
+        vTilt: pod.vTilt,
+        xTilt: pod.xTilt,
+        heightMult: pod.heightMult,
+        phase: idx * 1.13,
+      });
     });
 
-    this.pyroGlowLight = new THREE.PointLight(0xfb923c, 0, 26, 1.4);
-    this.pyroGlowLight.position.set(0, 2.4, 4.8);
+    this.pyroGlowLight = new THREE.PointLight(0xfb923c, 0, 42, 1.25);
+    this.pyroGlowLight.position.set(0, 3.2, 6.2);
     this.scene.add(this.pyroGlowLight);
 
-    // 1B. Stage-Edge CO2 Cryo-Jets (4 vertical frosty white mist columns firing on Fever & Chorus drops!)
+    // 1B. Stage-Edge CO2 Cryo-Jets (6 vertical frosty white mist columns across expanded 32m lip)
     this.cryoJets = [];
     this.cryoJetIntensity = 0;
-    const cryoConeGeo = new THREE.ConeGeometry(0.62, 5.0, 14, 1, true);
-    cryoConeGeo.translate(0, 2.5, 0);
+    const cryoConeGeo = new THREE.ConeGeometry(0.64, 5.4, 14, 1, true);
+    cryoConeGeo.translate(0, 2.7, 0);
     this.cryoJetMat = createVolumetricSpotlightMaterial(0xe0f2fe, 0);
-    [-6.8, -3.1, 3.1, 6.8].forEach((cx, idx) => {
+    [-11.0, -7.2, -3.2, 3.2, 7.2, 11.0].forEach((cx, idx) => {
       const jet = new THREE.Mesh(cryoConeGeo, this.cryoJetMat);
-      jet.position.set(cx, 0.08, 4.68);
+      jet.position.set(cx, 0.08, 5.22);
       jet.rotation.x = 0.08;
       jet.visible = false;
       this.scene.add(jet);
@@ -6164,8 +6860,8 @@ export class StageBand {
       side: THREE.DoubleSide,
     });
 
-    // 2. Towering 7m Stage-Front Cold-Spark Gerb Fountains (360 velocity-stretched titanium sparks, zero GC)
-    this.sparkCount = 360;
+    // 2. Towering 8.5m Stage-Lip & Catwalk/B-Stage Cold-Spark Gerb Fountains (480 titanium sparks, single draw call)
+    this.sparkCount = 480;
     this.sparkPositions = new Float32Array(this.sparkCount * 3);
     this.sparkVelocities = new Float32Array(this.sparkCount * 3);
     this.sparkColors = new Float32Array(this.sparkCount * 3);
@@ -6214,8 +6910,8 @@ export class StageBand {
     this.sparkPoints.renderOrder = 14;
     this.scene.add(this.sparkPoints);
 
-    // 3. Pyromusical 3D Stadium Aerial Fireworks Engine (5,600 velocity-stretched instanced particles, 10 authentic real-world effects)
-    this.fwParticleCount = 5600;
+    // 3. Engrande Olympic-Scale 4-Tier Pyromusical Aerial Fireworks Engine (6,400 velocity-stretched instanced particles)
+    this.fwParticleCount = 6400;
     this.fwPositions = new Float32Array(this.fwParticleCount * 3);
     this.fwVelocities = new Float32Array(this.fwParticleCount * 3);
     this.fwColors = new Float32Array(this.fwParticleCount * 3);
@@ -6264,18 +6960,20 @@ export class StageBand {
     this.fwGirandolas = [];
     this.fwRomanQueue = [];
     this._fwTypeCycleIndex = 0;
+    this._fwRomanPatternIdx = 0;
+    this._lastChorusDownbeatBar = -1;
     this._lastFwSubdiv8 = -1;
     this._lastFwSubdiv16 = -1;
     this._lastFwBeatIdx = -1;
 
-    // 6 Pooled Dynamic Sky & Rim PointLights + Shared Smoke-Flash Uniform Buffers (zero per-frame GC)
+    // 6 Pooled Dynamic Sky & Stadium-Bowl PointLights + Shared Smoke-Flash Uniform Buffers (zero per-frame GC)
     this.fwBurstLights = [];
     this.fwBurstLightCursor = 0;
     this.fwFlashUniformPos = [];
     this.fwFlashUniformCol = [];
     for (let l = 0; l < 6; l += 1) {
-      const pl = new THREE.PointLight(0xfde047, 0, 165, 1.05);
-      pl.position.set(0, 30, -20);
+      const pl = new THREE.PointLight(0xfde047, 0, 240, 0.95);
+      pl.position.set(0, 38, -22);
       this.scene.add(pl);
       this.fwBurstLights.push(pl);
       this.fwFlashUniformPos.push(new THREE.Vector3(0, -100, 0));
@@ -6283,6 +6981,7 @@ export class StageBand {
     }
     this.fireworkFlashState = {
       color: new THREE.Color(0xfacc15),
+      secondaryColor: new THREE.Color(0xec4899),
       intensity: 0,
       skyBloom: 0,
       subBassFlash: 0,
@@ -6292,6 +6991,7 @@ export class StageBand {
     this._fwScratchVecB = new THREE.Vector3();
     this._fwScratchVecC = new THREE.Vector3();
     this._fwFlashAggColor = new THREE.Color(0xfacc15);
+    this._fwFlashSecondColor = new THREE.Color(0xec4899);
 
     const fwGeo = new THREE.InstancedBufferGeometry();
     fwGeo.index = unitQuad.index;
@@ -6427,10 +7127,10 @@ export class StageBand {
     const laserGeo = new THREE.CylinderGeometry(0.035, 0.22, 28, 8, 1, true);
     laserGeo.translate(0, -14, 0);
 
-    const laserXs = [-5.8, -3.5, -1.2, 1.2, 3.5, 5.8];
+    const laserXs = [-10.5, -6.2, -2.0, 2.0, 6.2, 10.5];
     laserXs.forEach((lx, idx) => {
       const pivot = new THREE.Group();
-      pivot.position.set(lx, 8.6, -2.0);
+      pivot.position.set(lx, 14.4, -1.8);
       const mat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
         transparent: true,
@@ -6935,6 +7635,27 @@ export class StageBand {
     this.laserBeams.forEach((lb, i) => {
       lb.mat.color.setHex(palette[i % palette.length]);
     });
+
+    // Apply venue & overlay stage skinning to truss accent trim, riser fascias, PA scrim banners & LED floor/backwall
+    const stageTheme = built.stageTheme;
+    if (stageTheme) {
+      if (this.venueTrussTrimMat) {
+        this.venueTrussTrimMat.color.setHex(stageTheme.trussAccentHex);
+        this.venueTrussTrimMat.emissive.setHex(stageTheme.trussAccentHex);
+      }
+      if (this.riserFasciaMat) {
+        this.riserFasciaMat.color.setHex(stageTheme.trussAccentHex);
+        this.riserFasciaMat.emissive.setHex(stageTheme.trussSecondaryHex ?? stageTheme.trussAccentHex);
+      }
+      if (this.podRingMat) {
+        this.podRingMat.color.setHex(stageTheme.trussAccentHex);
+        this.podRingMat.emissive.setHex(stageTheme.trussAccentHex);
+      }
+      this.drawScrimBanner();
+      this.drawVipBanner();
+      this.drawStageFloorLed(0.25, 0.25, 0.2, this.feverActive, this.encorePerformanceActive || this.grandEncoreActive);
+      this.drawBackwallLed(0.25, 0.25, 0.2, this.feverActive, this.encorePerformanceActive || this.grandEncoreActive);
+    }
   }
 
   setCameraMode(mode) {
@@ -7128,11 +7849,11 @@ export class StageBand {
   /**
    * Registers a live firework sky/rim PointLight flash for stadium trusses, water reflections & illuminated smoke clouds.
    */
-  registerFireworkFlash(x, y, z, hexColor, intensity = 165, isSubBassSalute = false) {
+  registerFireworkFlash(x, y, z, hexColor, intensity = 175, isSubBassSalute = false) {
     if (this.fwBurstLights?.length) {
       const pl = this.fwBurstLights[this.fwBurstLightCursor % this.fwBurstLights.length];
       this.fwBurstLightCursor += 1;
-      pl.position.set(x, Math.min(48, Math.max(8, y)), z);
+      pl.position.set(x, Math.min(74, Math.max(8, y)), z);
       pl.color.setHex(hexColor);
       pl.intensity = intensity;
     }
@@ -7142,7 +7863,7 @@ export class StageBand {
   }
 
   /**
-   * Zero-GC pooled particle writer for the 5,600-instance velocity-stretched firework shader mesh.
+   * Zero-GC pooled particle writer for the 6,400-instance velocity-stretched firework shader mesh.
    */
   spawnFireworkParticle(cfg) {
     const p = this.fwParticles[this.fwCursor];
@@ -7193,46 +7914,46 @@ export class StageBand {
       const sm = this.fwSmokeParticles[this.fwSmokeCursor];
       this.fwSmokeCursor = (this.fwSmokeCursor + 1) % this.fwSmokeCount;
       sm.active = true;
-      sm.x = x + (Math.random() - 0.5) * 3.8 * scaleMult;
-      sm.y = y + (Math.random() - 0.5) * 3.0 * scaleMult;
-      sm.z = z + (Math.random() - 0.5) * 3.8 * scaleMult;
+      sm.x = x + (Math.random() - 0.5) * 4.2 * scaleMult;
+      sm.y = y + (Math.random() - 0.5) * 3.4 * scaleMult;
+      sm.z = z + (Math.random() - 0.5) * 4.2 * scaleMult;
       sm.vx = windAx * 0.38 + (Math.random() - 0.5) * 1.1;
       sm.vy = 0.45 + Math.random() * 0.7;
       sm.vz = (Math.random() - 0.5) * 0.95;
-      sm.size = (6.2 + Math.random() * 4.5) * scaleMult;
-      sm.growRate = (1.8 + Math.random() * 1.4) * scaleMult;
+      sm.size = (6.8 + Math.random() * 5.0) * scaleMult;
+      sm.growRate = (2.0 + Math.random() * 1.5) * scaleMult;
       sm.rot = Math.random() * Math.PI * 2;
       sm.vRot = (Math.random() - 0.5) * 0.28;
-      sm.baseAlpha = 0.16 + Math.random() * 0.09;
-      sm.baseGrey = 0.75 + Math.random() * 0.25;
+      sm.baseAlpha = 0.17 + Math.random() * 0.1;
+      sm.baseGrey = 0.78 + Math.random() * 0.22;
       sm.life = 0;
-      sm.maxLife = 3.2 + Math.random() * 1.8;
+      sm.maxLife = 3.4 + Math.random() * 1.9;
     }
   }
 
   /**
-   * EFFECT #9: Stage-Lip Roof Truss V-Angled Titanium Silver & Gold Mines + 7m Cold-Spark Gerbs.
+   * TIER 1 — Stage-Lip, Catwalk Perimeter & Roof-Truss V-Angled Silver/Gold Mines + Cold-Spark Fountains (y: 1.5m–16m).
    */
   launchStageTrussMines(intensity = 1.0) {
-    const trussXs = [-11.4, -6.8, -2.4, 2.4, 6.8, 11.4];
-    const perMortar = this.adaptiveLowPower ? 14 : Math.round(24 * Math.min(1.4, intensity));
+    const trussXs = [-14.2, -9.8, -5.2, -1.8, 1.8, 5.2, 9.8, 14.2];
+    const perMortar = this.adaptiveLowPower ? 12 : Math.round(22 * Math.min(1.4, intensity));
     for (let m = 0; m < trussXs.length; m += 1) {
       const mx = trussXs[m];
-      const mz = -5.4;
-      const my = 12.2;
+      const mz = -6.2;
+      const my = 14.2;
       const isGold = m % 2 === 1;
-      const fanDir = mx < 0 ? -0.35 : 0.35;
+      const fanDir = mx < 0 ? -0.38 : 0.38;
       for (let i = 0; i < perMortar; i += 1) {
-        const spread = (Math.random() - 0.5) * 0.72 + fanDir * (0.4 + Math.random() * 0.8);
-        const speed = 13.5 + Math.random() * 9.5;
+        const spread = (Math.random() - 0.5) * 0.68 + fanDir * (0.35 + Math.random() * 0.85);
+        const speed = 14.2 + Math.random() * 10.0;
         this._colorA.setHex(isGold ? 0xfef08a : 0xf8fafc);
         this._colorB.setHex(isGold ? 0xd97706 : 0x38bdf8);
         this.spawnFireworkParticle({
           x: mx + (Math.random() - 0.5) * 0.35,
           y: my,
           z: mz + (Math.random() - 0.5) * 0.35,
-          vx: Math.sin(spread) * speed * 0.85,
-          vy: Math.cos(spread * 0.6) * speed,
+          vx: Math.sin(spread) * speed * 0.88,
+          vy: Math.cos(spread * 0.58) * speed,
           vz: (Math.random() - 0.5) * 4.5 - 1.2,
           r0: 1.0,
           g0: 0.99,
@@ -7243,74 +7964,136 @@ export class StageBand {
           r2: this._colorB.r,
           g2: this._colorB.g,
           b2: this._colorB.b,
-          size: 0.78 + Math.random() * 0.42,
-          stretch: 2.35,
+          size: 0.82 + Math.random() * 0.44,
+          stretch: 2.45,
           spriteMode: i % 4 === 0 ? 1 : 0,
-          hdrBoost: 1.85,
-          drag: 0.36,
-          gravity: 10.2,
+          hdrBoost: 1.9,
+          drag: 0.35,
+          gravity: 10.0,
           burstType: 'stage_mine',
           life: 0,
-          maxLife: 0.65 + Math.random() * 0.42,
+          maxLife: 0.68 + Math.random() * 0.44,
         });
       }
     }
-    this.registerFireworkFlash(0, 16, -4, 0xfef08a, 145);
-    this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 1.8);
+    this.registerFireworkFlash(0, 17, -5, 0xfef08a, 155);
+    this.sparkEmitterTimer = Math.max(this.sparkEmitterTimer, 2.0);
   }
 
   /**
-   * EFFECT #4: Beat-Synchronized Roman Candle Tubes along upper stadium rim (1/8-note & 1/16-note rapid pearl bursts).
+   * TIER 2 — Stadium Rim Rapid Roman Candle & Comet Batteries (11 angled mortar pods, y: 18m–32m).
+   * Fires rapid 1/8-note and 1/16-note musical sweeps: LEFT_TO_RIGHT, RIGHT_TO_LEFT, CENTER_OUT_V, CRISS_CROSS_X.
    */
-  launchRomanCandleSalvo(paletteMode = 'patriot', subdiv = 8, shotsPerTube = 6) {
-    if (this.fwRomanQueue.length >= 24) return;
-    const tubePositions = [
-      { x: -24, y: 12.5, z: -16, aimX: 0.32 },
-      { x: -15, y: 13.8, z: -17, aimX: 0.18 },
-      { x: -7, y: 14.2, z: -18, aimX: 0.08 },
-      { x: 7, y: 14.2, z: -18, aimX: -0.08 },
-      { x: 15, y: 13.8, z: -17, aimX: -0.18 },
-      { x: 24, y: 12.5, z: -16, aimX: -0.32 },
+  launchRomanCandleSalvo(paletteMode = 'patriot', subdiv = 8, shotsPerSweep = 11, forcedPattern = null) {
+    if (this.fwRomanQueue.length >= 36) return;
+    const rimPods = [
+      { x: -30, y: 18.2, z: -21, aimX: 0.36 },
+      { x: -24, y: 19.0, z: -22, aimX: 0.28 },
+      { x: -18, y: 19.8, z: -23, aimX: 0.2 },
+      { x: -12, y: 20.4, z: -24, aimX: 0.13 },
+      { x: -6, y: 21.0, z: -24.5, aimX: 0.06 },
+      { x: 0, y: 21.4, z: -25, aimX: 0.0 },
+      { x: 6, y: 21.0, z: -24.5, aimX: -0.06 },
+      { x: 12, y: 20.4, z: -24, aimX: -0.13 },
+      { x: 18, y: 19.8, z: -23, aimX: -0.2 },
+      { x: 24, y: 19.0, z: -22, aimX: -0.28 },
+      { x: 30, y: 18.2, z: -21, aimX: -0.36 },
     ];
     const colors =
       paletteMode === 'cyber'
         ? [0xfacc15, 0x22d3ee, 0xe879f9, 0x38bdf8]
-        : [0xff2e55, 0xf8fafc, 0x38bdf8];
+        : paletteMode === 'gold'
+          ? [0xfef08a, 0xfacc15, 0xf59e0b, 0xf8fafc]
+          : [0xff2e55, 0xf8fafc, 0x38bdf8, 0xfacc15];
 
-    const startOffset = Math.random() < 0.5 ? 0 : 1;
-    for (let s = 0; s < shotsPerTube; s += 1) {
-      const pairIdx = (s + startOffset) % 3;
-      const leftTube = tubePositions[pairIdx];
-      const rightTube = tubePositions[5 - pairIdx];
-      const hex = colors[s % colors.length];
-      this.fwRomanQueue.push({
-        subdiv,
-        colorHex: hex,
-        tubes: [leftTube, rightTube],
-      });
+    const patterns = ['LEFT_TO_RIGHT', 'RIGHT_TO_LEFT', 'CENTER_OUT_V', 'CRISS_CROSS_X'];
+    const pattern = forcedPattern || patterns[this._fwRomanPatternIdx % patterns.length];
+    this._fwRomanPatternIdx += 1;
+
+    if (pattern === 'LEFT_TO_RIGHT') {
+      const steps = Math.min(11, Math.max(6, shotsPerSweep));
+      for (let s = 0; s < steps; s += 1) {
+        const pod = rimPods[s % 11];
+        this.fwRomanQueue.push({
+          subdiv,
+          colorHex: colors[s % colors.length],
+          tubes: [{ ...pod, aimX: pod.aimX + 0.14 }],
+        });
+      }
+    } else if (pattern === 'RIGHT_TO_LEFT') {
+      const steps = Math.min(11, Math.max(6, shotsPerSweep));
+      for (let s = 0; s < steps; s += 1) {
+        const pod = rimPods[10 - (s % 11)];
+        this.fwRomanQueue.push({
+          subdiv,
+          colorHex: colors[s % colors.length],
+          tubes: [{ ...pod, aimX: pod.aimX - 0.14 }],
+        });
+      }
+    } else if (pattern === 'CENTER_OUT_V') {
+      // Symmetrical V-fan expanding outward from center pod (5) to outer rim pods (0 & 10)
+      for (let step = 0; step <= 5; step += 1) {
+        const hex = colors[step % colors.length];
+        if (step === 0) {
+          this.fwRomanQueue.push({
+            subdiv,
+            colorHex: hex,
+            tubes: [
+              { ...rimPods[5], aimX: -0.18 },
+              { ...rimPods[5], aimX: 0.18 },
+            ],
+          });
+        } else {
+          const leftPod = rimPods[5 - step];
+          const rightPod = rimPods[5 + step];
+          this.fwRomanQueue.push({
+            subdiv,
+            colorHex: hex,
+            tubes: [
+              { ...leftPod, aimX: -0.22 - step * 0.04 },
+              { ...rightPod, aimX: 0.22 + step * 0.04 },
+            ],
+          });
+        }
+      }
+    } else {
+      // CRISS_CROSS_X: opposing rim pods fire inward across each other in crisp X-trails
+      for (let step = 0; step < 6; step += 1) {
+        const leftPod = rimPods[step];
+        const rightPod = rimPods[10 - step];
+        const hexA = colors[step % colors.length];
+        this.fwRomanQueue.push({
+          subdiv,
+          colorHex: hexA,
+          tubes: [
+            { ...leftPod, aimX: 0.34 - step * 0.03 },
+            { ...rightPod, aimX: -0.34 + step * 0.03 },
+          ],
+        });
+      }
     }
   }
 
   /**
-   * EFFECT #8: Ground-Launched Girandola (Flying Spinning Firework UFO Wheel lifting vertically -> silver crown burst).
+   * TIER 3 — Ground-Launched Girandola (Flying Spinning Firework Wheel lifting to y: 38m–48m -> Silver Crown burst).
    */
   launchGirandolaWheel(x = null, z = null) {
     if (this.fwGirandolas.length >= 3) return;
-    const gx = x !== null ? x : (Math.random() - 0.5) * 28;
-    const gz = z !== null ? z : -15 - Math.random() * 6;
-    const apexY = 26 + Math.random() * 10;
+    const gx = x !== null ? x : (Math.random() - 0.5) * 32;
+    const gz = z !== null ? z : -17 - Math.random() * 7;
+    const apexY = 38 + Math.random() * 10;
     this.fwGirandolas.push({
       x: gx,
-      y: 2.2,
+      y: 2.5,
       z: gz,
-      vy: 14.5,
+      vy: 20.5,
       apexY,
       angle: Math.random() * Math.PI * 2,
-      spinSpeed: 20.0,
-      radius: 1.55,
+      spinSpeed: 22.0,
+      radius: 1.85,
       emitAccum: 0,
       life: 0,
-      maxLife: 2.05,
+      maxLife: 2.35,
     });
     if (typeof this.onFireworkLaunch === 'function') {
       this.onFireworkLaunch(Math.max(-0.85, Math.min(0.85, gx / 20)));
@@ -7318,23 +8101,28 @@ export class StageBand {
     this.hasActiveFireworks = true;
   }
 
-  launchFireworkShell(force = false, forcedType = null) {
+  launchFireworkShell(force = false, forcedType = null, forcedTier = null) {
     const meta = this.venueEnv?.meta;
     const isGrandEncore = this.grandEncoreActive || this.encoreFinaleActive;
     if (!force && !isGrandEncore && !meta?.supportsAerialFireworks && !this.encorePerformanceActive) return;
-    if (this.fwShells.length >= 12) return;
+    const maxShells = isGrandEncore ? 16 : 12;
+    if (this.fwShells.length >= maxShells) return;
 
-    const x = (Math.random() - 0.5) * 44; // -22 .. +22 behind open stadium rim
-    const z = -18 - Math.random() * 11; // -18 .. -29 behind stage rim
-    const apexY = isGrandEncore || force
-      ? 26 + Math.random() * 20 // 26 .. 46 high-altitude stadium bursts
-      : Math.max(17, (meta?.fireworksCeilingY || 20) + Math.random() * 7);
-    const flightSec = 0.88 + Math.random() * 0.34;
-    const shellGrav = 6.4;
-    const vy0 = apexY / flightSec + 0.5 * shellGrav * flightSec;
-    const windAx = (Math.random() - 0.5) * 3.0;
-
-    // Cycle across all rich authentic pyrotechnic shell types so every finale showcases dazzling variety
+    // Cycle across all rich authentic Tier-3 (shaped/multi-break) & Tier-4 (mega-canopy) shell types
+    const tier3Roster = [
+      'double_ring_saturn',
+      'crossette',
+      'tourbillon',
+      'heart_3d',
+      'star_5pt',
+      'shell_of_shells',
+    ];
+    const tier4Roster = [
+      'kamuro_willow',
+      'peony_strobe',
+      'chrysanthemum',
+      'dragon_egg_salute',
+    ];
     const shellRoster = [
       'chrysanthemum',
       'peony_strobe',
@@ -7349,29 +8137,58 @@ export class StageBand {
     ];
     let burstType = forcedType;
     if (!burstType) {
-      burstType = shellRoster[this._fwTypeCycleIndex % shellRoster.length];
+      if (forcedTier === 3) {
+        burstType = tier3Roster[this._fwTypeCycleIndex % tier3Roster.length];
+      } else if (forcedTier === 4) {
+        burstType = tier4Roster[this._fwTypeCycleIndex % tier4Roster.length];
+      } else {
+        burstType = shellRoster[this._fwTypeCycleIndex % shellRoster.length];
+      }
       this._fwTypeCycleIndex += 1;
-      // Extra weighting toward massive Kamuro/Chrysanthemum/Dragon-Egg spectacles in Grand Encore
-      if (isGrandEncore && Math.random() < 0.25) {
-        const finaleFavorites = ['kamuro_willow', 'chrysanthemum', 'dragon_egg_salute', 'shell_of_shells'];
-        burstType = finaleFavorites[Math.floor(Math.random() * finaleFavorites.length)];
+      // Extra weighting toward massive Kamuro/Strobe/Dragon-Egg spectacles in Grand Encore
+      if (!forcedTier && isGrandEncore && Math.random() < 0.3) {
+        burstType = tier4Roster[Math.floor(Math.random() * tier4Roster.length)];
       }
     }
 
-    // Also occasionally pair an aerial launch with a Girandola UFO wheel!
+    const resolvedTier =
+      forcedTier ||
+      (tier4Roster.includes(burstType) ? 4 : 3);
+
+    // Pair Girandola UFO wheels in Tier 3
     if (burstType === 'girandola') {
-      this.launchGirandolaWheel(x * 0.7, z + 3);
+      this.launchGirandolaWheel((Math.random() - 0.5) * 30, -18 - Math.random() * 6);
       return;
     }
+
+    const x = (Math.random() - 0.5) * (resolvedTier === 4 ? 58 : 48);
+    const z = (resolvedTier === 4 ? -24 : -19) - Math.random() * 12;
+    let apexY;
+    if (isGrandEncore || force || meta?.supportsAerialFireworks) {
+      // Tier 3 Mid-Sky: y = 38m–52m | Tier 4 High-Altitude Mega-Canopy: y = 55m–75m
+      apexY =
+        resolvedTier === 4
+          ? 55 + Math.random() * 20
+          : 38 + Math.random() * 14;
+    } else {
+      apexY = Math.max(20, (meta?.fireworksCeilingY || 24) + Math.random() * 8);
+    }
+
+    const flightSec = resolvedTier === 4 ? 1.08 + Math.random() * 0.34 : 0.92 + Math.random() * 0.28;
+    const shellGrav = 6.6;
+    const vy0 = apexY / flightSec + 0.5 * shellGrav * flightSec;
+    const windAx = (Math.random() - 0.5) * 2.8;
 
     const palette =
       burstType === 'kamuro_willow'
         ? FIREWORK_PALETTES[0]
         : burstType === 'heart_3d'
           ? FIREWORK_PALETTES[3]
-          : FIREWORK_PALETTES[Math.floor(Math.random() * FIREWORK_PALETTES.length)];
+          : burstType === 'peony_strobe'
+            ? [0xe879f9, 0xf8fafc, 0xf43f5e]
+            : FIREWORK_PALETTES[Math.floor(Math.random() * FIREWORK_PALETTES.length)];
 
-    const pan = Math.max(-0.85, Math.min(0.85, x / 20));
+    const pan = Math.max(-0.85, Math.min(0.85, x / 24));
     if (typeof this.onFireworkLaunch === 'function') {
       this.onFireworkLaunch(pan);
     }
@@ -7380,12 +8197,13 @@ export class StageBand {
       x,
       y: 0.4,
       z,
-      vx: (Math.random() - 0.5) * 2.0,
+      vx: (Math.random() - 0.5) * 2.2,
       vy: vy0,
       vz: (Math.random() - 0.5) * 1.4,
       ax: windAx,
       gravity: shellGrav,
       apexY,
+      tier: resolvedTier,
       palette,
       burstType,
       trailAccum: 0,
@@ -7495,83 +8313,84 @@ export class StageBand {
       return;
     }
 
-    // ── EFFECT #2: PEONY & STROBE-TIPPED PEONY (crisp spherical burst + silver/gold high-freq twinkle final 0.6s) ──
+    // ── TIER 4: SILVER / MAGENTA STROBE-TIPPED PEONY (high-altitude crisp spherical burst + high-freq strobe twinkle) ──
     if (burstType === 'peony_strobe') {
-      const count = low ? 105 : 175 + Math.floor(Math.random() * 45);
+      const count = low ? 115 : 195 + Math.floor(Math.random() * 50);
+      const tierScale = shell.tier === 4 ? 1.24 : 1.0;
       for (let i = 0; i < count; i += 1) {
         const tNorm = (i + 0.5) / count;
         const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.04;
         const theta = goldenAngle * i;
-        const isInner = i % 5 === 0;
-        const speed = isInner ? 8.5 + Math.random() * 2.5 : 14.5 + Math.random() * 2.8;
-        this._colorA.setHex(isInner ? pal[1] : pal[0]);
-        this._colorB.setHex(pal[2] ?? pal[1]);
+        const isInner = i % 4 === 0;
+        const speed = (isInner ? 10.2 + Math.random() * 2.8 : 16.5 + Math.random() * 3.4) * tierScale;
+        this._colorA.setHex(isInner ? 0xf8fafc : (i % 2 === 0 ? 0xe879f9 : pal[0]));
+        this._colorB.setHex(isInner ? 0xe0f2fe : 0xf43f5e);
         this.spawnFireworkParticle({
           x: sx,
           y: sy,
           z: sz,
           vx: Math.sin(phi) * Math.cos(theta) * speed,
-          vy: Math.cos(phi) * speed + 1.0,
+          vy: Math.cos(phi) * speed + 1.2,
           vz: Math.sin(phi) * Math.sin(theta) * speed,
           r0: 1.0,
-          g0: 0.98,
-          b0: 0.92,
+          g0: 0.99,
+          b0: 0.98,
           r: this._colorA.r,
           g: this._colorA.g,
           b: this._colorA.b,
           r2: this._colorB.r,
           g2: this._colorB.g,
           b2: this._colorB.b,
-          size: isInner ? 1.05 : 1.38,
-          stretch: 0.55,
+          size: (isInner ? 1.2 : 1.55) * tierScale,
+          stretch: 0.65,
           spriteMode: 1,
-          hdrBoost: 1.85,
-          drag: 0.24,
-          gravity: 3.8,
+          hdrBoost: 2.0,
+          drag: 0.25,
+          gravity: 3.6,
           burstType: 'peony_strobe',
-          strobeTail: !isInner,
-          maxLife: 1.85 + Math.random() * 0.4,
+          strobeTail: true,
+          maxLife: 2.1 + Math.random() * 0.45,
         });
       }
       return;
     }
 
-    // ── EFFECT #3: KAMURO / GOLDEN BROCADE CROWN & WEEPING WILLOW (18–24m drooping canopy, 3.5–4.5s hang time) ──
+    // ── TIER 4: MEGA-CANOPY 24m-RADIUS 24k GOLD WEEPING KAMURO BROCADE CROWN (4.2s drooping charcoal-sparkle canopy) ──
     if (burstType === 'kamuro_willow') {
-      const count = low ? 130 : 225 + Math.floor(Math.random() * 45);
+      const count = low ? 145 : 250 + Math.floor(Math.random() * 55);
       for (let i = 0; i < count; i += 1) {
         const tNorm = (i + 0.5) / count;
-        const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.08;
-        const theta = goldenAngle * i + (Math.random() - 0.5) * 0.1;
-        // Massive 18-24m canopy initial burst velocity that arrests via high drag and weeps downward
-        const speed = 17.5 + Math.random() * 7.5;
+        const phi = Math.acos(1 - 2 * tNorm) + (Math.random() - 0.5) * 0.07;
+        const theta = goldenAngle * i + (Math.random() - 0.5) * 0.09;
+        // Massive 24m-radius high-altitude brocade canopy arresting via air drag and weeping gracefully for ~4.2s
+        const speed = 21.5 + Math.random() * 7.5;
         this._colorA.setHex(i % 4 === 0 ? 0xfef9c3 : 0xfacc15);
-        this._colorB.setHex(0x9a3412);
+        this._colorB.setHex(0xb45309);
         this.spawnFireworkParticle({
           x: sx,
           y: sy,
           z: sz,
           vx: Math.sin(phi) * Math.cos(theta) * speed,
-          vy: Math.cos(phi) * speed * 0.92 + 3.4,
+          vy: Math.cos(phi) * speed * 0.94 + 4.2,
           vz: Math.sin(phi) * Math.sin(theta) * speed,
           r0: 1.0,
-          g0: 0.97,
-          b0: 0.82,
+          g0: 0.98,
+          b0: 0.85,
           r: this._colorA.r,
           g: this._colorA.g,
           b: this._colorA.b,
           r2: this._colorB.r,
           g2: this._colorB.g,
           b2: this._colorB.b,
-          size: 1.25 + Math.random() * 0.45,
-          stretch: 3.1,
+          size: 1.42 + Math.random() * 0.48,
+          stretch: 3.45,
           spriteMode: 0,
-          hdrBoost: 1.7,
-          drag: 0.34,
-          gravity: 5.6,
+          hdrBoost: 1.85,
+          drag: 0.35,
+          gravity: 5.4,
           burstType: 'kamuro_willow',
-          trailTimer: 0.055 + Math.random() * 0.055,
-          maxLife: 3.55 + Math.random() * 0.95, // 3.5 - 4.5s weeping shimmer!
+          trailTimer: 0.048 + Math.random() * 0.05,
+          maxLife: 3.95 + Math.random() * 0.65, // ~4.2s weeping 24k gold charcoal-sparkle canopy!
         });
       }
       return;
@@ -7982,14 +8801,17 @@ export class StageBand {
     this.finaleConfettiTimer = 0.15;
 
     if (this.encoreFinaleActive) {
-      this.triggerStagePyro(grade === 'S' ? 1.55 : 1.2);
+      this.triggerStagePyro(grade === 'S' ? 1.55 : 1.25);
+      this.launchStageTrussMines(1.35);
       if (grade === 'S' || grade === 'A' || this.encorePerformanceActive) {
         this.triggerConfettiBurst();
       }
-      this.launchFireworkShell(true, 'kamuro_willow');
-      this.launchFireworkShell(true, 'heart_3d');
-      this.launchRomanCandleSalvo('patriot', 8, 8);
-      this.launchGirandolaWheel(0, -16);
+      // Engrande 4-Tier Opening Salvo: Tier 4 Kamuro + Strobe Peony layered over Tier 3 Heart + Girandola & Tier 2 11-Pod Sweep!
+      this.launchFireworkShell(true, 'kamuro_willow', 4);
+      this.launchFireworkShell(true, 'peony_strobe', 4);
+      this.launchFireworkShell(true, 'heart_3d', 3);
+      this.launchRomanCandleSalvo('patriot', 8, 11, 'CENTER_OUT_V');
+      this.launchGirandolaWheel(0, -18);
     }
   }
 
@@ -8039,6 +8861,10 @@ export class StageBand {
       this.livePositions.vocals.z = this.vocalist.root.position.z;
     }
 
+    const te = stageState?.transientEnergy;
+    const isGrandEncoreCam = Boolean(
+      stageState?.isEncoreActive || this.grandEncoreActive || this.encoreFinaleActive
+    );
     this.cameraDirector.update(this.camera, dt, {
       clock: this.clock,
       playing: Boolean(stageState?.playing),
@@ -8047,7 +8873,7 @@ export class StageBand {
       combo: stageState?.combo || 0,
       fever: Boolean(stageState?.feverActive),
       encore: Boolean(stageState?.isEncore || this.encorePerformanceActive),
-      isEncoreActive: Boolean(stageState?.isEncoreActive || this.grandEncoreActive || this.encoreFinaleActive),
+      isEncoreActive: isGrandEncoreCam,
       encoreFinaleActive: this.encoreFinaleActive,
       stemDropped: Boolean(stageState?.stemDropped),
       activeInstrument: stageState?.instrument || this.activeInstrument,
@@ -8057,6 +8883,9 @@ export class StageBand {
       drumEnergy: telemetry?.drumEnergy || 0,
       kickTransient: telemetry?.kickTransient || 0,
       snareTransient: telemetry?.snareTransient || 0,
+      kickImpulse: te?.kickImpulse ?? telemetry?.kickTransient ?? 0,
+      snareImpulse: te?.snareImpulse ?? telemetry?.snareTransient ?? 0,
+      guitarRiffEnergy: te?.guitarRiffEnergy ?? telemetry?.guitarEnergy ?? 0,
       stemActivity: stageState?.stemActivity || { drums: true, bass: true, guitar: true, piano: true },
       lineupPositions: {
         guitar: marks.guitar,
@@ -8070,7 +8899,13 @@ export class StageBand {
       currentSection: stageState?.currentSection || null,
       beatGrid: stageState?.beatGrid || null,
       currentTick: stageState?.currentTick,
+      beatIndex: stageState?.beatIndex,
       beatPhase: stageState?.beatPhase,
+      isDownbeat: Boolean(stageState?.isDownbeat || te?.isDownbeat),
+      isPhraseBoundary: Boolean(stageState?.isPhraseBoundary || te?.isPhraseBoundary),
+      fireworksGrandActive: Boolean(
+        isGrandEncoreCam || this.fwShells.length >= 3 || (this.fireworkFlashState?.intensity || 0) > 0.35
+      ),
       crowdEventType: this.crowdEvent?.type || 'NORMAL',
       crowdEventCenter: { x: this.crowdEvent?.centerX || 0, z: this.crowdEvent?.centerZ || 14.8 },
       trackMeta: this.lastTrackMeta,
@@ -8113,40 +8948,81 @@ export class StageBand {
       this.fwSmokeUniforms.uProjScale.value = camProjScale;
     }
 
-    // A. Musical & Pyromusical Choreography (Chorus Drops, Downbeats, Fever, Grand Encore)
+    // A. Engrande 4-Tier Musical & Pyromusical Choreography (Chorus Downbeats, Phrase Sweeps, Fever, Final 16-Bar Grand Encore)
+    const te = stageState?.transientEnergy;
+    const isDownbeat = Boolean(stageState?.isDownbeat || te?.isDownbeat);
+    const isPhraseBoundary = Boolean(stageState?.isPhraseBoundary || te?.isPhraseBoundary);
+    const barIndex = Math.floor(beatIdx / 4);
+    const isChorusOrPeak =
+      this.lightingState?.sectionType === 'CHORUS' ||
+      this.lightingState?.sectionType === 'OUTRO' ||
+      fever ||
+      encore ||
+      isGrandEncore;
+    const songDuration = Number(stageState?.songDuration || this.lastTrackMeta?.duration || 0);
+    const isFinal16Bars =
+      isGrandEncore ||
+      (encore && songDuration > 24 && songTime >= Math.max(0, songDuration - (16 * 4 * 60) / bpm));
+
     if (this.lightingState?.chorusDropTriggered && playing) {
-      this.launchStageTrussMines(1.3);
-      this.launchRomanCandleSalvo(fever ? 'cyber' : 'patriot', 8, 6);
-      this.launchFireworkShell(true, 'chrysanthemum');
-      this.launchFireworkShell(true, 'star_5pt');
+      // Chorus drop ignites Tier 1 + Tier 2 + Tier 3 + Tier 4 simultaneously!
+      this.triggerStagePyro(1.35);
+      this.launchStageTrussMines(1.35);
+      this.launchRomanCandleSalvo(fever ? 'cyber' : 'patriot', 8, 11);
+      this.launchFireworkShell(true, 'double_ring_saturn', 3);
+      this.launchFireworkShell(true, 'chrysanthemum', 4);
+      this._lastChorusDownbeatBar = barIndex;
+    } else if (playing && isChorusOrPeak && isDownbeat && barIndex !== this._lastChorusDownbeatBar) {
+      // Tier 1 Stage-Lip & Catwalk V-Flames, Cold-Sparks & Truss Silver Mines on every Chorus Downbeat
+      this._lastChorusDownbeatBar = barIndex;
+      this.launchStageTrussMines(isGrandEncore ? 1.25 : 1.0);
+      this.pyroFlameIntensity = Math.max(this.pyroFlameIntensity, isGrandEncore ? 1.15 : 0.85);
+      this.pyroFlameTimer = Math.max(this.pyroFlameTimer, 0.72);
+      if (isPhraseBoundary && this.fwRomanQueue.length === 0) {
+        this.launchRomanCandleSalvo(fever ? 'cyber' : 'patriot', isFinal16Bars ? 16 : 8, 11);
+      }
     } else if (this.lightingState?.pyroDownbeatAccent && newBeat) {
       this.launchStageTrussMines(0.95);
     }
 
-    if (isGrandEncore) {
+    if (isFinal16Bars) {
+      // Engrande Pyromusical Finale: Layer Tier-4 Kamuro Willows over Silver/Magenta Strobe Peonies, Tier-3 Shaped Shells,
+      // Tier-2 1/16-note 11-Pod Roman Candle Sweeps, and Dragon-Egg Crackling Finale Barrages!
       this.finaleFireworkTimer -= dt;
       if (this.finaleFireworkTimer <= 0) {
-        this.launchFireworkShell(true);
-        if (Math.random() < 0.24) {
+        const roll = Math.random();
+        if (roll < 0.34) {
+          // Layered Mega-Canopy Pair: 24m Gold Kamuro Willow + Silver/Magenta Strobe Peony!
+          this.launchFireworkShell(true, 'kamuro_willow', 4);
+          this.launchFireworkShell(true, 'peony_strobe', 4);
+        } else if (roll < 0.62) {
+          // Mid-sky Tier-3 Shaped Shell + High-altitude Dragon-Egg Crackling Barrage!
+          this.launchFireworkShell(true, null, 3);
+          this.launchFireworkShell(true, 'dragon_egg_salute', 4);
+        } else {
+          this.launchFireworkShell(true, null, 3);
+          this.launchFireworkShell(true, 'chrysanthemum', 4);
+        }
+        if (Math.random() < 0.28) {
           this.launchGirandolaWheel();
         }
-        if (Math.random() < 0.32 && this.fwRomanQueue.length === 0) {
+        if (this.fwRomanQueue.length === 0) {
           this.launchRomanCandleSalvo(
-            Math.random() < 0.5 ? 'patriot' : 'cyber',
-            Math.random() < 0.45 ? 16 : 8,
-            Math.random() < 0.45 ? 8 : 6
+            Math.random() < 0.45 ? 'gold' : Math.random() < 0.5 ? 'patriot' : 'cyber',
+            Math.random() < 0.55 ? 16 : 8,
+            11
           );
         }
-        this.finaleFireworkTimer = 0.46 + Math.random() * 0.36;
+        this.finaleFireworkTimer = 0.48 + Math.random() * 0.34;
       }
     } else if (playing && (fever || (encore && combo >= 15))) {
       this.feverFireworkTimer -= dt;
       if (this.feverFireworkTimer <= 0) {
-        this.launchFireworkShell(encore);
-        if (fever && Math.random() < 0.35 && this.fwRomanQueue.length === 0) {
-          this.launchRomanCandleSalvo('cyber', 8, 4);
+        this.launchFireworkShell(encore, null, Math.random() < 0.5 ? 3 : 4);
+        if (fever && Math.random() < 0.4 && this.fwRomanQueue.length === 0) {
+          this.launchRomanCandleSalvo('cyber', 8, 11);
         }
-        this.feverFireworkTimer = fever ? 0.92 : 1.55;
+        this.feverFireworkTimer = fever ? 0.88 : 1.45;
       }
     }
 
@@ -8331,28 +9207,38 @@ export class StageBand {
       }
     }
 
-    // C. Decay 6 pooled sky/rim PointLights, populate illuminated smoke flash uniforms & aggregate LightingProfileController flash state!
+    // C. Decay 6 pooled sky/rim PointLights, populate illuminated smoke flash uniforms & multi-color Stadium Bowl wash!
     let totalFlashWeight = 0;
     let aggR = 0;
     let aggG = 0;
     let aggB = 0;
+    let secWeight = 0;
+    let secR = 0;
+    let secG = 0;
+    let secB = 0;
     let peakNorm = 0;
     if (this.fwBurstLights?.length) {
       for (let l = 0; l < this.fwBurstLights.length; l += 1) {
         const pl = this.fwBurstLights[l];
         if (pl.intensity > 0.08) {
-          pl.intensity = THREE.MathUtils.damp(pl.intensity, 0, 4.9, dt);
+          pl.intensity = THREE.MathUtils.damp(pl.intensity, 0, 4.6, dt);
         } else if (pl.intensity > 0) {
           pl.intensity = 0;
         }
         const norm = Math.min(1.6, pl.intensity / 155);
         this.fwFlashUniformPos[l].copy(pl.position);
-        this.fwFlashUniformCol[l].set(pl.color.r * norm * 1.5, pl.color.g * norm * 1.5, pl.color.b * norm * 1.5);
+        this.fwFlashUniformCol[l].set(pl.color.r * norm * 1.55, pl.color.g * norm * 1.55, pl.color.b * norm * 1.55);
         if (norm > 0.01) {
           totalFlashWeight += norm;
           aggR += pl.color.r * norm;
           aggG += pl.color.g * norm;
           aggB += pl.color.b * norm;
+          if (l % 2 === 1) {
+            secWeight += norm;
+            secR += pl.color.r * norm;
+            secG += pl.color.g * norm;
+            secB += pl.color.b * norm;
+          }
           if (norm > peakNorm) peakNorm = norm;
         }
       }
@@ -8365,8 +9251,18 @@ export class StageBand {
         Math.min(1, aggB / totalFlashWeight)
       );
       this.fireworkFlashState.color.copy(this._fwFlashAggColor);
-      this.fireworkFlashState.intensity = Math.min(1.5, peakNorm + totalFlashWeight * 0.25);
-      this.fireworkFlashState.skyBloom = Math.min(1.2, totalFlashWeight * 0.55);
+      if (secWeight > 0.01) {
+        this._fwFlashSecondColor.setRGB(
+          Math.min(1, secR / secWeight),
+          Math.min(1, secG / secWeight),
+          Math.min(1, secB / secWeight)
+        );
+        this.fireworkFlashState.secondaryColor.copy(this._fwFlashSecondColor);
+      } else {
+        this.fireworkFlashState.secondaryColor.copy(this._fwFlashAggColor);
+      }
+      this.fireworkFlashState.intensity = Math.min(1.65, peakNorm + totalFlashWeight * 0.28);
+      this.fireworkFlashState.skyBloom = Math.min(1.35, totalFlashWeight * 0.58);
     } else {
       this.fireworkFlashState.intensity = 0;
       this.fireworkFlashState.skyBloom = 0;
@@ -8788,22 +9684,25 @@ export class StageBand {
       }
     }
 
-    // B. Stage Front Volumetric Flame Pillars
+    // B. Stage-Lip & Catwalk Perimeter V-Angled Gold/Crimson Flame Columns (y: 1.5m–9m)
     if (this.pyroFlameTimer > 0) {
       this.pyroFlameTimer = Math.max(0, this.pyroFlameTimer - dt);
       const env = Math.min(1, this.pyroFlameTimer * 2.2) * this.pyroFlameIntensity;
-      this.outerFlameMat.opacity = Math.min(0.85, env * 0.72);
-      this.innerFlameMat.opacity = Math.min(0.95, env * 0.88);
-      this.pyroGlowLight.intensity = env * 36;
+      this.outerFlameMat.opacity = Math.min(0.88, env * 0.76);
+      this.innerFlameMat.opacity = Math.min(0.96, env * 0.92);
+      this.pyroGlowLight.intensity = env * 44;
 
       for (let i = 0; i < this.flamePillars.length; i += 1) {
         const fp = this.flamePillars[i];
         fp.group.visible = true;
-        const flicker = 0.78 + Math.sin(t * 28 + fp.phase) * 0.24;
-        const scaleY = Math.max(0.15, env * flicker);
-        const scaleXZ = 0.75 + env * 0.35;
+        const flicker = 0.8 + Math.sin(t * 28 + fp.phase) * 0.24;
+        const scaleY = Math.max(0.24, env * flicker * (fp.heightMult || 1.1));
+        const scaleXZ = 0.78 + env * 0.36;
         fp.group.scale.set(scaleXZ, scaleY, scaleXZ);
-        fp.group.rotation.y = t * 3 + fp.phase;
+        fp.group.rotation.z = fp.vTilt || 0;
+        fp.group.rotation.x = fp.xTilt || 0;
+        if (fp.outer) fp.outer.rotation.y = t * 3.2 + fp.phase;
+        if (fp.inner) fp.inner.rotation.y = -t * 4.4 + fp.phase;
       }
     } else if (this.pyroGlowLight.intensity > 0.01) {
       this.pyroFlameIntensity = 0;
@@ -8815,7 +9714,7 @@ export class StageBand {
       }
     }
 
-    // C. Towering 7m Titanium Cold-Spark Gerb Fountains (velocity-stretched needles, continuous at Royal Opera!)
+    // C. Towering 8.5m Stage-Lip & Catwalk/B-Stage Titanium Cold-Spark Fountains (single GPU draw call)
     const continuousFountains = Boolean(
       this.venueEnv?.meta?.continuousIndoorFountains || this.venueOverlayId === 'ROYAL_OPERA'
     );
@@ -8824,20 +9723,32 @@ export class StageBand {
     }
     if (this.sparkEmitterTimer > 0) {
       this.sparkEmitterTimer = Math.max(0, this.sparkEmitterTimer - dt);
-      const emitPerFrame = Math.min(20, Math.ceil(dt * (continuousFountains ? 95 : 210)));
+      const emitPerFrame = Math.min(28, Math.ceil(dt * (continuousFountains ? 115 : 260)));
+      const catNozzles = this.catwalkSparkNozzles || [];
+      const totalNozzles = this.pyroNozzleXs.length + catNozzles.length;
       for (let e = 0; e < emitPerFrame; e += 1) {
-        const nozzleIdx = Math.floor(Math.random() * this.pyroNozzleXs.length);
-        const nozzleX = this.pyroNozzleXs[nozzleIdx];
+        const slotIdx = Math.floor(Math.random() * totalNozzles);
+        let nozzleX = 0;
+        let nozzleZ = 5.18;
+        let tiltVx = 0;
+        if (slotIdx < this.pyroNozzleXs.length) {
+          nozzleX = this.pyroNozzleXs[slotIdx];
+        } else {
+          const cn = catNozzles[slotIdx - this.pyroNozzleXs.length];
+          nozzleX = cn.x;
+          nozzleZ = cn.z;
+          tiltVx = (cn.tiltX || 0) * 6.5;
+        }
         const sp = this.sparks[this.sparkCursor];
         this.sparkCursor = (this.sparkCursor + 1) % this.sparkCount;
-        const isSilverTitanium = (e + nozzleIdx) % 3 === 0;
+        const isSilverTitanium = (e + slotIdx) % 3 === 0;
         sp.active = true;
         sp.x = nozzleX + (Math.random() - 0.5) * 0.22;
         sp.y = 0.16;
-        sp.z = 4.62 + (Math.random() - 0.5) * 0.2;
-        sp.vx = (Math.random() - 0.5) * 1.45;
-        // Peak height v^2 / (2*g) with vy=12.6..14.4 & g=11.6 => true towering 6.8m - 8.5m stage-front cold-spark gerbs!
-        sp.vy = 11.4 + Math.random() * 3.4;
+        sp.z = nozzleZ + (Math.random() - 0.5) * 0.2;
+        sp.vx = tiltVx + (Math.random() - 0.5) * 1.45;
+        // Peak height v^2 / (2*g) with vy=12.4..14.6 & g=11.6 => towering 6.8m - 9.0m cold-spark fountains!
+        sp.vy = 11.8 + Math.random() * 3.4;
         sp.vz = (Math.random() - 0.5) * 1.25;
         sp.r = isSilverTitanium ? 0.98 : 1.0;
         sp.g = isSilverTitanium ? 0.99 : 0.88;
@@ -9046,20 +9957,55 @@ export class StageBand {
       this.hazePoints.geometry.attributes.position.needsUpdate = true;
     }
 
-    // I. Floor Subwoofers + Curved Hanging Line-Array Woofer Excursions synced to Bass energy
+    // I. Cardioid Floor Subwoofers + Curved 12-Cabinet Line-Array Woofer Excursions + Motorized Roof Pods
     const bassHit = Math.min(1, telemetry?.bassEnergy || 0);
+    const subKick = Math.min(1.25, this.lightingState?.subKickPunch ?? bassHit);
     if (this.subCones) {
-      const push = 1.44 + bassHit * 0.1;
+      const push = 1.48 + subKick * 0.11;
       for (let i = 0; i < this.subCones.length; i += 1) {
-        this.subCones[i].position.z = push;
+        if (this.subCones[i]) this.subCones[i].position.z = push;
+      }
+    }
+    if (this.cardioidSubGrilles) {
+      const cardioidPush = 0.55 + subKick * 0.075;
+      const cardioidScale = 1 + subKick * 0.032;
+      for (let i = 0; i < this.cardioidSubGrilles.length; i += 1) {
+        this.cardioidSubGrilles[i].position.z = cardioidPush;
+        this.cardioidSubGrilles[i].scale.set(cardioidScale, cardioidScale, 1);
       }
     }
     if (this.lineArrayWoofers) {
-      const wooferZ = 0.39 + bassHit * 0.048;
-      const wooferS = 1 + bassHit * 0.08;
+      const wooferZ = 0.44 + subKick * 0.055;
+      const wooferS = 1 + subKick * 0.095;
       for (let i = 0; i < this.lineArrayWoofers.length; i += 1) {
         this.lineArrayWoofers[i].position.z = wooferZ;
         this.lineArrayWoofers[i].scale.set(wooferS, wooferS, 1);
+      }
+    }
+    if (this.motorizedLightPods && this.lightingState) {
+      const ls = this.lightingState;
+      const podTilt = ls.podTiltX || 0;
+      const podRoll = ls.podRollZ || 0;
+      const podSpin = ls.podSpinY || 0;
+      const podLift = ls.podLiftY || 0;
+      if (this.podRingMat) {
+        this.podRingMat.emissiveIntensity = ls.podRingIntensity ?? 1.4;
+        if (ls.spotPrimary) {
+          this.podRingMat.emissive.lerp(ls.spotPrimary, 0.14);
+          this.podRingMat.color.lerp(ls.spotPrimary, 0.14);
+        }
+      }
+      if (this.podBeamMat?.uniforms) {
+        if (ls.spotSecondary) this.podBeamMat.uniforms.uColor.value.lerp(ls.spotSecondary, 0.14);
+        this.podBeamMat.uniforms.uOpacity.value = Math.min(0.2, 0.055 + (ls.floorPulse || 0) * 0.075);
+      }
+      for (let i = 0; i < this.motorizedLightPods.length; i += 1) {
+        const pod = this.motorizedLightPods[i];
+        const sideSign = i === 0 ? -1 : i === 2 ? 1 : 0;
+        pod.pivot.position.y = pod.baseY + podLift * (pod.isCenter ? 1.0 : -0.65) + Math.sin(t * 1.1 + pod.phase) * 0.14;
+        pod.body.rotation.x = podTilt * (pod.isCenter ? 1.0 : 0.85) + Math.sin(t * 0.9 + pod.phase) * 0.06;
+        pod.body.rotation.z = podRoll * (sideSign !== 0 ? sideSign : 1.0);
+        pod.body.rotation.y = podSpin * (pod.isCenter ? 1.0 : -0.8) + pod.phase;
       }
     }
   }
@@ -9596,7 +10542,7 @@ export class StageBand {
       } else if (vM.action === 'EDGE_MONITOR_LEAN' || vM.action === 'EDGE_SURGE' || vM.action === 'CENTER_ANTHEM_BELT') {
         vM.stanceMode = 'EDGE_MONITOR';
         vM.targetX = 0;
-        vM.targetZ = 7.6;
+        vM.targetZ = 10.6;
         vM.targetRotY = 0;
       } else {
         vM.stanceMode = 'MIC_CENTER';
@@ -9606,23 +10552,24 @@ export class StageBand {
       }
     }
 
-    // 8× Fever streak or Guitar Solo T-catwalk walkout showcase
-    if ((fever && combo >= 30) || secType === 'GUITAR_SOLO') {
-      if (this.activeInstrument === 'guitar' || secType === 'GUITAR_SOLO') {
+    // Chorus Catwalk Strut, 8× Fever streak, or Guitar Solo extended T-catwalk -> Illuminated Circular B-Stage showcase!
+    const isChorusBStage = secType === 'CHORUS' && (fever || encore || guitarE > 0.42 || vocalE > 0.42);
+    if ((fever && combo >= 30) || secType === 'GUITAR_SOLO' || isChorusBStage) {
+      if (this.activeInstrument === 'guitar' || secType === 'GUITAR_SOLO' || (secType === 'CHORUS' && guitarE > 0.45)) {
         gM.stanceMode = secType === 'GUITAR_SOLO' ? 'KNEE_DROP_SOLO' : 'EDGE_MONITOR';
-        gM.targetX = isSingingGuitarist ? 0 : -0.42;
-        gM.targetZ = 9.05;
-        gM.targetRotY = 0.06;
+        gM.targetX = isSingingGuitarist ? 0 : secType === 'GUITAR_SOLO' ? -0.45 : -0.82;
+        gM.targetZ = secType === 'GUITAR_SOLO' ? 12.1 : 10.6;
+        gM.targetRotY = 0.08;
       } else if (this.activeInstrument === 'bass' && fever && combo >= 30) {
         bM.stanceMode = 'EDGE_MONITOR';
-        bM.targetX = 0.48;
-        bM.targetZ = 8.85;
+        bM.targetX = 0.56;
+        bM.targetZ = 11.75;
         bM.targetRotY = -0.08;
       }
-      if (marks.vocals.visible && fever && combo >= 30 && secType !== 'GUITAR_SOLO') {
+      if (marks.vocals.visible && secType !== 'GUITAR_SOLO' && ((fever && combo >= 30) || (secType === 'CHORUS' && vocalE > 0.38))) {
         vM.stanceMode = 'EDGE_MONITOR';
-        vM.targetX = 0;
-        vM.targetZ = 8.45;
+        vM.targetX = secType === 'CHORUS' ? 0.22 : 0;
+        vM.targetZ = 12.15;
         vM.targetRotY = 0;
       }
     }
@@ -9686,10 +10633,18 @@ export class StageBand {
       m.vx = nvx;
       m.z = nz;
       m.vz = nvz;
-      if (m.z > 4.65 && m.z < 9.15) {
-        m.x = THREE.MathUtils.clamp(m.x, -1.28, 1.28);
-      } else if (m.z >= 9.15) {
-        m.x = THREE.MathUtils.clamp(m.x, -3.2, 3.2);
+      if (m.z > 5.15 && m.z < 8.6) {
+        m.x = THREE.MathUtils.clamp(m.x, -1.18, 1.18);
+      } else if (m.z >= 8.6) {
+        // Keep roaming stars strictly inside the illuminated octagonal B-Stage (center z=11.0, safe radius 2.65m)
+        const bx = m.x;
+        const bz = m.z - 11.0;
+        const bDist = Math.hypot(bx, bz);
+        if (bDist > 2.65) {
+          const s = 2.65 / bDist;
+          m.x = bx * s;
+          m.z = 11.0 + bz * s;
+        }
       }
 
       const planarSpeed = Math.hypot(m.vx, m.vz);
@@ -9787,11 +10742,23 @@ export class StageBand {
     }
     const trackMeta = this.lastTrackMeta;
 
-    const drumE = playing ? Math.min(1, (telemetry?.drumEnergy || 0) * 1.65) : 0.12;
-    const bassE = playing ? Math.min(1, (telemetry?.bassEnergy || 0) * 1.55) : 0.1;
-    const guitarE = playing ? Math.min(1, (telemetry?.guitarEnergy || 0) * 1.65) : 0.12;
-    const pianoE = playing ? Math.min(1, (telemetry?.pianoEnergy || guitarE * 0.72) * 1.6) : 0.12;
-    const vocalE = playing ? Math.min(1, (telemetry?.vocalEnergy || 0) * 1.5) : 0.1;
+    // Real-time smoothed-attack / natural-decay per-stem telemetry from beatScheduler.js
+    const te = stageState?.transientEnergy;
+    const kickImpulse = playing ? Math.max(0, Math.min(1, te?.kickImpulse ?? telemetry?.kickTransient ?? 0)) : 0;
+    const snareImpulse = playing ? Math.max(0, Math.min(1, te?.snareImpulse ?? telemetry?.snareTransient ?? 0)) : 0;
+    const bassGroove = playing ? Math.max(0, Math.min(1, te?.bassGroove ?? telemetry?.bassEnergy ?? 0)) : 0.08;
+    const guitarRiffEnergy = playing ? Math.max(0, Math.min(1, te?.guitarRiffEnergy ?? telemetry?.guitarEnergy ?? 0)) : 0.1;
+    const guitarBendPulse = playing ? Math.max(0, Math.min(1, te?.guitarBendPulse ?? 0)) : 0;
+    const vocalKeysEnergy = playing ? Math.max(0, Math.min(1, te?.vocalKeysEnergy ?? telemetry?.vocalEnergy ?? 0)) : 0.08;
+    const isDownbeat = Boolean(stageState?.isDownbeat || te?.isDownbeat);
+    const isSnareHit = Boolean(stageState?.isSnareHit || te?.isSnareHit);
+    const isPhraseBoundary = Boolean(stageState?.isPhraseBoundary || te?.isPhraseBoundary);
+
+    const drumE = playing ? Math.min(1, Math.max((telemetry?.drumEnergy || 0) * 1.65, (kickImpulse + snareImpulse) * 0.72)) : 0.12;
+    const bassE = playing ? Math.min(1, Math.max((telemetry?.bassEnergy || 0) * 1.55, bassGroove)) : 0.1;
+    const guitarE = playing ? Math.min(1, Math.max((telemetry?.guitarEnergy || 0) * 1.65, guitarRiffEnergy)) : 0.12;
+    const pianoE = playing ? Math.min(1, Math.max((telemetry?.pianoEnergy || guitarE * 0.72) * 1.6, vocalKeysEnergy)) : 0.12;
+    const vocalE = playing ? Math.min(1, Math.max((telemetry?.vocalEnergy || 0) * 1.5, vocalKeysEnergy)) : 0.1;
     const hypeBoost = fever || encore || this.encoreFinaleActive ? 1.35 : 1.0;
 
     // Decay note-driven animation impulses smoothly
@@ -9809,6 +10776,12 @@ export class StageBand {
       this.cymbalPhase[c] += dt * (14 + c * 2.5);
     }
 
+    // Trigger crash cymbal wobble automatically on musical phrase boundaries!
+    if (playing && isPhraseBoundary && drumE > 0.18) {
+      this.cymbalWobble[1] = Math.max(this.cymbalWobble[1], 0.92);
+      this.cymbalWobble[2] = Math.max(this.cymbalWobble[2], 1.0);
+    }
+
     // PHASE 1 — CINEMATIC STAGE WALK-ON & GEAR SETUP (-4.5s to -2.0s)!
     const isWalkOn = playing && songTime < -2.0;
     const walkP = isWalkOn ? Math.max(0, Math.min(1, (songTime + 4.5) / 2.5)) : 1;
@@ -9817,7 +10790,17 @@ export class StageBand {
     const marks = this.getLineupMarks();
     const stemActivity = stageState?.stemActivity || { drums: true, bass: true, guitar: true };
 
-    // Dynamic Stage Lighting & Section-Driven Mood Profile interpolation (with live Firework Sky-Bloom & Reflections)
+    const resolvedBeatPhase = Number.isFinite(stageState?.beatPhase)
+      ? stageState.beatPhase
+      : (((songTime * (bpm / 60)) % 1) + 1) % 1;
+    const resolvedEighthPhase = Number.isFinite(te?.eighthPhase)
+      ? te.eighthPhase
+      : (resolvedBeatPhase * 2) % 1;
+    const resolvedSixteenthPhase = Number.isFinite(stageState?.sixteenthPhase)
+      ? stageState.sixteenthPhase
+      : (resolvedBeatPhase * 4) % 1;
+
+    // Dynamic Stage Lighting & Section-Driven Mood Profile interpolation (with multi-color Firework Stadium Bowl Wash)
     const isGrandEncore = Boolean(stageState?.isEncoreActive || this.grandEncoreActive || this.encoreFinaleActive);
     const lightState = this.lightingController.update(dt, {
       playing,
@@ -9837,15 +10820,17 @@ export class StageBand {
       overlayMeta: this.venueEnv?.overlayMeta || this.overlayMeta || null,
       currentSection,
       trackMeta,
+      beatPhase: resolvedBeatPhase,
+      barPhase: stageState?.barPhase,
+      phraseProgress: stageState?.phraseProgress,
+      isDownbeat,
+      isSnareHit,
+      transientEnergy: te,
       fireworkFlash: this.fireworkFlashState,
     });
     this.lightingState = lightState;
     this.breActive = Boolean(stageState?.breActive);
     const streakTier = lightState.streakTier || 0;
-
-    const resolvedBeatPhase = Number.isFinite(stageState?.beatPhase)
-      ? stageState.beatPhase
-      : (((songTime * (bpm / 60)) % 1) + 1) % 1;
 
     // Advance Crowd Event State Machine
     this.updateCrowdEventState(dt, {
@@ -9946,17 +10931,27 @@ export class StageBand {
       this.bandRimLight.color.copy(lightState.bandRimColor);
       this.bandRimLight.intensity = lightState.bandRimIntensity + lightState.strobeFlash * 1.1;
     }
+    const bowlWash = lightState.stadiumBowlWash || 0;
     if (this.bandRimSideL) {
       this.bandRimSideL.color.copy(lightState.spotPrimary);
-      this.bandRimSideL.intensity = (1.1 + lightState.rimMult * 0.45) + lightState.strobeFlash * 0.65;
+      if (bowlWash > 0.02 && lightState.fireworkRimColor) {
+        this.bandRimSideL.color.lerp(lightState.fireworkRimColor, Math.min(0.75, bowlWash * 0.65));
+      }
+      this.bandRimSideL.intensity = (1.1 + lightState.rimMult * 0.45) + lightState.strobeFlash * 0.65 + bowlWash * 1.4;
     }
     if (this.bandRimSideR) {
       this.bandRimSideR.color.copy(lightState.spotSecondary);
-      this.bandRimSideR.intensity = (1.1 + lightState.rimMult * 0.45) + lightState.strobeFlash * 0.65;
+      if (bowlWash > 0.02 && lightState.fireworkSecondaryColor) {
+        this.bandRimSideR.color.lerp(lightState.fireworkSecondaryColor, Math.min(0.75, bowlWash * 0.65));
+      }
+      this.bandRimSideR.intensity = (1.1 + lightState.rimMult * 0.45) + lightState.strobeFlash * 0.65 + bowlWash * 1.4;
     }
     if (this.crowdLight) {
       this.crowdLight.color.copy(lightState.crowdGlow);
-      this.crowdLight.intensity = 16 * lightState.crowdGlowMult + lightState.strobeFlash * 10;
+      if (bowlWash > 0.02 && lightState.fireworkSecondaryColor) {
+        this.crowdLight.color.lerp(lightState.fireworkSecondaryColor, Math.min(0.6, bowlWash * 0.52));
+      }
+      this.crowdLight.intensity = 16 * lightState.crowdGlowMult + lightState.strobeFlash * 10 + bowlWash * 18;
     }
     if (this.blinderMat) {
       const bp = lightState.blinderPulse || 0;
@@ -9966,11 +10961,11 @@ export class StageBand {
       }
     }
 
-    // Dynamic Firework Overhead Reflections on Stage Roof Trusses, Stadium Arches & Waterfronts (Manila Bay / Sydney Harbour)
+    // Dynamic Multi-Color Firework Overhead Reflections on Stage Roof Trusses, Stadium Arches & Waterfronts
     if (this.stageTrussMat) {
       if (fwReflect > 0.01 && lightState.fireworkRimColor) {
         this.stageTrussMat.emissive.copy(lightState.fireworkRimColor);
-        this.stageTrussMat.emissiveIntensity = Math.min(0.85, fwReflect * 0.52);
+        this.stageTrussMat.emissiveIntensity = Math.min(0.95, fwReflect * 0.58);
       } else if (this.stageTrussMat.emissiveIntensity > 0.001) {
         this.stageTrussMat.emissiveIntensity = THREE.MathUtils.damp(this.stageTrussMat.emissiveIntensity, 0, 6.0, dt);
       }
@@ -9978,9 +10973,12 @@ export class StageBand {
     if (this._venueTrussMats?.length) {
       for (let i = 0; i < this._venueTrussMats.length; i += 1) {
         const entry = this._venueTrussMats[i];
-        if (fwReflect > 0.01 && lightState.fireworkRimColor) {
-          entry.mat.emissive.copy(entry.baseEmissive).lerp(lightState.fireworkRimColor, Math.min(0.85, fwReflect * 0.72));
-          entry.mat.emissiveIntensity = entry.baseIntensity + Math.min(0.65, fwReflect * 0.42);
+        const washCol = i % 2 === 1 && lightState.fireworkSecondaryColor
+          ? lightState.fireworkSecondaryColor
+          : lightState.fireworkRimColor;
+        if (fwReflect > 0.01 && washCol) {
+          entry.mat.emissive.copy(entry.baseEmissive).lerp(washCol, Math.min(0.88, fwReflect * 0.76));
+          entry.mat.emissiveIntensity = entry.baseIntensity + Math.min(0.75, fwReflect * 0.48);
         } else if (entry.mat.emissiveIntensity > entry.baseIntensity + 0.002) {
           entry.mat.emissive.lerp(entry.baseEmissive, 1 - Math.exp(-5.0 * dt));
           entry.mat.emissiveIntensity = THREE.MathUtils.damp(entry.mat.emissiveIntensity, entry.baseIntensity, 5.5, dt);
@@ -9990,12 +10988,15 @@ export class StageBand {
     if (this._venueWaterMats?.length) {
       for (let i = 0; i < this._venueWaterMats.length; i += 1) {
         const entry = this._venueWaterMats[i];
-        if (fwReflect > 0.01 && lightState.fireworkSkyColor) {
+        const waterWash = i % 2 === 1 && lightState.fireworkSecondaryColor
+          ? lightState.fireworkSecondaryColor
+          : lightState.fireworkSkyColor;
+        if (fwReflect > 0.01 && waterWash) {
           const shimmer = 0.85 + 0.15 * Math.sin(t * 14 + i * 2.1);
           entry.mat.emissive
             .copy(entry.baseEmissive)
-            .lerp(lightState.fireworkSkyColor, Math.min(0.82, fwReflect * 0.68));
-          entry.mat.emissiveIntensity = entry.baseIntensity + fwReflect * 0.95 * shimmer;
+            .lerp(waterWash, Math.min(0.86, fwReflect * 0.72));
+          entry.mat.emissiveIntensity = entry.baseIntensity + fwReflect * 1.05 * shimmer;
         } else if (entry.mat.emissiveIntensity > entry.baseIntensity + 0.002) {
           entry.mat.emissive.lerp(entry.baseEmissive, 1 - Math.exp(-4.5 * dt));
           entry.mat.emissiveIntensity = THREE.MathUtils.damp(entry.mat.emissiveIntensity, entry.baseIntensity, 4.5, dt);
@@ -10020,7 +11021,11 @@ export class StageBand {
         if (anchorObj) {
           this.playerGoldAura.position.set(
             anchorObj.position.x,
-            activeRole === 'drums' ? DRUM_RISER_TOP_Y : STAGE_DECK_TOP_Y + 0.02,
+            activeRole === 'drums'
+              ? DRUM_RISER_TOP_Y
+              : activeRole === 'piano'
+                ? KEYS_RISER_TOP_Y + 0.01
+                : STAGE_DECK_TOP_Y + 0.02,
             anchorObj.position.z
           );
         }
@@ -10186,10 +11191,9 @@ export class StageBand {
       const gM = this.memberMotion.guitar;
       const bM = this.memberMotion.bass;
       const vM = this.memberMotion.vocals;
-      const resolvedBeatPhase = Number.isFinite(stageState?.beatPhase)
-        ? stageState.beatPhase
-        : (((songTime * (bpm / 60)) % 1) + 1) % 1;
       const bpmBeatPhase = resolvedBeatPhase * Math.PI * 2;
+      const bpmEighthPhase = resolvedEighthPhase * Math.PI * 2;
+      const bpmSixteenthPhase = resolvedSixteenthPhase * Math.PI * 2;
       const bpmHalfPhase = songTime * (bpm / 60) * Math.PI;
       // Multi-frequency organic sway using irrational frequency ratios (1.0, φ=1.618, e=2.718) so body sway never loops!
       const organicSwayG =
@@ -10232,24 +11236,27 @@ export class StageBand {
         });
       }
 
-      // Drummer stays seated on elevated rear drum riser (with rapid double-kick pedals & crash-cymbal stand-ups!)
+      // Drummer stays strictly planted on elevated rear drum riser (kick-drum pedal leg pump + phrase-boundary crash stand-up!)
       const isCountIn = playing && songTime > -2.0 && songTime < -0.05;
-      const crashStandUp =
+      const combinedKick = Math.min(1.25, Math.max(this.drumKickImpulse, kickImpulse));
+      const combinedSnare = Math.min(1.25, Math.max(this.drumLeftHit, snareImpulse, isSnareHit ? 0.85 : 0));
+      const crashTrigger =
         !isCountIn &&
-        this.drumRightTarget === 'crash' &&
-        this.drumRightHit > 0.22 &&
-        (lightState.sectionType === 'OUTRO' || lightState.sectionType === 'CHORUS' || this.breActive)
-          ? Math.sin(this.drumRightHit * Math.PI) * 0.16
-          : 0;
-      const doubleKickPump = Math.sin(bpmBeatPhase * 2) * (0.06 + this.drumKickImpulse * 0.16);
+        ((this.drumRightTarget === 'crash' && this.drumRightHit > 0.22) ||
+          (isPhraseBoundary && drumE > 0.25 && (lightState.sectionType === 'OUTRO' || lightState.sectionType === 'CHORUS' || this.breActive || fever)));
+      const crashStandUp = crashTrigger
+        ? Math.max(Math.sin(Math.min(1, this.drumRightHit) * Math.PI) * 0.16, isPhraseBoundary ? 0.13 : 0)
+        : 0;
+      const kickPedalLeg = combinedKick * 0.26 + Math.sin(bpmBeatPhase) * 0.04;
+      const hihatPedalLeg = Math.sin(bpmEighthPhase) * (0.06 + drumE * 0.08);
       this.drummer.root.position.set(
         marks.drums?.x ?? 0,
         (marks.drums?.y ?? DRUM_RISER_TOP_Y) + crashStandUp,
         marks.drums?.z ?? -2.8
       );
       this.drummer.root.rotation.y = 0;
-      this.drummer.leftLegPivot.rotation.set(-1.15 + doubleKickPump, 0, 0);
-      this.drummer.rightLegPivot.rotation.set(-1.15 - doubleKickPump, 0, 0);
+      this.drummer.leftLegPivot.rotation.set(-1.15 + hihatPedalLeg, 0, 0);
+      this.drummer.rightLegPivot.rotation.set(-1.15 - kickPedalLeg, 0, 0);
       this.drummer.upperBody.position.y = 0.72 + crashStandUp * 0.55;
       if (this.leftDrumstick) this.leftDrumstick.rotation.x = Math.PI * 0.45;
       if (this.rightDrumstick) this.rightDrumstick.rotation.x = Math.PI * 0.45;
@@ -10268,9 +11275,9 @@ export class StageBand {
       this.vocalist.root.position.set(vM.x, Math.max(0, vM.jumpY + vStepBounce), vM.z);
       this.vocalist.root.rotation.y = vM.rotY;
 
-      // 1. DRUMMER — 1-2-3-4 Count-In Stick-Clicks, Overhead Twirls during rests, Crash Stand-Ups & Double-Kick!
+      // 1. DRUMMER — True Audio-Locked Snare (Beats 2&4 + snareImpulse), Ride/Hi-Hat (eighthPhase), Crash (phraseBoundary) & Kick Pulse!
       const drumMissed = this.missedInstrument === 'drums';
-      const drumSilentIdle = playing && songTime >= 0 && stemActivity.drums === false && this.drumLeftHit < 0.05 && this.drumRightHit < 0.05;
+      const drumSilentIdle = playing && songTime >= 0 && stemActivity.drums === false && this.drumLeftHit < 0.05 && this.drumRightHit < 0.05 && combinedKick < 0.08 && combinedSnare < 0.08;
       if (drumMissed) {
         this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.36, 10, dt);
         this.drummer.headGroup.rotation.x = THREE.MathUtils.damp(this.drummer.headGroup.rotation.x, 0.28, 10, dt);
@@ -10279,7 +11286,6 @@ export class StageBand {
         this.drummer.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.drummer.leftElbowPivot.rotation.x, -0.2, 10, dt);
         this.drummer.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.drummer.rightElbowPivot.rotation.x, -0.2, 10, dt);
       } else if (isCountIn) {
-        // Crisp 1-2-3-4 overhead stick-click count-in right before song starts!
         const clickPulse = Math.pow(Math.max(0, Math.sin(songTime * (bpm / 60) * Math.PI * 2)), 4);
         this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.05, 10, dt);
         this.drummer.headGroup.rotation.x = Math.sin(songTime * (bpm / 60) * Math.PI * 2) * 0.14;
@@ -10288,7 +11294,6 @@ export class StageBand {
         this.drummer.leftElbowPivot.rotation.x = -0.35;
         this.drummer.rightElbowPivot.rotation.x = -0.35;
       } else if (drumSilentIdle) {
-        // Relaxed sticks-at-ready near snare + subtle BPM head-nod during silent drum rests
         const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.11);
         this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(this.drummer.upperBody.rotation.x, 0.06 + Math.abs(nod) * 0.12, 8, dt);
         this.drummer.headGroup.rotation.x = THREE.MathUtils.damp(this.drummer.headGroup.rotation.x, nod, 9, dt);
@@ -10302,59 +11307,68 @@ export class StageBand {
         if (this.leftDrumstick) this.leftDrumstick.rotation.x = Math.PI * 0.44;
         if (this.drumKit?.kick) this.drumKit.kick.scale.set(1, 1, 1);
       } else {
-        const autoL = Math.sin(bpmBeatPhase) * (0.2 + drumE * 0.45) * moodIntensity;
-        const autoR = Math.sin(bpmBeatPhase + Math.PI) * (0.2 + drumE * 0.45) * moodIntensity;
+        // Left arm snaps snare on Beats 2 & 4 (isSnareHit) + snareImpulse peaks with realistic recoil
+        const snareSnap =
+          this.drumLeftHit > 0.05
+            ? -Math.sin(this.drumLeftHit * Math.PI) * 0.96
+            : -Math.sin(Math.min(1, combinedSnare) * Math.PI * 0.85) * (0.85 * moodIntensity);
+        // Right arm drives ride/hi-hat strictly on eighthPhase + sweeps up to crash on phrase boundaries
+        const eighthHiHat = Math.sin(bpmEighthPhase) * (0.24 + drumE * 0.36) * moodIntensity;
+        const strikeR =
+          this.drumRightHit > 0.05
+            ? -Math.sin(this.drumRightHit * Math.PI) * 1.0
+            : crashTrigger
+              ? -0.92
+              : eighthHiHat;
 
-        const strikeL = this.drumLeftHit > 0.05 ? -Math.sin(this.drumLeftHit * Math.PI) * 0.92 : autoL;
-        const strikeR = this.drumRightHit > 0.05 ? -Math.sin(this.drumRightHit * Math.PI) * 0.98 : autoR;
-
-        const leftAimZ = this.drumLeftTarget === 'hihat' ? 0.38 : -0.14;
-        const rightAimZ = this.drumRightTarget === 'crash' ? -0.45 : 0.12;
-        const rightLiftX = this.drumRightTarget === 'crash' && this.drumRightHit > 0.1 ? -0.58 : 0;
+        const leftAimZ = this.drumLeftTarget === 'hihat' ? 0.36 : -0.14;
+        const rightAimZ = this.drumRightTarget === 'crash' || crashTrigger ? -0.46 : 0.14;
+        const rightLiftX = (this.drumRightTarget === 'crash' && this.drumRightHit > 0.1) || crashTrigger ? -0.58 : 0;
 
         this.drummer.upperBody.rotation.x = THREE.MathUtils.damp(
           this.drummer.upperBody.rotation.x,
-          0.07 + (drumE * 0.14 + this.drumKickImpulse * 0.1) * moodIntensity + crashStandUp * 0.3,
-          12,
+          0.07 + (drumE * 0.1 + combinedKick * 0.12 + combinedSnare * 0.1) * moodIntensity + crashStandUp * 0.32,
+          14,
           dt
         );
-        this.drummer.headGroup.rotation.x = Math.sin(bpmHalfPhase) * (0.08 + drumE * 0.22) * moodIntensity;
-        this.drummer.leftArmPivot.rotation.x = -0.48 + strikeL * 0.55 * hypeBoost;
+        this.drummer.headGroup.rotation.x = Math.sin(bpmBeatPhase) * (0.08 + combinedKick * 0.14 + drumE * 0.14) * moodIntensity;
+        this.drummer.leftArmPivot.rotation.x = -0.46 + snareSnap * 0.56 * hypeBoost;
         this.drummer.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.leftArmPivot.rotation.z, leftAimZ, 14, dt);
-        this.drummer.rightArmPivot.rotation.x = -0.48 + rightLiftX * 0.65 + strikeR * 0.55 * hypeBoost;
+        this.drummer.rightArmPivot.rotation.x = -0.48 + rightLiftX * 0.65 + strikeR * 0.52 * hypeBoost;
         this.drummer.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.drummer.rightArmPivot.rotation.z, rightAimZ, 14, dt);
-        this.drummer.leftElbowPivot.rotation.x = -0.68 + strikeL * 0.45;
+        this.drummer.leftElbowPivot.rotation.x = -0.68 + snareSnap * 0.48;
         this.drummer.rightElbowPivot.rotation.x = -0.68 + rightLiftX * 0.35 + strikeR * 0.45;
-        this.drummer.leftWristPivot.rotation.x = strikeL * 0.38;
-        this.drummer.rightWristPivot.rotation.x = strikeR * 0.38;
+        this.drummer.leftWristPivot.rotation.x = snareSnap * 0.44;
+        this.drummer.rightWristPivot.rotation.x = strikeR * 0.4;
 
         if (this.drumKit?.cymbals?.length >= 3) {
-          this.drumKit.cymbals[0].rotation.z = Math.sin(this.cymbalPhase[0]) * (drumE * 0.1 + this.cymbalWobble[0] * 0.26);
-          this.drumKit.cymbals[1].rotation.x = Math.sin(this.cymbalPhase[1]) * (drumE * 0.12 + this.cymbalWobble[1] * 0.38);
-          this.drumKit.cymbals[2].rotation.x = Math.cos(this.cymbalPhase[2]) * (drumE * 0.12 + this.cymbalWobble[2] * 0.42);
-          this.drumKit.cymbals[2].rotation.z = Math.sin(this.cymbalPhase[2] * 0.7) * this.cymbalWobble[2] * 0.24;
+          this.drumKit.cymbals[0].rotation.z = Math.sin(this.cymbalPhase[0]) * (drumE * 0.1 + this.cymbalWobble[0] * 0.28 + Math.abs(eighthHiHat) * 0.08);
+          this.drumKit.cymbals[1].rotation.x = Math.sin(this.cymbalPhase[1]) * (drumE * 0.12 + this.cymbalWobble[1] * 0.4);
+          this.drumKit.cymbals[2].rotation.x = Math.cos(this.cymbalPhase[2]) * (drumE * 0.12 + this.cymbalWobble[2] * 0.44);
+          this.drumKit.cymbals[2].rotation.z = Math.sin(this.cymbalPhase[2] * 0.7) * this.cymbalWobble[2] * 0.26;
         }
 
-        const kickScale = 1 + drumE * 0.055 + this.drumKickImpulse * 0.095;
-        if (this.drumKit?.kick) this.drumKit.kick.scale.set(kickScale, 1, kickScale);
+        // Animated kick-drum beater/head pulse directly synced to kickImpulse
+        const kickScale = 1 + combinedKick * 0.13 + drumE * 0.035;
+        if (this.drumKit?.kick) this.drumKit.kick.scale.set(kickScale, 1 + combinedKick * 0.04, kickScale);
       }
 
-      // 2. LEAD GUITARIST — Knee-Drop Solo, Windmill Strums, Power Slides, Back-to-Back Duets & Organic Sway!
+      // 2. LEAD GUITARIST — Riff-Locked Strumming, Pitch/Bend Fretting Slide, Beat-Phase Headbang & Dramatic Back-Arch Solo Lean!
       const guitarMissed = this.missedInstrument === 'guitar';
-      const guitarSilentIdle = playing && songTime >= 0 && stemActivity.guitar === false && this.guitarStrumImpulse < 0.05;
+      const guitarSilentIdle = playing && songTime >= 0 && stemActivity.guitar === false && this.guitarStrumImpulse < 0.05 && guitarRiffEnergy < 0.08;
       const isSingingGuitarist = this.bandLineupId === 'singing-guitarist';
       const gAirborne = gM.jumpY > 0.05;
       const gKneeDrop = gM.kneeDrop;
       const gPowerSpread =
         gM.stanceMode === 'POWER_SLIDE' || gM.stanceMode === 'ENCORE_SLIDE' ? 0.32 :
-        gM.stanceMode === 'POWER_STANCE' ? 0.26 :
-        gM.stanceMode === 'EDGE_MONITOR' || gM.stanceMode === 'BACK_TO_BACK' ? 0.22 :
-        gM.stanceMode === 'TRUSS_STRIDE' ? 0.18 : 0.08;
+        gM.stanceMode === 'POWER_STANCE' ? 0.28 :
+        gM.stanceMode === 'EDGE_MONITOR' || gM.stanceMode === 'BACK_TO_BACK' ? 0.24 :
+        gM.stanceMode === 'TRUSS_STRIDE' ? 0.18 : 0.12;
       const gStride = Math.sin(gM.walkPhase) * 0.62 * gM.moveSpeed * (1 - gKneeDrop * 0.8);
-      const gKneeTuck = gAirborne ? -0.58 : -Math.max(0, gM.squash) * 0.65;
+      const gRockStanceBend = !gAirborne && playing ? Math.max(0, Math.sin(bpmBeatPhase)) * (0.1 + guitarRiffEnergy * 0.18) : 0;
+      const gKneeTuck = gAirborne ? -0.58 : -Math.max(0, gM.squash) * 0.65 - gRockStanceBend;
       const gLungeOffset = gM.stanceMode === 'POWER_SLIDE' ? 0.28 : gM.stanceMode === 'EDGE_MONITOR' ? 0.16 : 0;
 
-      // Knee-Drop Solo splits front leg forward (-0.95 rad) and drops back knee behind (+0.85 rad) & lowers torso!
       const gLeftLegTargetX = gAirborne
         ? gKneeTuck
         : gStride - gLungeOffset + gKneeTuck - gKneeDrop * 0.92;
@@ -10376,7 +11390,7 @@ export class StageBand {
         10,
         dt
       );
-      const gSquashDip = Math.max(-0.08, gM.squash * 0.24) + gLungeOffset * 0.22 + gKneeDrop * 0.34;
+      const gSquashDip = Math.max(-0.08, gM.squash * 0.24) + gLungeOffset * 0.22 + gKneeDrop * 0.34 + gRockStanceBend * 0.22;
       this.guitarist.upperBody.position.y = THREE.MathUtils.damp(
         this.guitarist.upperBody.position.y,
         0.96 - gSquashDip,
@@ -10393,7 +11407,6 @@ export class StageBand {
         this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.15, 10, dt);
         this.guitarist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightElbowPivot.rotation.x, -0.15, 10, dt);
       } else if (guitarSilentIdle) {
-        // Relaxed guitar-at-ready posture + subtle BPM foot tap & pocket sway
         const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.11);
         const footTap = Math.max(0, Math.sin(bpmBeatPhase)) * 0.08;
         this.electricGuitar.position.set(0.08, 0.42, 0.38);
@@ -10411,100 +11424,105 @@ export class StageBand {
         this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.44, 8, dt);
         this.guitarist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.rightElbowPivot.rotation.x, -0.42, 8, dt);
       } else {
-        const isSoloSec = lightState.sectionType === 'GUITAR_SOLO';
+        const isSoloSec = lightState.sectionType === 'GUITAR_SOLO' || te?.overallIntensity === 'GUITAR SOLO';
         const behindHeadSolo = isSoloSec && combo >= 25 && !isSingingGuitarist && gKneeDrop < 0.2;
-        const neckSkyBoost = gM.action === 'NECK_SKY_SOLO' ? 0.34 : isSoloSec ? 0.22 : 0;
+        const neckSkyBoost = (gM.action === 'NECK_SKY_SOLO' ? 0.34 : isSoloSec ? 0.24 : 0) + guitarBendPulse * 0.22;
         const guitarNeckTilt = 0.26 + gM.sustainLean * 0.26 + gKneeDrop * 0.28 + neckSkyBoost + (gAirborne ? 0.18 : 0);
         if (behindHeadSolo) {
           this.electricGuitar.position.set(0.02, 1.06, -0.06);
           this.electricGuitar.rotation.set(0.18, 0.04, 0.14);
         } else {
           this.electricGuitar.position.set(0.08, 0.42, 0.38);
-          this.electricGuitar.rotation.set(0.06, 0.08, THREE.MathUtils.damp(this.electricGuitar.rotation.z, guitarNeckTilt, 9, dt));
+          this.electricGuitar.rotation.set(0.06, 0.08, THREE.MathUtils.damp(this.electricGuitar.rotation.z, guitarNeckTilt, 10, dt));
         }
 
-        // Synchronized power-chord chugging bounce on Chorus/Outro downbeats!
+        // Strumming arm snaps downward on guitarRiffEnergy transients & note impulses
         const chugPulse =
           (lightState.sectionType === 'CHORUS' || lightState.sectionType === 'OUTRO')
-            ? Math.sin(bpmBeatPhase) * 0.08 * moodIntensity
+            ? Math.sin(bpmBeatPhase) * 0.09 * moodIntensity
             : 0;
-        const strumSpeed = (isSoloSec ? 16 : isSlowBallad ? 6.5 : 10) + guitarE * 14 * moodIntensity;
-        const baseStrum = Math.sin(t * strumSpeed) * (0.14 + guitarE * 0.46) * moodIntensity;
+        const riffStrumSnap = guitarRiffEnergy * 0.54 * Math.sin(bpmEighthPhase);
         const impulseStrum = this.guitarStrumImpulse * 0.62 * this.guitarStrumDir;
-        const headBangAmp = ((lightState.sectionType === 'INTRO' ? 0.06 : 0.1) + guitarE * 0.2 + this.guitarHeadbangBoost * 0.22) * moodIntensity;
-        const bob = Math.sin(bpmHalfPhase) * headBangAmp;
+        const headBangAmp = ((lightState.sectionType === 'INTRO' ? 0.06 : 0.12) + guitarRiffEnergy * 0.24 + this.guitarHeadbangBoost * 0.22) * moodIntensity;
+        const bob = Math.sin(bpmBeatPhase) * headBangAmp;
         const singLean = isSingingGuitarist ? 0.1 + vocalE * 0.15 : 0;
         const slideForwardLean = gM.stanceMode === 'POWER_SLIDE' ? 0.2 : gM.stanceMode === 'EDGE_MONITOR' ? 0.14 : 0;
-        const sustainBackLean = -(gM.sustainLean * 0.28 + gKneeDrop * 0.24);
+        // Dramatic back-arch solo lean during GUITAR SOLO driven by guitarBendPulse!
+        const soloBackArch = isSoloSec ? -(0.24 + guitarBendPulse * 0.22) : -(guitarBendPulse * 0.14);
+        const sustainBackLean = -(gM.sustainLean * 0.26 + gKneeDrop * 0.22) + soloBackArch;
 
         this.guitarist.upperBody.rotation.x = THREE.MathUtils.damp(
           this.guitarist.upperBody.rotation.x,
-          Math.abs(bob) * 0.38 + this.guitarHeadbangBoost * 0.12 + singLean + slideForwardLean + sustainBackLean + chugPulse,
-          11,
+          Math.abs(bob) * 0.34 + this.guitarHeadbangBoost * 0.12 + singLean + slideForwardLean + sustainBackLean + chugPulse,
+          12,
           dt
         );
         this.guitarist.upperBody.rotation.z = THREE.MathUtils.damp(
           this.guitarist.upperBody.rotation.z,
-          organicSwayG * (0.07 + guitarE * 0.13) - gStride * 0.12,
+          organicSwayG * (0.07 + guitarRiffEnergy * 0.14) - gStride * 0.12,
           10,
           dt
         );
         this.guitarist.headGroup.rotation.x = isSingingGuitarist
-          ? -0.08 + Math.sin(t * 6.0) * (0.05 + vocalE * 0.14)
-          : bob - gM.sustainLean * 0.2 - gKneeDrop * 0.2;
+          ? -0.08 + Math.sin(bpmBeatPhase) * (0.05 + vocalE * 0.14)
+          : bob - gM.sustainLean * 0.2 - gKneeDrop * 0.2 + soloBackArch * 0.55;
         this.guitarist.headGroup.rotation.y = isSingingGuitarist ? organicSwayG * 0.08 : organicSwayG * 0.24;
 
-        // Articulated elbow/wrist fretting & strumming (eliminates torso/guitar clipping!)
+        // Fretting hand slides smoothly along guitar neck proportional to pitch/guitarFretPos + guitarRiffEnergy + guitarBendPulse vibrato
+        const dynamicFretPos = Math.max(
+          0,
+          Math.min(1, this.guitarFretPos * 0.65 + guitarRiffEnergy * 0.25 + guitarBendPulse * 0.2)
+        );
+        const vibratoShake = (isSoloSec || guitarBendPulse > 0.25) ? Math.sin(t * 22.0) * (0.05 + guitarBendPulse * 0.1) : 0;
+
         if (behindHeadSolo) {
-          this.guitarist.rightArmPivot.rotation.set(-2.15 + Math.sin(t * 16) * 0.18, 0, -0.45);
-          this.guitarist.leftArmPivot.rotation.set(-2.22 + Math.sin(t * 14) * 0.14, 0, 0.48);
+          this.guitarist.rightArmPivot.rotation.set(-2.15 + Math.sin(bpmEighthPhase) * 0.2, 0, -0.45);
+          this.guitarist.leftArmPivot.rotation.set(-2.22 + vibratoShake, 0, 0.48);
           this.guitarist.leftElbowPivot.rotation.x = -0.65;
           this.guitarist.rightElbowPivot.rotation.x = -0.65;
         } else if (gM.windmillTimer > 0) {
           this.guitarist.rightArmPivot.rotation.x = -0.9 + gM.windmillPhase;
           this.guitarist.rightArmPivot.rotation.z = -0.42 + Math.sin(gM.windmillPhase) * 0.18;
           this.guitarist.rightElbowPivot.rotation.x = -0.14;
-          const soloShredOsc = isSoloSec ? Math.sin(t * 17.5) * 0.12 : 0;
-          const targetFretZ = 0.12 + this.guitarFretPos * 0.44 + soloShredOsc;
-          const targetFretX = -0.64 + this.guitarFretPos * 0.22 - gM.sustainLean * 0.14 - gKneeDrop * 0.12;
+          const targetFretZ = 0.12 + dynamicFretPos * 0.46 + vibratoShake;
+          const targetFretX = -0.64 + dynamicFretPos * 0.24 - gM.sustainLean * 0.14 - gKneeDrop * 0.12;
           this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, targetFretX, 14, dt);
           this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, targetFretZ, 14, dt);
           this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.72, 14, dt);
-        } else if (gM.fistPumpWeight > 0.35 && this.guitarStrumImpulse < 0.15) {
+        } else if (gM.fistPumpWeight > 0.35 && this.guitarStrumImpulse < 0.15 && guitarRiffEnergy < 0.35) {
           this.guitarist.rightArmPivot.rotation.x = THREE.MathUtils.lerp(
-            -0.55 + baseStrum * 0.55,
+            -0.55 + riffStrumSnap * 0.55,
             -2.1 + Math.sin(bpmBeatPhase) * 0.35,
             gM.fistPumpWeight
           );
           this.guitarist.rightArmPivot.rotation.z = -0.35;
           this.guitarist.rightElbowPivot.rotation.x = THREE.MathUtils.lerp(-0.62, -0.25, gM.fistPumpWeight);
-          this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, -0.64 + this.guitarFretPos * 0.22, 14, dt);
-          this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, 0.12 + this.guitarFretPos * 0.44, 14, dt);
+          this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, -0.64 + dynamicFretPos * 0.24, 14, dt);
+          this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, 0.12 + dynamicFretPos * 0.46, 14, dt);
           this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.72, 14, dt);
         } else {
-          const strumDelta = (baseStrum + impulseStrum) * hypeBoost;
-          this.guitarist.rightArmPivot.rotation.x = -0.54 + strumDelta * 0.55;
+          const strumDelta = (riffStrumSnap + impulseStrum) * hypeBoost;
+          this.guitarist.rightArmPivot.rotation.x = -0.54 + strumDelta * 0.58;
           this.guitarist.rightArmPivot.rotation.z = -0.35;
-          this.guitarist.rightElbowPivot.rotation.x = -0.64 + strumDelta * 0.52;
-          this.guitarist.rightWristPivot.rotation.x = strumDelta * 0.25;
-          const soloShredOsc = isSoloSec ? Math.sin(t * 17.5) * 0.12 : 0;
-          const targetFretZ = 0.12 + this.guitarFretPos * 0.44 + soloShredOsc;
-          const targetFretX = -0.64 + this.guitarFretPos * 0.22 - gM.sustainLean * 0.14 - gKneeDrop * 0.12;
+          this.guitarist.rightElbowPivot.rotation.x = -0.64 + strumDelta * 0.54;
+          this.guitarist.rightWristPivot.rotation.x = strumDelta * 0.3;
+          const targetFretZ = 0.12 + dynamicFretPos * 0.46 + vibratoShake;
+          const targetFretX = -0.64 + dynamicFretPos * 0.24 - gM.sustainLean * 0.14 - gKneeDrop * 0.12;
           this.guitarist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.x, targetFretX, 14, dt);
           this.guitarist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.guitarist.leftArmPivot.rotation.z, targetFretZ, 14, dt);
-          this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.72 + this.guitarFretPos * 0.12, 14, dt);
+          this.guitarist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.guitarist.leftElbowPivot.rotation.x, -0.72 + dynamicFretPos * 0.14, 14, dt);
         }
       }
 
-      // 3. BASSIST — Dynamic roaming strides, groove knee-bends, back-to-back duets, Encore slide & organic sway!
+      // 3. BASSIST — Heavy Pocket Head-Nod (beatPhase), BassGroove-Synced Finger/Pick Plucking & Tight Pocket Sway!
       const bassMissed = this.missedInstrument === 'bass';
-      const bassSilentIdle = playing && songTime >= 0 && stemActivity.bass === false && this.bassPluckImpulse < 0.05;
+      const bassSilentIdle = playing && songTime >= 0 && stemActivity.bass === false && this.bassPluckImpulse < 0.05 && bassGroove < 0.08;
       const bAirborne = bM.jumpY > 0.05;
       const bKneeDrop = bM.kneeDrop;
       const bPowerSpread =
         bM.stanceMode === 'POWER_SLIDE' || bM.stanceMode === 'ENCORE_SLIDE' ? 0.3 :
         bM.stanceMode === 'POWER_STANCE' ? 0.25 :
-        bM.stanceMode === 'BACK_TO_BACK' || bM.stanceMode === 'EDGE_MONITOR' ? 0.22 : 0.1;
+        bM.stanceMode === 'BACK_TO_BACK' || bM.stanceMode === 'EDGE_MONITOR' ? 0.22 : 0.12;
       const bStride = Math.sin(bM.walkPhase) * 0.58 * bM.moveSpeed * (1 - bKneeDrop * 0.8);
       const bKneeTuck = bAirborne ? -0.55 : -Math.max(0, bM.squash) * 0.62;
 
@@ -10530,7 +11548,6 @@ export class StageBand {
         this.bassist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftElbowPivot.rotation.x, -0.15, 10, dt);
         this.bassist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.rightElbowPivot.rotation.x, -0.15, 10, dt);
       } else if (bassSilentIdle) {
-        // Relaxed pocket bass posture + subtle BPM groove nod during rests
         const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.11);
         const footTap = Math.max(0, Math.sin(bpmBeatPhase)) * 0.08;
         this.bassGuitar.rotation.set(0.05, -0.08, THREE.MathUtils.damp(this.bassGuitar.rotation.z, 0.16, 6, dt));
@@ -10549,11 +11566,12 @@ export class StageBand {
       } else {
         const bassNeckTilt = 0.3 + bM.sustainLean * 0.24 + bKneeDrop * 0.18 + (bAirborne ? 0.16 : 0);
         this.bassGuitar.rotation.set(0.05, -0.08, THREE.MathUtils.damp(this.bassGuitar.rotation.z, bassNeckTilt, 9, dt));
-        const groovePhase = bpmHalfPhase;
+        // Heavy quarter/half-time pocket lock synced with drummer's kick & beatPhase
+        const pocketPhase = isSlowBallad ? bpmHalfPhase : bpmBeatPhase;
         const deepBounceMult = bM.action === 'DEEP_KNEE_BOUNCE' ? 1.45 : 1.0;
-        const kneeBend = Math.abs(Math.sin(groovePhase)) * (0.14 + bassE * 0.28 + this.bassBounceImpulse * 0.2) * deepBounceMult * moodIntensity;
-        const grooveSway = organicSwayB * (0.09 + bassE * 0.22) * hypeBoost * moodIntensity;
-        const pluck = Math.sin(t * ((isSlowBallad ? 5 : 7) + bassE * 8)) * (0.12 + bassE * 0.32) * moodIntensity + this.bassPluckImpulse * 0.48;
+        const kneeBend = Math.abs(Math.sin(pocketPhase)) * (0.14 + bassGroove * 0.3 + combinedKick * 0.14 + this.bassBounceImpulse * 0.18) * deepBounceMult * moodIntensity;
+        const grooveSway = Math.sin(bpmHalfPhase) * (0.1 + bassGroove * 0.22) * hypeBoost * moodIntensity;
+        const pluck = Math.sin(bpmEighthPhase) * (0.14 + bassGroove * 0.42) * moodIntensity + this.bassPluckImpulse * 0.48;
         const bSlideLean = bM.stanceMode === 'POWER_SLIDE' ? 0.2 : 0;
 
         this.bassist.leftLegPivot.rotation.x = THREE.MathUtils.damp(
@@ -10576,24 +11594,24 @@ export class StageBand {
         );
         this.bassist.upperBody.rotation.x = THREE.MathUtils.damp(
           this.bassist.upperBody.rotation.x,
-          0.08 + kneeBend * 0.38 + bSlideLean - bM.sustainLean * 0.3 - bKneeDrop * 0.16,
+          0.08 + kneeBend * 0.36 + bSlideLean - bM.sustainLean * 0.3 - bKneeDrop * 0.16,
           12,
           dt
         );
-        this.bassist.upperBody.rotation.z = THREE.MathUtils.damp(this.bassist.upperBody.rotation.z, grooveSway * 0.65, 10, dt);
-        this.bassist.headGroup.rotation.x = Math.sin(groovePhase) * (0.1 + bassE * 0.24) * moodIntensity - bM.sustainLean * 0.18;
+        this.bassist.upperBody.rotation.z = THREE.MathUtils.damp(this.bassist.upperBody.rotation.z, grooveSway * 0.68, 10, dt);
+        this.bassist.headGroup.rotation.x = Math.sin(pocketPhase) * (0.12 + bassGroove * 0.26) * moodIntensity - bM.sustainLean * 0.18;
 
-        this.bassist.rightArmPivot.rotation.x = -0.52 + pluck * 0.52;
+        this.bassist.rightArmPivot.rotation.x = -0.52 + pluck * 0.54;
         this.bassist.rightArmPivot.rotation.z = -0.32;
-        this.bassist.rightElbowPivot.rotation.x = -0.6 + pluck * 0.45;
-        this.bassist.rightWristPivot.rotation.x = pluck * 0.25;
-        const bassFretZ = 0.14 + this.bassFretPos * 0.4;
+        this.bassist.rightElbowPivot.rotation.x = -0.6 + pluck * 0.48;
+        this.bassist.rightWristPivot.rotation.x = pluck * 0.32;
+        const bassFretZ = 0.14 + Math.min(1, this.bassFretPos * 0.7 + bassGroove * 0.3) * 0.42;
         this.bassist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.x, -0.6 + this.bassFretPos * 0.2, 12, dt);
         this.bassist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.bassist.leftArmPivot.rotation.z, bassFretZ, 12, dt);
         this.bassist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.bassist.leftElbowPivot.rotation.x, -0.66 + this.bassFretPos * 0.12, 12, dt);
       }
 
-      // 4. VOCALIST — Mic-Stand Tilts, Hand-Heart/Pop Poses, Stage-Edge Knee Kneels & Crowd Hype!
+      // 4. FRONTPERSON / VOCALIST — Mic-Stand Lean & Chest-Pump (vocalKeysEnergy), Downbeat Crowd Hype Pump & B-Stage Run!
       if (marks.vocals.visible) {
         const isPopDiva = this.bandLineupId === 'pop-diva';
         const vAirborne = vM.jumpY > 0.05;
@@ -10601,14 +11619,18 @@ export class StageBand {
         const vPopHeart = isPopDiva && (lightState.sectionType === 'BRIDGE' || streakTier >= 2);
         const vStride = Math.sin(vM.walkPhase) * 0.56 * vM.moveSpeed * (vEdgeKneel ? 0.1 : 1);
         const vKneeTuck = vAirborne ? -0.52 : -Math.max(0, vM.squash) * 0.55;
+        const downbeatHype = isDownbeat ? 0.38 : Math.max(0, Math.cos(bpmBeatPhase)) * 0.24;
         const crowdHypeRaise =
           fever ||
           encore ||
           this.encoreFinaleActive ||
           lightState.sectionType === 'CHORUS' ||
           lightState.sectionType === 'OUTRO' ||
-          vocalE > 0.55;
-        const danceSway = isPopDiva ? organicSwayV * (0.14 + vocalE * 0.16) : organicSwayV * (0.08 + vocalE * 0.13);
+          vocalKeysEnergy > 0.52 ||
+          isDownbeat;
+        const danceSway = isPopDiva
+          ? organicSwayV * (0.14 + vocalKeysEnergy * 0.18)
+          : organicSwayV * (0.08 + vocalKeysEnergy * 0.15);
 
         this.vocalist.leftLegPivot.rotation.x = THREE.MathUtils.damp(
           this.vocalist.leftLegPivot.rotation.x,
@@ -10624,28 +11646,27 @@ export class StageBand {
         );
         this.vocalist.upperBody.position.y = THREE.MathUtils.damp(
           this.vocalist.upperBody.position.y,
-          0.96 - Math.max(-0.06, vM.squash * 0.22) - (vEdgeKneel ? 0.24 : 0),
+          0.96 - Math.max(-0.06, vM.squash * 0.22) - (vEdgeKneel ? 0.24 : 0) + downbeatHype * 0.05,
           14,
           dt
         );
         this.vocalist.upperBody.rotation.z = danceSway;
         this.vocalist.upperBody.rotation.x = THREE.MathUtils.damp(
           this.vocalist.upperBody.rotation.x,
-          (vEdgeKneel ? 0.24 : 0.06) + vocalE * 0.2,
-          10,
+          (vEdgeKneel ? 0.22 : 0.06) + vocalKeysEnergy * 0.24 + downbeatHype * 0.12,
+          11,
           dt
         );
-        this.vocalist.headGroup.rotation.x = -0.06 + Math.sin(t * 6.2) * (0.06 + vocalE * 0.16);
+        this.vocalist.headGroup.rotation.x = -0.06 + Math.sin(bpmBeatPhase) * (0.06 + vocalKeysEnergy * 0.18);
         this.vocalist.headGroup.rotation.y = Math.sin(t * 2.4) * 0.16;
 
-        // Expressive Mic-Stand Tilt when singing at center mark
+        // Expressive Mic-Stand Tilt synced to vocalKeysEnergy phrases when singing at center mark
         if (this.micStand && this.micStand.visible) {
-          const micTiltTarget = !isPopDiva && vM.stanceMode === 'MIC_CENTER' ? -0.14 - vocalE * 0.18 : 0;
-          this.micStand.rotation.x = THREE.MathUtils.damp(this.micStand.rotation.x, micTiltTarget, 8, dt);
+          const micTiltTarget = !isPopDiva && vM.stanceMode === 'MIC_CENTER' ? -0.14 - vocalKeysEnergy * 0.22 : 0;
+          this.micStand.rotation.x = THREE.MathUtils.damp(this.micStand.rotation.x, micTiltTarget, 9, dt);
         }
 
         if (vPopHeart) {
-          // Hand-heart / pop star pose raised toward crowd
           this.vocalist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.x, -1.7, 9, dt);
           this.vocalist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.z, -0.58, 9, dt);
           this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, -1.7, 9, dt);
@@ -10653,53 +11674,52 @@ export class StageBand {
           this.vocalist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftElbowPivot.rotation.x, -0.55, 9, dt);
           this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.55, 9, dt);
         } else if (vEdgeKneel) {
-          // Reaching out toward front-row fans!
           this.vocalist.leftArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.x, -1.25, 9, dt);
           this.vocalist.leftArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.leftArmPivot.rotation.z, -0.18, 9, dt);
-          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, -1.35 + Math.sin(t * 5) * 0.18, 9, dt);
+          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, -1.35 - downbeatHype * 0.45, 9, dt);
           this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, 0.22, 9, dt);
           this.vocalist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftElbowPivot.rotation.x, -0.35, 9, dt);
           this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.25, 9, dt);
         } else if (isPopDiva || vM.stanceMode !== 'MIC_CENTER') {
           this.vocalist.leftArmPivot.rotation.x = THREE.MathUtils.damp(
             this.vocalist.leftArmPivot.rotation.x,
-            crowdHypeRaise ? -2.0 + Math.cos(t * 5.2) * 0.28 : -0.7 + vocalE * -0.5,
-            8,
+            crowdHypeRaise ? -2.05 - downbeatHype * 0.35 : -0.7 - vocalKeysEnergy * 0.55,
+            9,
             dt
           );
           this.vocalist.leftArmPivot.rotation.z = THREE.MathUtils.damp(
             this.vocalist.leftArmPivot.rotation.z,
-            crowdHypeRaise ? -0.46 : -0.25 - vocalE * 0.2,
+            crowdHypeRaise ? -0.46 : -0.25 - vocalKeysEnergy * 0.2,
             8,
             dt
           );
-          const rightArmTargetX = crowdHypeRaise ? -2.1 + Math.sin(t * 5.2) * 0.32 : -0.65 - vocalE * 0.65;
-          const rightArmTargetZ = crowdHypeRaise ? 0.48 : 0.25 + vocalE * 0.24;
-          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 8, dt);
+          const rightArmTargetX = crowdHypeRaise ? -2.15 - downbeatHype * 0.45 : -0.65 - vocalKeysEnergy * 0.68;
+          const rightArmTargetZ = crowdHypeRaise ? 0.48 : 0.25 + vocalKeysEnergy * 0.24;
+          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 9, dt);
           this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, rightArmTargetZ, 8, dt);
           this.vocalist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.leftElbowPivot.rotation.x, -0.45, 8, dt);
-          this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.45, 8, dt);
+          this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.42, 8, dt);
         } else {
-          this.vocalist.leftArmPivot.rotation.x = -0.68;
+          // Left hand holds mic at stand; free right arm pumps skyward on isDownbeat!
+          this.vocalist.leftArmPivot.rotation.x = -0.68 - vocalKeysEnergy * 0.14;
           this.vocalist.leftArmPivot.rotation.z = -0.2;
           this.vocalist.leftElbowPivot.rotation.x = -0.52;
-          const rightArmTargetX = crowdHypeRaise ? -2.1 + Math.sin(t * 5.2) * 0.32 : -0.65 - vocalE * 0.65;
-          const rightArmTargetZ = crowdHypeRaise ? 0.48 : 0.25 + vocalE * 0.24;
-          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 8, dt);
+          const rightArmTargetX = crowdHypeRaise ? -2.15 - downbeatHype * 0.48 : -0.65 - vocalKeysEnergy * 0.68;
+          const rightArmTargetZ = crowdHypeRaise ? 0.48 : 0.25 + vocalKeysEnergy * 0.24;
+          this.vocalist.rightArmPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.x, rightArmTargetX, 9, dt);
           this.vocalist.rightArmPivot.rotation.z = THREE.MathUtils.damp(this.vocalist.rightArmPivot.rotation.z, rightArmTargetZ, 8, dt);
           this.vocalist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.vocalist.rightElbowPivot.rotation.x, -0.42, 8, dt);
         }
       }
 
-      // 4B. KEYBOARDIST — Two-Hand Octave Glissandos, Bench Lean-Ins, Keytar Walk-Forward & Crowd-Clap Waves!
+      // 4B. KEYBOARDIST / SYNTH — Alternating L/R Chord Strikes Locked to vocalKeysEnergy & sixteenthPhase + Rhythmic Shoulder Bounce!
       if (this.keyboardist) {
         const pianoMissed = this.missedInstrument === 'piano';
         const isKeytar = Boolean(this.keyboardAsset?.isKeytar);
         const isSeatedGrand = this.keyboardModelId === 'concert-grand' || this.keyboardModelId === 'white-crystal-grand';
-        const pianoSilentClap = playing && songTime >= 0 && stemActivity.piano === false && this.pianoHitImpulse < 0.05;
+        const pianoSilentClap = playing && songTime >= 0 && stemActivity.piano === false && this.pianoHitImpulse < 0.05 && vocalKeysEnergy < 0.08;
         const keyCenterShift = (this.pianoHandPos - 0.5) * 0.42;
 
-        // Keytar Walk-Forward onto the front stage apron during Choruses/Solos!
         if (isKeytar) {
           const walkFwdTargetZ =
             playing && (lightState.sectionType === 'CHORUS' || lightState.sectionType === 'GUITAR_SOLO' || this.breActive)
@@ -10708,16 +11728,17 @@ export class StageBand {
           this.keyboardist.root.position.z = THREE.MathUtils.damp(this.keyboardist.root.position.z, walkFwdTargetZ, 3.2, dt);
         }
 
+        const shoulderBounce = Math.abs(Math.sin(bpmBeatPhase)) * (0.04 + vocalKeysEnergy * 0.06);
         if (isSeatedGrand) {
-          const chorusBenchRise = lightState.sectionType === 'CHORUS' || this.breActive ? 0.08 : 0;
+          const chorusBenchRise = lightState.sectionType === 'CHORUS' || this.breActive ? 0.07 : 0;
           this.keyboardist.leftLegPivot.rotation.set(-1.12, 0, 0);
           this.keyboardist.rightLegPivot.rotation.set(-1.12 + Math.sin(bpmBeatPhase) * 0.08, 0, 0);
-          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.74 + chorusBenchRise, 12, dt);
+          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.74 + chorusBenchRise + shoulderBounce * 0.5, 12, dt);
         } else {
           const stepTap = Math.sin(bpmBeatPhase) * (isKeytar ? 0.22 : 0.08);
           this.keyboardist.leftLegPivot.rotation.set(stepTap, 0, isKeytar ? 0.14 : 0.06);
           this.keyboardist.rightLegPivot.rotation.set(-stepTap, 0, isKeytar ? -0.14 : -0.06);
-          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.96, 12, dt);
+          this.keyboardist.upperBody.position.y = THREE.MathUtils.damp(this.keyboardist.upperBody.position.y, 0.96 - shoulderBounce * 0.55, 12, dt);
         }
 
         if (pianoMissed) {
@@ -10728,7 +11749,6 @@ export class StageBand {
           this.keyboardist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.leftElbowPivot.rotation.x, -0.15, 10, dt);
           this.keyboardist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.rightElbowPivot.rotation.x, -0.15, 10, dt);
         } else if (pianoSilentClap && !isKeytar) {
-          // Calm hands-poised-near-keys idle sway during silent piano breaks
           const nod = Math.sin(bpmBeatPhase) * (isSlowBallad ? 0.07 : 0.1);
           this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(this.keyboardist.upperBody.rotation.x, 0.06, 8, dt);
           this.keyboardist.upperBody.rotation.z = THREE.MathUtils.damp(this.keyboardist.upperBody.rotation.z, Math.sin(bpmHalfPhase) * 0.07 * moodIntensity, 8, dt);
@@ -10740,13 +11760,13 @@ export class StageBand {
           this.keyboardist.leftElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.leftElbowPivot.rotation.x, -0.58, 8, dt);
           this.keyboardist.rightElbowPivot.rotation.x = THREE.MathUtils.damp(this.keyboardist.rightElbowPivot.rotation.x, -0.58, 8, dt);
         } else {
-          const playEnergy = Math.max(pianoE, this.pianoHitImpulse * 0.85);
-          const sway = Math.sin(bpmHalfPhase) * (0.09 + playEnergy * 0.15) + keyCenterShift * 0.5;
+          const playEnergy = Math.max(pianoE, vocalKeysEnergy, this.pianoHitImpulse * 0.85);
+          const sway = Math.sin(bpmHalfPhase) * (0.09 + playEnergy * 0.16) + keyCenterShift * 0.5;
           const glissLean = this.pianoGlissando * 0.24 * (this.pianoHandPos > 0.5 ? 1 : -1);
 
           this.keyboardist.upperBody.rotation.x = THREE.MathUtils.damp(
             this.keyboardist.upperBody.rotation.x,
-            (isKeytar ? 0.06 : 0.16) + playEnergy * 0.14,
+            (isKeytar ? 0.06 : 0.16) + playEnergy * 0.14 + shoulderBounce * 0.4,
             11,
             dt
           );
@@ -10756,33 +11776,34 @@ export class StageBand {
             10,
             dt
           );
-          this.keyboardist.headGroup.rotation.x = Math.sin(bpmBeatPhase) * (0.08 + playEnergy * 0.16);
+          this.keyboardist.headGroup.rotation.x = Math.sin(bpmBeatPhase) * (0.09 + playEnergy * 0.18);
           this.keyboardist.headGroup.rotation.y = -keyCenterShift * 0.7;
 
-          const fastKeys = Math.sin(t * (11 + playEnergy * 12)) * (0.12 + playEnergy * 0.28);
-          const strikeBoost = this.pianoHitImpulse * 0.36;
-          const isLeftLead = this.lastPianoHand === 'left';
-          const octaveLean = isLeftLead ? -0.14 : 0.1;
+          // Alternating L/R chord strikes strictly locked to sixteenthPhase + vocalKeysEnergy transients
+          const chordWave = Math.sin(bpmSixteenthPhase) * (0.14 + playEnergy * 0.34);
+          const strikeBoost = Math.max(this.pianoHitImpulse, vocalKeysEnergy * 0.72) * 0.38;
+          const isLeftLead = this.lastPianoHand === 'left' || resolvedEighthPhase < 0.5;
+          const octaveLean = isLeftLead ? -0.14 : 0.12;
           if (isKeytar) {
             this.keyboardist.leftArmPivot.rotation.set(-0.68 + this.pianoHandPos * 0.2, 0, 0.2 + this.pianoHandPos * 0.35);
-            this.keyboardist.rightArmPivot.rotation.set(-0.62 + fastKeys * 0.55 + strikeBoost * 0.5 * this.pianoHandAlt, 0, -0.32);
+            this.keyboardist.rightArmPivot.rotation.set(-0.62 + chordWave * 0.58 + strikeBoost * 0.5 * this.pianoHandAlt, 0, -0.32);
             this.keyboardist.leftElbowPivot.rotation.x = -0.68;
-            this.keyboardist.rightElbowPivot.rotation.x = -0.62 + fastKeys * 0.45;
+            this.keyboardist.rightElbowPivot.rotation.x = -0.62 + chordWave * 0.48;
           } else {
             this.keyboardist.leftArmPivot.rotation.set(
-              -0.65 + fastKeys * 0.42 + (isLeftLead ? strikeBoost * 0.45 : strikeBoost * 0.2),
+              -0.65 + chordWave * 0.46 + (isLeftLead ? strikeBoost * 0.48 : strikeBoost * 0.2),
               0,
               0.12 - keyCenterShift * 0.55 + octaveLean * 0.35
             );
             this.keyboardist.rightArmPivot.rotation.set(
-              -0.65 - fastKeys * 0.42 + (!isLeftLead ? strikeBoost * 0.45 : strikeBoost * 0.2),
+              -0.65 - chordWave * 0.46 + (!isLeftLead ? strikeBoost * 0.48 : strikeBoost * 0.2),
               0,
               -0.12 - keyCenterShift * 0.55 + octaveLean * 0.35
             );
-            this.keyboardist.leftElbowPivot.rotation.x = -0.74 + fastKeys * 0.4;
-            this.keyboardist.rightElbowPivot.rotation.x = -0.74 - fastKeys * 0.4;
-            this.keyboardist.leftWristPivot.rotation.x = fastKeys * 0.35;
-            this.keyboardist.rightWristPivot.rotation.x = -fastKeys * 0.35;
+            this.keyboardist.leftElbowPivot.rotation.x = -0.74 + chordWave * 0.44;
+            this.keyboardist.rightElbowPivot.rotation.x = -0.74 - chordWave * 0.44;
+            this.keyboardist.leftWristPivot.rotation.x = chordWave * 0.4;
+            this.keyboardist.rightWristPivot.rotation.x = -chordWave * 0.4;
           }
         }
 
@@ -10949,12 +11970,15 @@ export class StageBand {
       }
     }
 
-    // 7. Update Animated Live LED Backdrop Screen & VIP Front-Row Banner (throttled under Adaptive Quality Guard)
+    // 7. Update Animated Live LED Backdrop, Interactive LED Stage Floor, 24m Panoramic Backwall & VIP Banner (throttled for 60 FPS)
     this.ledUpdateTimer += dt;
     const ledInterval = this.adaptiveLowPower ? 0.115 : 0.062;
     if (this.ledUpdateTimer >= ledInterval) {
       this.ledUpdateTimer = 0;
-      this.drawLedBackdrop(bassE, guitarE, drumE, fever, encore || isGrandEncore);
+      const isEncoreVisual = encore || isGrandEncore;
+      this.drawLedBackdrop(bassE, guitarE, drumE, fever, isEncoreVisual);
+      this.drawStageFloorLed(bassE, guitarE, drumE, fever, isEncoreVisual);
+      this.drawBackwallLed(bassE, guitarE, drumE, fever, isEncoreVisual);
       this.drawVipBanner();
     }
 
@@ -11085,6 +12109,9 @@ export class StageBand {
     });
     this.crowdFaceTex?.dispose();
     this.ledTexture?.dispose();
+    this.backwallLedTex?.dispose();
+    this.stageFloorTex?.dispose();
+    this.scrimBannerTex?.dispose();
     this.vipBannerTex?.dispose();
     this.deckTex?.dispose();
     this.deckMaps?.bumpMap?.dispose?.();

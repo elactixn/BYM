@@ -90,19 +90,26 @@ export class CameraDirector {
     this.shotSideSign = 1;
     this.rngState = 918273645;
 
-    // Kinetic spherical rig + Dutch tilt roll + kick shake + snare FOV punch (zero per-frame heap allocations)
+    // Kinetic spherical rig + Dutch tilt roll + kick FOV micro-punch + snare bursts + beat-locked sway (zero GC)
     this.azimuth = 0;
     this.radius = 12.6;
     this.height = 1.45;
     this.fov = 46;
     this.fovPunch = 0;
+    this.kickFovPunch = 0;
+    this.kickPunchCooldown = 0;
     this.roll = 0;
     this.kickShake = 0;
     this.kickShakePhase = 0;
+    this.snareFillScore = 0;
+    this.guitarSpikeScore = 0;
+    this.spotlightOverrideRole = null;
     this.prevFever = false;
     this.prevEncore = false;
     this.prevSectionId = null;
     this.prevCrowdEventType = 'NORMAL';
+    this.pendingCutUrgent = false;
+    this.pendingCutPreset = null;
 
     // Elevated target.y so upper 2/3 of viewport holds performers + Jumbotron cleanly above highway
     this.target = new THREE.Vector3(0, 2.25, -1.6);
@@ -131,7 +138,8 @@ export class CameraDirector {
   pushRecentShot(shot) {
     if (!shot) return;
     this.recentShots.push(shot);
-    while (this.recentShots.length > 5) {
+    // Strict 6-shot non-repeating history buffer across hero close-ups, drummer, wide crane, B-stage pit, crowd & aerial drone
+    while (this.recentShots.length > 6) {
       this.recentShots.shift();
     }
     this.lastCategory = SHOT_CATEGORIES[shot] || 'WIDE';
@@ -145,11 +153,18 @@ export class CameraDirector {
     this.lastCutBar = -999;
     this.lastSnarePunchBar = -999;
     this.snareCooldown = 0;
+    this.kickPunchCooldown = 0;
     this.cutCount = 0;
     this.shotSideSign = 1;
     this.fovPunch = 0;
+    this.kickFovPunch = 0;
     this.roll = 0;
     this.kickShake = 0;
+    this.snareFillScore = 0;
+    this.guitarSpikeScore = 0;
+    this.spotlightOverrideRole = null;
+    this.pendingCutUrgent = false;
+    this.pendingCutPreset = null;
     this.prevFever = false;
     this.prevEncore = false;
     this.prevSectionId = null;
@@ -202,11 +217,38 @@ export class CameraDirector {
     sectionType,
     crowdEventType,
     ambianceType,
+    guitarRiffEnergy = 0,
+    snareFillActive = false,
+    fireworksGrandActive = false,
   }) {
     const isInstActive = (role) => !stemActivity || stemActivity[role] !== false;
     const isBallad = ambianceType === 'BALLAD_EMOTIONAL';
     const isTwoPlayer = Array.isArray(activeInstruments) && activeInstruments.length >= 2;
     const secondInst = isTwoPlayer ? activeInstruments[1] : null;
+
+    // Stem-Driven Spotlight Framing Priority:
+    // 1. Engrande Pyromusical Finale -> sweep out to Aerial Stadium Drone
+    if (fireworksGrandActive && this.currentPreset !== CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER) {
+      this.spotlightOverrideRole = null;
+      return CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER;
+    }
+
+    // 2. Rapid drum fill (snareImpulse bursts) -> snap to Drummer 3/4 Overhead/Low Action Cam
+    if (snareFillActive && isInstActive('drums') && this.currentPreset !== CAMERA_PRESETS.DRUM_KIT_ACTION_LOW) {
+      this.spotlightOverrideRole = 'drums';
+      return CAMERA_PRESETS.DRUM_KIT_ACTION_LOW;
+    }
+
+    // 3. Lead Guitar Solo / Riff Energy spike -> Hero Lead Guitarist Spotlight
+    if (
+      (sectionType === 'GUITAR_SOLO' || guitarRiffEnergy > 0.72) &&
+      isInstActive('guitar') &&
+      this.currentPreset !== CAMERA_PRESETS.ACTIVE_PLAYER_CLOSEUP
+    ) {
+      this.spotlightOverrideRole = 'guitar';
+      return CAMERA_PRESETS.ACTIVE_PLAYER_CLOSEUP;
+    }
+    this.spotlightOverrideRole = null;
 
     // Immediate thematic crowd cut when a crowd event starts
     if (
@@ -232,8 +274,8 @@ export class CameraDirector {
 
     // Base contextual weights centered around broadcast + immersive Crowd-POV & Pit-Surf rigs
     addW(CAMERA_PRESETS.FRONT_ROW_LOW_HERO, sectionType === 'CHORUS' || combo >= 15 ? 3.0 : 2.2);
-    addW(CAMERA_PRESETS.CATWALK_FRONT_WALKOUT, sectionType === 'CHORUS' || sectionType === 'GUITAR_SOLO' || combo >= 20 ? 2.8 : 1.6);
-    addW(CAMERA_PRESETS.ARENA_WIDE_CRANE, isTwoPlayer ? 2.5 : sectionType === 'INTRO' ? 3.0 : 1.7);
+    addW(CAMERA_PRESETS.CATWALK_FRONT_WALKOUT, sectionType === 'CHORUS' || sectionType === 'GUITAR_SOLO' || combo >= 20 ? 3.0 : 1.6);
+    addW(CAMERA_PRESETS.ARENA_WIDE_CRANE, isTwoPlayer ? 2.5 : sectionType === 'INTRO' ? 3.0 : 1.8);
     addW(
       CAMERA_PRESETS.ARENA_UPPER_BOWL_SWEEP,
       sectionType === 'CHORUS' || fever || encore || sectionType === 'INTRO' ? 2.2 : 1.15
@@ -252,7 +294,7 @@ export class CameraDirector {
     );
     addW(
       CAMERA_PRESETS.ACTIVE_PLAYER_CLOSEUP,
-      isInstActive(activeInstrument) ? (combo >= 25 ? 2.7 : 1.75) : 0.7
+      isInstActive(activeInstrument) ? (combo >= 25 || guitarRiffEnergy > 0.5 ? 2.9 : 1.85) : 0.7
     );
     addW(CAMERA_PRESETS.STAGE_WING_DOLLY_TRACK, 1.35);
     addW(CAMERA_PRESETS.BAND_ORBIT_360, sectionType === 'BRIDGE' || sectionType === 'CHORUS' ? 1.75 : 1.05);
@@ -263,7 +305,7 @@ export class CameraDirector {
       addW(CAMERA_PRESETS.PIANO_HANDS_OVER_SHOULDER, activeInstrument === 'piano' || secondInst === 'piano' ? 2.8 : isBallad ? 2.3 : 1.05);
     }
     if (isInstActive('drums') || activeInstrument === 'drums' || secondInst === 'drums') {
-      addW(CAMERA_PRESETS.DRUM_KIT_ACTION_LOW, activeInstrument === 'drums' || secondInst === 'drums' ? 3.0 : 1.75);
+      addW(CAMERA_PRESETS.DRUM_KIT_ACTION_LOW, activeInstrument === 'drums' || secondInst === 'drums' || snareFillActive ? 3.2 : 1.85);
     }
     if (isTwoPlayer || (isInstActive('guitar') && isInstActive('bass'))) {
       addW(
@@ -278,8 +320,8 @@ export class CameraDirector {
     } else if (overallEnergy > 0.42 || combo >= 15 || !hasVocalist) {
       addW(CAMERA_PRESETS.CROWD_PIT_MOSH_CAM, 1.0);
     }
-    if (fever || encore || sectionType === 'OUTRO') {
-      addW(CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER, encore ? 3.5 : 2.0);
+    if (fever || encore || sectionType === 'OUTRO' || fireworksGrandActive) {
+      addW(CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER, encore || fireworksGrandActive ? 3.8 : 2.2);
     }
 
     // Strictly exclude the last 5 shots AND prefer switching camera category
@@ -337,15 +379,17 @@ export class CameraDirector {
   ) {
     const gPos = livePositions?.guitar || lineupPositions?.guitar || { x: -4.5, y: 0, z: 1.0 };
     const bPos = livePositions?.bass || lineupPositions?.bass || { x: 4.5, y: 0, z: 1.0 };
-    const dPos = livePositions?.drums || lineupPositions?.drums || { x: 0, y: 0.8, z: -2.8 };
-    const pPos = livePositions?.piano || lineupPositions?.piano || { x: 6.5, y: 0.5, z: -1.8 };
+    const dPos = livePositions?.drums || lineupPositions?.drums || { x: 0, y: 0.65, z: -2.8 };
+    const pPos = livePositions?.piano || lineupPositions?.piano || { x: 6.5, y: 0.45, z: -1.8 };
     const vPos = livePositions?.vocals || lineupPositions?.vocalist || { x: 0, y: 0, z: 2.0 };
     const getPosForRole = (role) =>
       role === 'bass' ? bPos : role === 'drums' ? dPos : role === 'piano' ? pPos : role === 'vocals' ? vPos : gPos;
     const isTwoPlayer = Array.isArray(activeInstruments) && activeInstruments.length >= 2;
-    const focusInstrument = isTwoPlayer
-      ? activeInstruments[this.cutCount % activeInstruments.length]
-      : activeInstrument;
+    const focusInstrument = this.spotlightOverrideRole
+      ? this.spotlightOverrideRole
+      : isTwoPlayer
+        ? activeInstruments[this.cutCount % activeInstruments.length]
+        : activeInstrument;
 
     const drift = Math.sin(shotTime * 0.44) * 0.24 * this.shotSideSign;
     const dollyPush = Math.min(0.85, shotTime * 0.068);
@@ -356,70 +400,72 @@ export class CameraDirector {
       ambianceType !== 'BALLAD_EMOTIONAL';
 
     switch (preset) {
-      // 1. Front-Pit Steadicam: curved track sweeping z: 11.5 -> 13.5, low-angle y: 1.25..1.55m, fov 46, ±1.8° roll
+      // 1. B-Stage Pit Steadicam: curved track sweeping safely around the circular B-Stage barricade (z ~ 15.2..17.6m)
       case CAMERA_PRESETS.FRONT_ROW_LOW_HERO: {
         const focusX = (gPos.x * 0.35 + vPos.x * 0.65);
-        this._desiredTarget.set(focusX, 2.25 + (vPos.y || 0) * 0.35, -1.0);
-        const sweepRad = Math.sin(shotTime * 0.38) * 0.34 + this.shotSideSign * 0.18;
-        const pitRadius = 12.8 + Math.sin(shotTime * 0.42) * 1.0; // z ~ 11.5..13.5m in front of -1.0 target
+        const focusZ = Math.max(-0.5, Math.min(8.5, vPos.z * 0.55));
+        this._desiredTarget.set(focusX * 0.75, 2.35 + (vPos.y || 0) * 0.35, focusZ);
+        const sweepRad = Math.sin(shotTime * 0.38) * 0.42 + this.shotSideSign * 0.24;
+        const pitRadius = Math.max(15.6 - focusZ * 0.65, 9.2) + Math.sin(shotTime * 0.42) * 1.1;
         return {
           azimuth: sweepRad,
           radius: pitRadius,
-          height: 1.38 + Math.cos(shotTime * 0.5) * 0.16,
-          fov: 46,
+          height: 1.55 + Math.cos(shotTime * 0.5) * 0.18,
+          fov: 48,
           roll: isHighEnergyChorus ? this.shotSideSign * 0.0314 : 0, // ±1.8 deg = 0.0314 rad
         };
       }
 
-      // 2. Catwalk Hero Dolly: heroic low-angle close-up (fov 38) tracking frontperson/guitarist on catwalk
+      // 2. Catwalk & B-Stage Hero Dolly: heroic low-angle close-up (fov 38) tracking frontperson/guitarist all the way to circular B-Stage (z <= 13.4)
       case CAMERA_PRESETS.CATWALK_FRONT_WALKOUT: {
         const leadZ = Math.max(vPos.z, gPos.z, bPos.z);
         const focusMember = leadZ === vPos.z ? vPos : leadZ === gPos.z ? gPos : bPos;
-        const clampedZ = Math.max(2.6, Math.min(10.6, focusMember.z));
-        this._desiredTarget.set(focusMember.x * 0.8, 2.15 + (focusMember.y || 0) * 0.4, clampedZ);
+        const clampedZ = Math.max(2.6, Math.min(13.4, focusMember.z));
+        const onBStage = clampedZ > 9.4;
+        this._desiredTarget.set(focusMember.x * 0.85, 2.15 + (focusMember.y || 0) * 0.4, clampedZ);
         return {
-          azimuth: this.shotSideSign * (0.36 + Math.sin(shotTime * 0.44) * 0.24),
-          radius: 5.4 - dollyPush * 0.75,
-          height: 1.28 + Math.cos(shotTime * 0.42) * 0.14 + bpmPulse * 0.45,
-          fov: 38,
+          azimuth: this.shotSideSign * (onBStage ? 0.52 : 0.38) + Math.sin(shotTime * 0.44) * 0.28,
+          radius: (onBStage ? 6.4 : 5.6) - dollyPush * 0.7,
+          height: (onBStage ? 1.48 : 1.32) + Math.cos(shotTime * 0.42) * 0.15 + bpmPulse * 0.45,
+          fov: onBStage ? 40 : 38,
           roll: isHighEnergyChorus ? this.shotSideSign * 0.0314 : 0,
         };
       }
 
-      // 3. 3/4 Drum & Riser Crane: sweeping behind/beside elevated drum riser looking out toward crowd (fov 42)
+      // 3. 3/4 Drum & Riser Crane: sweeping behind/beside elevated 2-tier drum riser looking out toward crowd (fov 42)
       case CAMERA_PRESETS.DRUM_KIT_ACTION_LOW:
-        this._desiredTarget.set(dPos.x, 2.48, dPos.z + 0.65);
+        this._desiredTarget.set(dPos.x, 2.38, dPos.z + 0.65);
         return {
           azimuth: this.shotSideSign * (1.82 + Math.sin(shotTime * 0.52) * 0.34),
-          radius: 4.55 - dollyPush * 0.38,
-          height: 2.75 + Math.sin(shotTime * 0.55) * 0.22 + bpmPulse * 0.5,
+          radius: 4.65 - dollyPush * 0.38,
+          height: 2.65 + Math.sin(shotTime * 0.55) * 0.22 + bpmPulse * 0.5,
           fov: 42,
           roll: -0.026 * this.shotSideSign,
         };
 
-      // 4. Reverse "Artist's POV" Stadium Shot: behind band looking over drum riser into 360° lightstick bowl (fov 58)
+      // 4. Reverse "Artist's POV" Stadium Shot: behind band looking over drum riser & B-Stage into 360° lightstick bowl (fov 58)
       case CAMERA_PRESETS.REVERSE_SILHOUETTE_SPOTLIGHT:
-        this._desiredTarget.set(this.shotSideSign * 0.45, 2.35, 11.5);
+        this._desiredTarget.set(this.shotSideSign * 0.45, 2.35, 13.5);
         return {
           azimuth: Math.PI + this.shotSideSign * (0.22 + Math.sin(shotTime * 0.3) * 0.22),
-          radius: 17.2 + Math.cos(shotTime * 0.28) * 0.5,
-          height: 3.15 + Math.sin(shotTime * 0.4) * 0.25,
+          radius: 19.6 + Math.cos(shotTime * 0.28) * 0.6,
+          height: 3.35 + Math.sin(shotTime * 0.4) * 0.25,
           fov: 58,
           roll: 0,
         };
 
-      // 5. Technocrane / Spidercam Sweep: high-speed sweeping arc across wide stadium & photo pit (fov 50)
+      // 5. Technocrane / Spidercam 3/4 Sweep: wide arc showcasing full 38m stage, 15.5m truss roof, ±17.8m line arrays & 24m LED wall
       case CAMERA_PRESETS.ARENA_WIDE_CRANE:
-        this._desiredTarget.set(0, 2.68, -1.2);
+        this._desiredTarget.set(0, 3.85, -1.2);
         return {
-          azimuth: this.shotSideSign * 0.32 + Math.sin(shotTime * 0.38) * 0.58,
-          radius: 15.8 + Math.cos(shotTime * 0.28) * 1.15,
-          height: 6.45 + Math.sin(shotTime * 0.36) * 0.85 + bpmPulse * 0.7,
-          fov: 50,
-          roll: Math.sin(shotTime * 0.38) * 0.018,
+          azimuth: this.shotSideSign * 0.36 + Math.sin(shotTime * 0.36) * 0.56,
+          radius: 21.8 + Math.cos(shotTime * 0.28) * 1.4,
+          height: 8.2 + Math.sin(shotTime * 0.34) * 1.05 + bpmPulse * 0.7,
+          fov: 54,
+          roll: Math.sin(shotTime * 0.36) * 0.018,
         };
 
-      // 6. Pit Event Reaction Cam: snaps into mosh pit / heart hands / wave center (fov 36)
+      // 6. Pit Event Reaction Cam: snaps into mosh pit / heart hands / wave center clear of B-Stage octagon (fov 38)
       case CAMERA_PRESETS.CROWD_PIT_MOSH_CAM: {
         const isWideCrowd =
           crowdEventType === 'STADIUM_WAVE' ||
@@ -427,80 +473,80 @@ export class CameraDirector {
           crowdEventType === 'CRYING_SWAY' ||
           crowdEventType === 'WALL_OF_DEATH';
         const pitX = crowdEventType && crowdEventType !== 'NORMAL' && crowdEventCenter ? crowdEventCenter.x : 0;
-        const pitZ = crowdEventType && crowdEventType !== 'NORMAL' && crowdEventCenter ? crowdEventCenter.z : 14.8;
-        this._desiredTarget.set(isWideCrowd ? 0 : pitX, isWideCrowd ? 2.4 : 1.85, isWideCrowd ? 14.5 : pitZ - 0.5);
+        const pitZ = crowdEventType && crowdEventType !== 'NORMAL' && crowdEventCenter ? crowdEventCenter.z : 18.2;
+        this._desiredTarget.set(isWideCrowd ? 0 : pitX, isWideCrowd ? 2.4 : 1.85, isWideCrowd ? 17.8 : Math.max(15.8, pitZ - 0.5));
         return {
-          azimuth: this.shotSideSign * (isWideCrowd ? 0.4 : 0.52) + Math.sin(shotTime * 0.48) * 0.36,
-          radius: (isWideCrowd ? 10.6 : 7.2) + Math.cos(shotTime * 0.42) * 0.45,
-          height: (isWideCrowd ? 4.4 : 2.65) + Math.sin(shotTime * 0.56) * 0.22 + bpmPulse * 0.7,
-          fov: 36,
+          azimuth: this.shotSideSign * (isWideCrowd ? 0.42 : 0.52) + Math.sin(shotTime * 0.48) * 0.36,
+          radius: (isWideCrowd ? 11.4 : 7.8) + Math.cos(shotTime * 0.42) * 0.45,
+          height: (isWideCrowd ? 4.8 : 2.85) + Math.sin(shotTime * 0.56) * 0.22 + bpmPulse * 0.7,
+          fov: 38,
           roll: this.shotSideSign * (isWideCrowd ? 0.018 : 0.028),
         };
       }
 
-      // 6B. Crowd-POV Fan-Cam: eye-level inside the GA standing pit looking up past waving lightsticks to the band & Jumbotron
+      // 6B. B-Stage Pit Fan-Cam: eye-level inside GA pit behind B-Stage barricade looking up at frontman, truss roof & 24m backwall
       case CAMERA_PRESETS.CROWD_POV_FAN_CAM: {
         const fanBounce = Math.abs(Math.sin(shotTime * 3.4)) * (0.14 + bassEnergy * 0.16);
         const focusX = (vPos.x * 0.5 + gPos.x * 0.25 + bPos.x * 0.25) * 0.55;
-        this._desiredTarget.set(focusX, 3.15, -1.65);
-        const pitAngle = this.shotSideSign * 0.26 + Math.sin(shotTime * 0.34) * 0.28;
+        this._desiredTarget.set(focusX, 3.85, -1.6);
+        const pitAngle = this.shotSideSign * 0.3 + Math.sin(shotTime * 0.34) * 0.28;
         return {
           azimuth: pitAngle,
-          radius: 18.2 + Math.cos(shotTime * 0.29) * 1.15,
-          height: 1.72 + fanBounce + Math.sin(shotTime * 0.75) * 0.09,
-          fov: 50,
+          radius: 21.8 + Math.cos(shotTime * 0.29) * 1.25,
+          height: 1.82 + fanBounce + Math.sin(shotTime * 0.75) * 0.09,
+          fov: 52,
           roll: Math.sin(shotTime * 0.9) * 0.016,
         };
       }
 
-      // 6C. Crowd Pit-Surf & Barricade Glider: energetic lateral surf along front GA rail & moshpit hands
+      // 6C. Crowd Pit-Surf & B-Stage Barricade Glider: energetic lateral surf wrapping outside the octagonal B-Stage perimeter
       case CAMERA_PRESETS.CROWD_PIT_SURF: {
-        const surfArc = Math.sin(shotTime * 0.62) * 0.58 + this.shotSideSign * 0.14;
+        const surfArc = Math.sin(shotTime * 0.58) * 0.62 + this.shotSideSign * 0.18;
         const surfBounce = Math.sin(shotTime * 4.2) * (0.12 + bassEnergy * 0.18);
-        const catwalkZ = Math.max(0.5, Math.min(7.2, vPos.z * 0.45 + 1.8));
-        this._desiredTarget.set(Math.sin(shotTime * 0.5) * 1.4, 2.55, catwalkZ - 1.2);
+        const catwalkZ = Math.max(2.0, Math.min(11.4, vPos.z * 0.55 + 3.2));
+        this._desiredTarget.set(Math.sin(shotTime * 0.5) * 1.6, 2.75, catwalkZ);
         return {
           azimuth: surfArc,
-          radius: 13.4 + Math.cos(shotTime * 0.52) * 1.35,
-          height: 2.25 + surfBounce + Math.cos(shotTime * 0.65) * 0.18,
-          fov: 45,
-          roll: Math.cos(shotTime * 0.62) * 0.032,
+          radius: Math.max(11.6, 17.2 - catwalkZ * 0.45) + Math.cos(shotTime * 0.52) * 1.2,
+          height: 2.35 + surfBounce + Math.cos(shotTime * 0.65) * 0.18,
+          fov: 48,
+          roll: Math.cos(shotTime * 0.58) * 0.032,
         };
       }
 
-      // 6D. Arena Upper-Bowl Concertgoer Sweep: sweeping mid/upper-tier stadium vista showing full 360° lightstick bowls
+      // 6D. Arena Upper-Bowl Concertgoer Sweep: sweeping mid/upper-tier vista framing the full 38m stadium stage, B-stage & 360° lightstick bowl
       case CAMERA_PRESETS.ARENA_UPPER_BOWL_SWEEP: {
-        this._desiredTarget.set(0, 3.4, -1.5);
+        this._desiredTarget.set(0, 4.2, -0.8);
         return {
           azimuth: this.shotSideSign * 0.52 + Math.sin(shotTime * 0.24) * 0.64,
-          radius: 26.8 + Math.cos(shotTime * 0.2) * 1.8,
-          height: 12.2 + Math.sin(shotTime * 0.26) * 1.45,
-          fov: 52,
+          radius: 30.2 + Math.cos(shotTime * 0.2) * 2.0,
+          height: 13.8 + Math.sin(shotTime * 0.26) * 1.5,
+          fov: 54,
           roll: Math.sin(shotTime * 0.24) * 0.014,
         };
       }
 
-      // 6E. Stage-to-Crowd Reverse Dolly: behind the band looking out across musicians into the glowing pit & stadium wave
+      // 6E. Stage-to-Crowd Reverse Dolly: behind the band looking out across the glowing LED floor & B-Stage into the packed pit
       case CAMERA_PRESETS.STAGE_TO_CROWD_REVERSE: {
-        this._desiredTarget.set(this.shotSideSign * 0.75, 2.5, 15.5);
+        this._desiredTarget.set(this.shotSideSign * 0.75, 2.5, 16.8);
         return {
           azimuth: Math.PI + this.shotSideSign * (0.18 + Math.sin(shotTime * 0.34) * 0.26),
-          radius: 21.6 + Math.cos(shotTime * 0.3) * 0.75,
-          height: 2.95 + Math.sin(shotTime * 0.44) * 0.24 + bpmPulse * 0.45,
+          radius: 23.0 + Math.cos(shotTime * 0.3) * 0.8,
+          height: 3.15 + Math.sin(shotTime * 0.44) * 0.24 + bpmPulse * 0.45,
           fov: 56,
           roll: Math.sin(shotTime * 0.34) * 0.015,
         };
       }
 
-      // 7. Grand Encore Helicopter Drone: sweeping wide 360° stadium & aerial fireworks vista (fov 54)
+      // 7. Grand Encore Aerial Firework Sweep: elevated wide stadium vista framing Tier 1-4 fireworks (up to 75m Kamuro canopy)
       case CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER:
-        this._desiredTarget.set(0, 8.8, -4.0);
+        this._desiredTarget.set(0, 14.5, -10.5);
         return {
-          azimuth: Math.sin(shotTime * 0.22) * 0.76,
-          radius: 44.0 + Math.cos(shotTime * 0.16) * 2.4,
-          height: 24.5 + Math.sin(shotTime * 0.2) * 2.0,
-          fov: 54,
-          roll: Math.sin(shotTime * 0.22) * 0.02,
+          azimuth: Math.sin(shotTime * 0.2) * 0.72,
+          radius: 52.0 + Math.cos(shotTime * 0.16) * 2.8,
+          height: 26.5 + Math.sin(shotTime * 0.18) * 2.2,
+          fov: 58,
+          roll: Math.sin(shotTime * 0.2) * 0.02,
         };
 
       case CAMERA_PRESETS.ACTIVE_PLAYER_CLOSEUP: {
@@ -547,33 +593,33 @@ export class CameraDirector {
       }
 
       case CAMERA_PRESETS.STAGE_WING_DOLLY_TRACK:
-        this._desiredTarget.set(this.shotSideSign * -0.4, 2.25, -1.25);
+        this._desiredTarget.set(this.shotSideSign * -0.4, 2.55, -1.1);
         return {
-          azimuth: this.shotSideSign * (1.24 + Math.sin(shotTime * 0.34) * 0.24),
-          radius: 7.5 - dollyPush * 0.9,
-          height: 1.62 + Math.cos(shotTime * 0.4) * 0.2,
-          fov: 43,
+          azimuth: this.shotSideSign * (1.22 + Math.sin(shotTime * 0.34) * 0.24),
+          radius: 10.6 - dollyPush * 1.0,
+          height: 2.05 + Math.cos(shotTime * 0.4) * 0.24,
+          fov: 45,
           roll: -0.02 * this.shotSideSign,
         };
 
       case CAMERA_PRESETS.JUMBOTRON_SHOUTOUT_SWEEP:
-        this._desiredTarget.set(0, 5.4, -5.6);
+        this._desiredTarget.set(0, 6.2, -5.8);
         return {
-          azimuth: Math.sin(shotTime * 0.32) * 0.36,
-          radius: 17.6 - dollyPush * 1.1,
-          height: 3.6 + Math.cos(shotTime * 0.26) * 0.38,
-          fov: 50,
+          azimuth: Math.sin(shotTime * 0.32) * 0.34,
+          radius: 22.8 - dollyPush * 1.2,
+          height: 4.5 + Math.cos(shotTime * 0.26) * 0.45,
+          fov: 54,
           roll: 0,
         };
 
       case CAMERA_PRESETS.BAND_ORBIT_360:
       default:
-        this._desiredTarget.set(0, 2.32, -1.1);
+        this._desiredTarget.set(0, 2.55, -1.0);
         return {
-          azimuth: Math.sin(shotTime * 0.52) * 1.15 * this.shotSideSign,
-          radius: 10.8 + Math.cos(shotTime * 0.4) * 0.9,
-          height: 2.95 + Math.sin(shotTime * 0.36) * 0.42 + bpmPulse * 0.5,
-          fov: 47,
+          azimuth: Math.sin(shotTime * 0.52) * 1.12 * this.shotSideSign,
+          radius: 13.6 + Math.cos(shotTime * 0.4) * 1.0,
+          height: 3.35 + Math.sin(shotTime * 0.36) * 0.48 + bpmPulse * 0.5,
+          fov: 49,
           roll: Math.sin(shotTime * 0.52) * 0.026,
         };
     }
@@ -582,8 +628,8 @@ export class CameraDirector {
   resolveBackstageFraming(clock, lineupPositions) {
     const gPos = lineupPositions?.guitar || { x: -4.5, y: 0, z: 1.0 };
     const bPos = lineupPositions?.bass || { x: 4.5, y: 0, z: 1.0 };
-    const dPos = lineupPositions?.drums || { x: 0, y: 0.8, z: -2.8 };
-    const pPos = lineupPositions?.piano || { x: 6.5, y: 0.5, z: -1.8 };
+    const dPos = lineupPositions?.drums || { x: 0, y: 0.65, z: -2.8 };
+    const pPos = lineupPositions?.piano || { x: 6.5, y: 0.45, z: -1.8 };
     const vPos = lineupPositions?.vocalist?.visible ? lineupPositions.vocalist : gPos;
 
     switch (this.backstageFocus) {
@@ -591,8 +637,8 @@ export class CameraDirector {
         this._desiredTarget.set(vPos.x, 1.9, vPos.z);
         return { azimuth: Math.sin(clock * 0.42) * 0.34, radius: 4.2, height: 1.85, fov: 38, roll: 0 };
       case 'piano':
-        this._desiredTarget.set(pPos.x, 1.95, pPos.z + 0.15);
-        return { azimuth: (pPos.x < 0 ? -0.45 : 0.45) + Math.sin(clock * 0.42) * 0.22, radius: 4.75, height: 2.6, fov: 40, roll: 0 };
+        this._desiredTarget.set(pPos.x, 1.9, pPos.z + 0.15);
+        return { azimuth: (pPos.x < 0 ? -0.45 : 0.45) + Math.sin(clock * 0.42) * 0.22, radius: 4.75, height: 2.55, fov: 40, roll: 0 };
       case 'guitar':
         this._desiredTarget.set(gPos.x, 1.75, gPos.z);
         return { azimuth: (gPos.x < -1 ? -0.32 : 0.16) + Math.sin(clock * 0.45) * 0.18, radius: 4.6, height: 1.95, fov: 40, roll: 0.02 };
@@ -600,19 +646,19 @@ export class CameraDirector {
         this._desiredTarget.set(bPos.x, 1.75, bPos.z);
         return { azimuth: 0.32 + Math.sin(clock * 0.45) * 0.18, radius: 4.6, height: 1.95, fov: 40, roll: -0.02 };
       case 'drums':
-        this._desiredTarget.set(dPos.x, 2.2, dPos.z + 0.15);
-        return { azimuth: Math.sin(clock * 0.38) * 0.48, radius: 5.5, height: 3.15, fov: 42, roll: 0 };
+        this._desiredTarget.set(dPos.x, 2.05, dPos.z + 0.15);
+        return { azimuth: Math.sin(clock * 0.38) * 0.48, radius: 5.5, height: 3.0, fov: 42, roll: 0 };
       case 'band':
       case 'highway':
-        this._desiredTarget.set(0, 2.2, -1.2);
-        return { azimuth: Math.sin(clock * 0.28) * 0.36, radius: 13.4, height: 3.35 + Math.sin(clock * 0.22) * 0.2, fov: 46, roll: 0 };
+        this._desiredTarget.set(0, 2.6, -1.2);
+        return { azimuth: Math.sin(clock * 0.28) * 0.36, radius: 16.4, height: 3.85 + Math.sin(clock * 0.22) * 0.25, fov: 48, roll: 0 };
       case 'venues':
-        this._desiredTarget.set(0, 4.6, -3.5);
-        return { azimuth: Math.sin(clock * 0.2) * 0.78, radius: 22.0 + Math.cos(clock * 0.16) * 1.4, height: 8.2 + Math.sin(clock * 0.18) * 0.7, fov: 54, roll: 0 };
+        this._desiredTarget.set(0, 5.2, -3.2);
+        return { azimuth: Math.sin(clock * 0.2) * 0.78, radius: 26.0 + Math.cos(clock * 0.16) * 1.6, height: 9.4 + Math.sin(clock * 0.18) * 0.8, fov: 54, roll: 0 };
       case 'setlist':
       default:
-        this._desiredTarget.set(0, 2.35, -1.35);
-        return { azimuth: Math.sin(clock * 0.2) * 0.46, radius: 14.4 + Math.cos(clock * 0.17) * 0.7, height: 2.35 + Math.sin(clock * 0.19) * 0.25, fov: 46, roll: 0 };
+        this._desiredTarget.set(0, 2.9, -1.2);
+        return { azimuth: Math.sin(clock * 0.2) * 0.44, radius: 18.2 + Math.cos(clock * 0.17) * 0.8, height: 3.4 + Math.sin(clock * 0.19) * 0.28, fov: 49, roll: 0 };
     }
   }
 
@@ -634,8 +680,14 @@ export class CameraDirector {
     const overallEnergy = opts.overallEnergy || 0;
     const bassEnergy = opts.bassEnergy || 0;
     const drumEnergy = opts.drumEnergy || 0;
-    const kickTransient = Number(opts.kickTransient || 0);
-    const snareTransient = Number(opts.snareTransient || 0);
+    const kickTransient = Math.max(Number(opts.kickImpulse || 0), Number(opts.kickTransient || 0));
+    const snareTransient = Math.max(Number(opts.snareImpulse || 0), Number(opts.snareTransient || 0));
+    const guitarRiffEnergy = Number(opts.guitarRiffEnergy || 0);
+    const beatPhase = Number.isFinite(opts.beatPhase) ? opts.beatPhase : (((songTime * (safeBpm / 60)) % 1) + 1) % 1;
+    const beatIndex = Number.isFinite(opts.beatIndex) ? opts.beatIndex : Math.floor(songTime * (safeBpm / 60));
+    const isDownbeat = Boolean(opts.isDownbeat ?? ((((beatIndex % 4) + 4) % 4) === 0 && beatPhase < 0.22));
+    const isPhraseBoundary = Boolean(opts.isPhraseBoundary ?? false);
+    const fireworksGrandActive = Boolean(opts.fireworksGrandActive || isEncoreActive);
     const stemActivity = opts.stemActivity;
     const lineupPositions = opts.lineupPositions;
     const livePositions = opts.livePositions;
@@ -653,25 +705,49 @@ export class CameraDirector {
     const barNumber = this.resolveDynamicBarNumber(songTime, currentTick, beatGrid, beatSec);
     this.presetAge += dt;
     this.snareCooldown = Math.max(0, this.snareCooldown - dt);
-    if (kickTransient > 0.35) {
-      this.triggerKickImpulse(Math.min(0.95, kickTransient));
+    this.kickPunchCooldown = Math.max(0, this.kickPunchCooldown - dt);
+
+    // Track stem-driven spotlight triggers (rapid drum fills & guitar riff spikes)
+    if (snareTransient > 0.56) {
+      this.snareFillScore = Math.min(1.5, this.snareFillScore + dt * 3.8);
+    } else {
+      this.snareFillScore = Math.max(0, this.snareFillScore - dt * 1.6);
     }
+    if (guitarRiffEnergy > 0.66) {
+      this.guitarSpikeScore = Math.min(1.5, this.guitarSpikeScore + dt * 2.6);
+    } else {
+      this.guitarSpikeScore = Math.max(0, this.guitarSpikeScore - dt * 1.3);
+    }
+    const snareFillActive = this.snareFillScore > 0.55;
+    const guitarSpikeActive = this.guitarSpikeScore > 0.65 || sectionType === 'GUITAR_SOLO';
+
+    const isHighEnergy = sectionType === 'CHORUS' || sectionType === 'GUITAR_SOLO' || fever || encore || overallEnergy > 0.36;
+
+    // Kick-Drum Micro-Punch: subtle -1.2° FOV punch on kickImpulse during high-energy choruses/drops + sub-bass shake
+    if (playing && this.mode !== 'locked' && kickTransient > 0.42) {
+      this.triggerKickImpulse(Math.min(0.95, kickTransient));
+      if (isHighEnergy && this.kickPunchCooldown <= 0) {
+        this.kickFovPunch = -1.2 * Math.min(1.0, (kickTransient - 0.3) / 0.55);
+        this.kickPunchCooldown = Math.max(0.18, beatSec * 0.48);
+      }
+    }
+    this.kickFovPunch = THREE.MathUtils.damp(this.kickFovPunch, 0, 11.5, dt);
     this.kickShake = Math.max(0, this.kickShake - dt * 5.2);
     this.kickShakePhase += dt * 52;
 
-    // +1.8° FOV punch triggered on snare transients & strong downbeats (locked smoothly so it feels physical)
-    const isHighEnergy = sectionType === 'CHORUS' || sectionType === 'GUITAR_SOLO' || fever || encore || overallEnergy > 0.36;
+    // Snare accent micro-breath (subtle +0.9° when not fighting a kick punch)
     if (
       playing &&
       this.mode !== 'locked' &&
       this.snareCooldown <= 0 &&
-      (snareTransient > 0.34 || (isHighEnergy && barNumber > this.lastSnarePunchBar && (bassEnergy > 0.34 || drumEnergy > 0.34)))
+      snareTransient > 0.48 &&
+      Math.abs(this.kickFovPunch) < 0.25
     ) {
       this.lastSnarePunchBar = barNumber;
-      this.snareCooldown = 0.22;
-      this.fovPunch = 1.8;
+      this.snareCooldown = Math.max(0.24, beatSec * 0.5);
+      this.fovPunch = 0.85;
     }
-    this.fovPunch = THREE.MathUtils.damp(this.fovPunch, 0, 8.2, dt);
+    this.fovPunch = THREE.MathUtils.damp(this.fovPunch, 0, 9.5, dt);
 
     let targetAz = 0;
     let targetRad = 14.2;
@@ -694,14 +770,17 @@ export class CameraDirector {
       targetHeight = 2.6;
       targetFov = 46;
       this._desiredTarget.set(0, 2.35, -1.2);
-    } else if (isEncoreActive || this.mode === 'aerial-drone') {
+    } else if (
+      this.mode === 'aerial-drone' ||
+      (isEncoreActive && (!playing || encoreFinaleActive || this.currentPreset === CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER))
+    ) {
       this.currentPreset = CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER;
-      targetAz = Math.sin(clock * 0.22) * 0.78;
-      targetRad = isEncoreActive ? 46.0 + Math.cos(clock * 0.16) * 2.4 : 38.0 + Math.cos(clock * 0.18) * 2.2;
-      targetHeight = isEncoreActive ? 25.5 + Math.sin(clock * 0.2) * 2.2 : 20.5 + Math.sin(clock * 0.22) * 1.8;
-      targetFov = isEncoreActive ? 62 : 54;
-      targetRoll = Math.sin(clock * 0.22) * 0.022;
-      this._desiredTarget.set(0, isEncoreActive ? 11.2 : 6.4, -4.8);
+      targetAz = Math.sin(clock * 0.2) * 0.74;
+      targetRad = isEncoreActive ? 54.0 + Math.cos(clock * 0.16) * 2.8 : 42.0 + Math.cos(clock * 0.18) * 2.2;
+      targetHeight = isEncoreActive ? 28.0 + Math.sin(clock * 0.18) * 2.4 : 21.5 + Math.sin(clock * 0.22) * 1.8;
+      targetFov = isEncoreActive ? 62 : 55;
+      targetRoll = Math.sin(clock * 0.2) * 0.022;
+      this._desiredTarget.set(0, isEncoreActive ? 17.5 : 8.2, isEncoreActive ? -11.5 : -5.5);
     } else if (this.mode === 'pit-steadicam') {
       this.currentPreset = CAMERA_PRESETS.FRONT_ROW_LOW_HERO;
       const framing = this.resolvePresetFraming(this.currentPreset, clock, {
@@ -829,6 +908,30 @@ export class CameraDirector {
       const crowdEventJustStarted =
         Boolean(crowdEventType && crowdEventType !== 'NORMAL' && crowdEventType !== this.prevCrowdEventType);
 
+      // Queue urgent editorial cues so cuts fire STRICTLY on the next musical downbeat (never mid-beat!)
+      if (crowdEventJustStarted) {
+        this.pendingCutUrgent = true;
+        this.pendingCutPreset =
+          crowdEventType === 'CROWD_SURFING'
+            ? CAMERA_PRESETS.CROWD_PIT_SURF
+            : crowdEventType === 'STADIUM_WAVE'
+              ? CAMERA_PRESETS.ARENA_UPPER_BOWL_SWEEP
+              : crowdEventType === 'HEART_HANDS' || crowdEventType === 'CRYING_SWAY'
+                ? CAMERA_PRESETS.CROWD_POV_FAN_CAM
+                : CAMERA_PRESETS.CROWD_PIT_MOSH_CAM;
+      } else if (feverJustTriggered && !this.recentShots.includes(CAMERA_PRESETS.BAND_ORBIT_360)) {
+        this.pendingCutUrgent = true;
+        this.pendingCutPreset = CAMERA_PRESETS.BAND_ORBIT_360;
+      } else if (
+        (isEncoreActive || fireworksGrandActive) &&
+        this.currentPreset !== CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER
+      ) {
+        this.pendingCutUrgent = true;
+        this.pendingCutPreset = CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER;
+      } else if (encoreJustTriggered || sectionJustChanged || snareFillActive || (guitarSpikeActive && sectionType === 'GUITAR_SOLO')) {
+        this.pendingCutUrgent = true;
+      }
+
       // Phrase-boundary cuts: 2 bars in Choruses/Guitar Solos/Outros/Fever/Encore, 4 bars in Verses/Intros/Bridges
       const cutIntervalBars =
         sectionType === 'GUITAR_SOLO' ||
@@ -842,13 +945,12 @@ export class CameraDirector {
           : 4;
 
       let shouldCut = false;
-      if (crowdEventJustStarted || feverJustTriggered || encoreJustTriggered || sectionJustChanged) {
-        shouldCut = true;
-      } else if (barNumber >= 0 && barNumber !== this.lastCutBar) {
+      const onMusicalDownbeat = isDownbeat || isPhraseBoundary;
+      if (barNumber >= 0 && barNumber !== this.lastCutBar && onMusicalDownbeat) {
         const isFirstDownbeat = this.lastCutBar < 0 && barNumber === 0;
         const barsSinceCut = barNumber - this.lastCutBar;
-        const isPhraseBarBoundary = barNumber % cutIntervalBars === 0 || barsSinceCut >= cutIntervalBars;
-        if (isFirstDownbeat || (barsSinceCut >= cutIntervalBars && isPhraseBarBoundary)) {
+        const isPhraseBarBoundary = isPhraseBoundary || barNumber % cutIntervalBars === 0 || barsSinceCut >= cutIntervalBars;
+        if (this.pendingCutUrgent || isFirstDownbeat || (barsSinceCut >= cutIntervalBars && isPhraseBarBoundary)) {
           shouldCut = true;
         }
       }
@@ -857,31 +959,28 @@ export class CameraDirector {
         this.lastCutBar = Math.max(0, barNumber);
         this.cutCount += 1;
         this.shotSideSign = this.cutCount % 2 === 0 ? 1 : -1;
-        const crowdEventShot =
-          crowdEventType === 'CROWD_SURFING'
-            ? CAMERA_PRESETS.CROWD_PIT_SURF
-            : crowdEventType === 'STADIUM_WAVE'
-              ? CAMERA_PRESETS.ARENA_UPPER_BOWL_SWEEP
-              : crowdEventType === 'HEART_HANDS' || crowdEventType === 'CRYING_SWAY'
-                ? CAMERA_PRESETS.CROWD_POV_FAN_CAM
-                : CAMERA_PRESETS.CROWD_PIT_MOSH_CAM;
-        const nextPreset = crowdEventJustStarted
-          ? crowdEventShot
-          : feverJustTriggered && !this.recentShots.includes(CAMERA_PRESETS.BAND_ORBIT_360)
-            ? CAMERA_PRESETS.BAND_ORBIT_360
-            : this.selectNextPreset({
-                activeInstrument,
-                activeInstruments,
-                combo,
-                fever,
-                encore,
-                overallEnergy,
-                stemActivity,
-                hasVocalist,
-                sectionType,
-                crowdEventType,
-                ambianceType,
-              });
+        const queuedPreset = this.pendingCutPreset;
+        this.pendingCutUrgent = false;
+        this.pendingCutPreset = null;
+
+        const nextPreset = queuedPreset
+          ? queuedPreset
+          : this.selectNextPreset({
+              activeInstrument,
+              activeInstruments,
+              combo,
+              fever,
+              encore,
+              overallEnergy,
+              stemActivity,
+              hasVocalist,
+              sectionType,
+              crowdEventType,
+              ambianceType,
+              guitarRiffEnergy,
+              snareFillActive,
+              fireworksGrandActive,
+            });
         if (nextPreset !== this.currentPreset) {
           this.currentPreset = nextPreset;
           this.pushRecentShot(nextPreset);
@@ -919,16 +1018,16 @@ export class CameraDirector {
       : this.mode === 'locked'
         ? 5.0
         : isEncoreActive || this.currentPreset === CAMERA_PRESETS.ENCORE_AERIAL_HELICOPTER
-          ? 2.2
+          ? 2.4
           : this.currentPreset === CAMERA_PRESETS.BAND_ORBIT_360
             ? 2.8
-            : 4.4;
+            : 4.8;
 
     this.azimuth = THREE.MathUtils.damp(this.azimuth, targetAz, lambda, dt);
     this.radius = THREE.MathUtils.damp(this.radius, targetRad, lambda, dt);
     this.height = THREE.MathUtils.damp(this.height, targetHeight, lambda, dt);
-    this.fov = THREE.MathUtils.damp(this.fov, targetFov + this.fovPunch, 6.8, dt);
-    this.roll = THREE.MathUtils.damp(this.roll, targetRoll, 4.2, dt);
+    this.fov = THREE.MathUtils.damp(this.fov, targetFov + this.fovPunch + this.kickFovPunch, 9.5, dt);
+    this.roll = THREE.MathUtils.damp(this.roll, targetRoll, 4.4, dt);
 
     this.target.x = THREE.MathUtils.damp(this.target.x, this._desiredTarget.x, lambda * 1.45, dt);
     this.target.y = THREE.MathUtils.damp(this.target.y, this._desiredTarget.y, lambda * 1.45, dt);
@@ -939,11 +1038,12 @@ export class CameraDirector {
       camera.updateProjectionMatrix();
     }
 
-    // Organic Steadicam operator sway + kick transient sub-bass micro-shake
+    // Beat-Locked Handheld Steadicam Sway synced to beatPhase * 0.5 + Kick-Drum Sub-Bass Micro-Shake
     const steadyOn = playing && this.mode !== 'locked' && !isEncoreActive;
-    const steadyX = steadyOn ? Math.sin(clock * 0.92) * 0.085 + Math.cos(clock * 1.47) * 0.04 : 0;
-    const steadyY = steadyOn ? Math.sin(clock * 1.24 + 0.8) * 0.055 : 0;
-    const steadyRoll = steadyOn ? Math.sin(clock * 0.76) * 0.006 : 0;
+    const halfBeatRad = (beatIndex + beatPhase) * Math.PI; // 1 full cycle every 2 beats (beatPhase * 0.5)
+    const steadyX = steadyOn ? Math.sin(halfBeatRad) * 0.095 + Math.cos(halfBeatRad * 0.5) * 0.045 : 0;
+    const steadyY = steadyOn ? Math.abs(Math.sin(halfBeatRad)) * 0.065 : 0;
+    const steadyRoll = steadyOn ? Math.sin(halfBeatRad) * 0.0085 : 0;
 
     const shakeAmp = playing && this.mode !== 'locked' ? this.kickShake * 0.095 : 0;
     const shakeY = Math.sin(this.kickShakePhase) * shakeAmp;

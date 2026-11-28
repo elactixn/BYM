@@ -22,7 +22,8 @@
  *     perimeter catwalk trusses, delay speaker clusters, sky-tracker searchlights & 2,000+ instanced spectators
  *   - Smooth radially parting retractable dome roofs for Grand Encore aerial fireworks
  *   - Rich architectural landmark cityscapes & waterfronts for all 10 venues
- *   - Unobstructed central stage deck (x: [-14, 14], z: [-11, 5]) & T-catwalk (z: [5, 11.4])
+ *   - Unobstructed central 38m multi-wing stage deck (x: [-21, 21], z: [-8.5, 5.5]) & extended B-Stage catwalk (z: [5.5, 14.4])
+ *   - Venue-adaptive stageTheme skinning (truss trim, PA scrim banners, LED palettes & architectural accents)
  *   - Full GPU resource tracking & disposal
  */
 
@@ -1577,9 +1578,141 @@ function addStadiumSeatingBowl(group, disposables, {
   return bowlLights;
 }
 
+export function getVenueStageTheme(venueId, overlayId = 'STANDARD') {
+  const venueMeta = getVenueById(venueId);
+  const overlayMeta = getStageOverlayById(overlayId);
+  const venueAccent = venueMeta?.accentHex ?? 0x38bdf8;
+  const venueLasers = venueMeta?.laserColors || [0x38bdf8, 0xfacc15, 0xf43f5e];
+  const toCss = (hex) => `#${(hex >>> 0).toString(16).padStart(6, '0')}`;
+
+  const overlayThemes = {
+    CHRISTMAS: {
+      motif: 'CHRISTMAS',
+      trussAccentHex: 0xfacc15,
+      trussSecondaryHex: 0xdc2626,
+      scrimBgCss: '#14261c',
+      scrimBorderCss: '#facc15',
+      scrimTitle: 'WINTER WONDER',
+      scrimSubtitle: 'HOLIDAY WORLD TOUR',
+      ledPrimaryCss: '#22c55e',
+      ledSecondaryCss: '#ef4444',
+      ledGoldCss: '#facc15',
+    },
+    HALLOWEEN: {
+      motif: 'HALLOWEEN',
+      trussAccentHex: 0xf97316,
+      trussSecondaryHex: 0x9333ea,
+      scrimBgCss: '#160b24',
+      scrimBorderCss: '#f97316',
+      scrimTitle: 'MIDNIGHT ROCK',
+      scrimSubtitle: 'PHANTOM ENCORE',
+      ledPrimaryCss: '#f97316',
+      ledSecondaryCss: '#a855f7',
+      ledGoldCss: '#4ade80',
+    },
+    SAKURA: {
+      motif: 'SAKURA',
+      trussAccentHex: 0xf9a8d4,
+      trussSecondaryHex: 0xdc2626,
+      scrimBgCss: '#220b1a',
+      scrimBorderCss: '#f9a8d4',
+      scrimTitle: 'SAKURA BLOOM',
+      scrimSubtitle: 'SPRING FESTIVAL LIVE',
+      ledPrimaryCss: '#f472b6',
+      ledSecondaryCss: '#fde047',
+      ledGoldCss: '#fbcfe8',
+    },
+    CYBER_NEON: {
+      motif: 'CYBER_NEON',
+      trussAccentHex: 0x22d3ee,
+      trussSecondaryHex: 0xec4899,
+      scrimBgCss: '#070b24',
+      scrimBorderCss: '#22d3ee',
+      scrimTitle: 'NEO OVERDRIVE',
+      scrimSubtitle: 'CYBER ARENA 2099',
+      ledPrimaryCss: '#22d3ee',
+      ledSecondaryCss: '#ec4899',
+      ledGoldCss: '#a855f7',
+    },
+    ROYAL_OPERA: {
+      motif: 'ROYAL_OPERA',
+      trussAccentHex: 0xfacc15,
+      trussSecondaryHex: 0x9f1239,
+      scrimBgCss: '#240712',
+      scrimBorderCss: '#facc15',
+      scrimTitle: 'ROYAL GALA',
+      scrimSubtitle: 'SYMPHONIC ENCORE',
+      ledPrimaryCss: '#facc15',
+      ledSecondaryCss: '#e11d48',
+      ledGoldCss: '#fef08a',
+    },
+    TROPICAL_SUMMER: {
+      motif: 'TROPICAL_SUMMER',
+      trussAccentHex: 0xfb923c,
+      trussSecondaryHex: 0x14b8a6,
+      scrimBgCss: '#092327',
+      scrimBorderCss: '#fb923c',
+      scrimTitle: 'SUMMER FEST',
+      scrimSubtitle: 'SUNSET BEACH LIVE',
+      ledPrimaryCss: '#fb923c',
+      ledSecondaryCss: '#2dd4bf',
+      ledGoldCss: '#facc15',
+    },
+    FIESTA_PINOY: {
+      motif: 'FIESTA_PINOY',
+      trussAccentHex: 0xfacc15,
+      trussSecondaryHex: 0xec4899,
+      scrimBgCss: '#1e1030',
+      scrimBorderCss: '#facc15',
+      scrimTitle: 'FIESTA LIVE!',
+      scrimSubtitle: 'MABUHAY WORLD TOUR',
+      ledPrimaryCss: '#facc15',
+      ledSecondaryCss: '#ec4899',
+      ledGoldCss: '#38bdf8',
+    },
+    APOCALYPSE_HELLFIRE: {
+      motif: 'APOCALYPSE_HELLFIRE',
+      trussAccentHex: 0xef4444,
+      trussSecondaryHex: 0xf97316,
+      scrimBgCss: '#1b0707',
+      scrimBorderCss: '#ef4444',
+      scrimTitle: 'INFERNO TOUR',
+      scrimSubtitle: 'HELLFIRE STADIUM',
+      ledPrimaryCss: '#ef4444',
+      ledSecondaryCss: '#f97316',
+      ledGoldCss: '#fde047',
+    },
+  };
+
+  if (overlayMeta.id !== 'STANDARD' && overlayThemes[overlayMeta.id]) {
+    return {
+      ...overlayThemes[overlayMeta.id],
+      venueName: venueMeta?.name || 'WORLD TOUR ARENA',
+      venueLocation: venueMeta?.location || 'GLOBAL',
+      overlayId: overlayMeta.id,
+    };
+  }
+
+  return {
+    motif: 'STANDARD',
+    trussAccentHex: venueAccent,
+    trussSecondaryHex: venueLasers[1] ?? 0xfacc15,
+    scrimBgCss: '#0b1020',
+    scrimBorderCss: toCss(venueAccent),
+    scrimTitle: (venueMeta?.name || 'STAGE HERO').toUpperCase().slice(0, 16),
+    scrimSubtitle: (venueMeta?.location || 'WORLD TOUR LIVE').toUpperCase(),
+    ledPrimaryCss: toCss(venueLasers[0] ?? venueAccent),
+    ledSecondaryCss: toCss(venueLasers[1] ?? 0xfacc15),
+    ledGoldCss: toCss(venueLasers[2] ?? 0xf43f5e),
+    venueName: venueMeta?.name || 'WORLD TOUR ARENA',
+    venueLocation: venueMeta?.location || 'GLOBAL',
+    overlayId: 'STANDARD',
+  };
+}
+
 /**
  * Composable Stage Theme / Event Overlay layered cleanly onto perimeter trusses,
- * outer wings (|x| > 15), balcony ribbons, and stadium sky/air of ANY real-life stadium.
+ * outer PA wings (|x| > 21.5), 15.5m roof truss arches, and stadium sky/air of ANY real-life stadium.
  */
 function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
   const overlayMeta = getStageOverlayById(overlayId);
@@ -1657,19 +1790,19 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       const candyTex = createCandyCaneTexture();
       disposables.textures.push(candyTex);
       const candyMat = trackMat(new THREE.MeshStandardMaterial({ map: candyTex, roughness: 0.35, metalness: 0.12 }));
-      [-15.4, 15.4].forEach((px) => {
-        const pillar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.46, 0.52, 13.8, 14)), candyMat);
-        pillar.position.set(px, 4.7, -4.8);
-        const cap = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.62, 12, 10)), goldGlow);
-        cap.position.set(px, 11.8, -4.8);
+      [-21.8, 21.8].forEach((px) => {
+        const pillar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.48, 0.56, 15.2, 14)), candyMat);
+        pillar.position.set(px, 5.4, -4.6);
+        const cap = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.68, 12, 10)), goldGlow);
+        cap.position.set(px, 13.2, -4.6);
         group.add(pillar, cap);
       });
 
       [
-        { x: -16.4, z: 0.4, w: 1.8, h: 1.6, d: 1.7, col: 0xdc2626, rib: 0xfacc15, ry: 0.25 },
-        { x: -15.8, z: -2.6, w: 1.3, h: 1.2, d: 1.3, col: 0x0284c7, rib: 0xf8fafc, ry: -0.35 },
-        { x: 16.4, z: 0.4, w: 1.85, h: 1.65, d: 1.75, col: 0x16a34a, rib: 0xfacc15, ry: -0.22 },
-        { x: 15.8, z: -2.6, w: 1.25, h: 1.35, d: 1.25, col: 0xec4899, rib: 0xfef08a, ry: 0.4 },
+        { x: -22.2, z: 1.2, w: 1.9, h: 1.65, d: 1.8, col: 0xdc2626, rib: 0xfacc15, ry: 0.25 },
+        { x: -21.5, z: -2.2, w: 1.35, h: 1.25, d: 1.35, col: 0x0284c7, rib: 0xf8fafc, ry: -0.35 },
+        { x: 22.2, z: 1.2, w: 1.9, h: 1.65, d: 1.8, col: 0x16a34a, rib: 0xfacc15, ry: -0.22 },
+        { x: 21.5, z: -2.2, w: 1.35, h: 1.35, d: 1.35, col: 0xec4899, rib: 0xfef08a, ry: 0.4 },
       ].forEach((gs) => {
         const boxGroup = new THREE.Group();
         const bMat = trackMat(new THREE.MeshStandardMaterial({ color: gs.col, roughness: 0.36, metalness: 0.16 }));
@@ -1746,11 +1879,11 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       moon.position.set(-64, 118, -280);
       group.add(moon);
 
-      [-16.2, 16.2].forEach((ax) => {
-        const col = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.8, 13.5, 1.8)), gothicMat);
-        col.position.set(ax, 4.5, -5.2);
-        const spire = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.4, 5.2, 4)), ironMat);
-        spire.position.set(ax, 13.8, -5.2);
+      [-22.0, 22.0].forEach((ax) => {
+        const col = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.9, 14.8, 1.9)), gothicMat);
+        col.position.set(ax, 5.2, -5.2);
+        const spire = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.5, 5.4, 4)), ironMat);
+        spire.position.set(ax, 15.1, -5.2);
         spire.rotation.y = Math.PI * 0.25;
         group.add(col, spire);
       });
@@ -1758,10 +1891,10 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       const stemMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 }));
       const eyeMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfef08a }));
       [
-        { x: -15.6, y: -1.65, z: 3.8 },
-        { x: -12.8, y: -1.65, z: 6.8 },
-        { x: 12.8, y: -1.65, z: 6.8 },
-        { x: 15.6, y: -1.65, z: 3.8 },
+        { x: -17.6, y: -1.65, z: 6.4 },
+        { x: -5.2, y: -1.65, z: 14.2 },
+        { x: 5.2, y: -1.65, z: 14.2 },
+        { x: 17.6, y: -1.65, z: 6.4 },
       ].forEach((ps) => {
         const pGroup = new THREE.Group();
         const body = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.55, 10, 8)), pumpkinGlowMat);
@@ -1777,9 +1910,9 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
         group.add(pGroup);
       });
 
-      [-16.4, 16.4].forEach((cx) => {
-        const pool = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.4, 1.65, 0.35, 16)), toxicMat);
-        pool.position.set(cx, -2.02, -0.5);
+      [-22.2, 22.2].forEach((cx) => {
+        const pool = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(1.5, 1.75, 0.35, 16)), toxicMat);
+        pool.position.set(cx, -2.02, -0.4);
         group.add(pool);
       });
 
@@ -1836,34 +1969,44 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       }));
       dynamicElements.pulseMaterials.push(lanternMat);
 
-      [-16.4, 16.4].forEach((tx) => {
+      [-22.2, 22.2].forEach((tx) => {
         const torii = new THREE.Group();
-        torii.position.set(tx, -2.2, -3.5);
-        torii.rotation.y = tx < 0 ? 0.35 : -0.35;
+        torii.position.set(tx, -2.2, -3.2);
+        torii.rotation.y = tx < 0 ? 0.34 : -0.34;
         [-2.2, 2.2].forEach((px) => {
-          const p = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.28, 0.34, 8.8, 10)), toriiRed);
-          p.position.set(px, 4.4, 0);
+          const p = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.28, 0.34, 9.2, 10)), toriiRed);
+          p.position.set(px, 4.6, 0);
           torii.add(p);
         });
         const lBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(6.2, 0.38, 0.44)), toriiRed);
-        lBeam.position.set(0, 7.0, 0);
+        lBeam.position.set(0, 7.4, 0);
         const tBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(7.2, 0.52, 0.64)), toriiCap);
-        tBeam.position.set(0, 8.6, 0);
+        tBeam.position.set(0, 9.0, 0);
         torii.add(lBeam, tBeam);
         group.add(torii);
 
         const trunk = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.35, 0.52, 6.2, 8)), barkMat);
-        trunk.position.set(tx * 1.06, 0.9, 2.5);
-        const crown = new THREE.Mesh(trackGeo(new THREE.DodecahedronGeometry(3.1, 1)), blossomMat);
+        trunk.position.set(tx * 1.04, 0.9, 3.0);
+        const crown = new THREE.Mesh(trackGeo(new THREE.DodecahedronGeometry(3.2, 1)), blossomMat);
         crown.scale.set(1.25, 0.78, 1.25);
-        crown.position.set(tx * 1.06, 4.8, 2.5);
+        crown.position.set(tx * 1.04, 4.9, 3.0);
         group.add(trunk, crown);
       });
 
-      [-12, -8, -4, 0, 4, 8, 12].forEach((lx) => {
-        const lant = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.45, 10, 10)), lanternMat);
+      // Cherry-blossom garland wraps spiraling cleanly up the front 15.5m truss pillars (x = ±16.2, z = 4.8)
+      [-16.2, 16.2].forEach((tx) => {
+        for (let b = 0; b < 7; b += 1) {
+          const ang = b * 1.1;
+          const bCluster = new THREE.Mesh(trackGeo(new THREE.DodecahedronGeometry(0.62, 0)), blossomMat);
+          bCluster.position.set(tx + Math.cos(ang) * 0.58, 2.0 + b * 1.85, 4.8 + Math.sin(ang) * 0.58);
+          group.add(bCluster);
+        }
+      });
+
+      [-14, -9.5, -4.8, 0, 4.8, 9.5, 14].forEach((lx) => {
+        const lant = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.46, 10, 10)), lanternMat);
         lant.scale.set(0.88, 1.24, 0.88);
-        lant.position.set(lx, 12.6, 4.2);
+        lant.position.set(lx, 14.3, 4.7);
         group.add(lant);
       });
 
@@ -1914,9 +2057,9 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
         transparent: true,
         opacity: 0.52,
       }));
-      const gridRing = new THREE.Mesh(trackGeo(new THREE.RingGeometry(16, 36, 48)), gridRingMat);
+      const gridRing = new THREE.Mesh(trackGeo(new THREE.RingGeometry(19, 39, 48)), gridRingMat);
       gridRing.rotation.x = -Math.PI * 0.5;
-      gridRing.position.set(0, -2.16, 4.0);
+      gridRing.position.set(0, -2.16, 4.5);
       group.add(gridRing);
 
       const kanjiTexL = createKanjiBillboardTexture('東京音楽', 'CYBER LIVE', '#22d3ee', '#070b24');
@@ -1925,11 +2068,11 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       const billMatL = trackMat(new THREE.MeshBasicMaterial({ map: kanjiTexL, transparent: true, opacity: 0.94, side: THREE.DoubleSide }));
       const billMatR = trackMat(new THREE.MeshBasicMaterial({ map: kanjiTexR, transparent: true, opacity: 0.94, side: THREE.DoubleSide }));
 
-      const billL = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(4.4, 9.2)), billMatL);
-      billL.position.set(-16.8, 5.2, -3.5);
+      const billL = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(4.6, 9.8)), billMatL);
+      billL.position.set(-22.2, 5.6, -3.2);
       billL.rotation.y = 0.34;
-      const billR = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(4.4, 9.2)), billMatR);
-      billR.position.set(16.8, 5.2, -3.5);
+      const billR = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(4.6, 9.8)), billMatR);
+      billR.position.set(22.2, 5.6, -3.2);
       billR.rotation.y = -0.34;
       group.add(billL, billR);
 
@@ -1980,20 +2123,33 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
 
       [-1, 1].forEach((side) => {
         for (let f = 0; f < 3; f += 1) {
-          const drape = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.68, 0.84, 13.6, 10)), velvetMat);
-          drape.position.set(side * (15.0 + f * 0.95), 4.6, -4.5 + f * 0.45);
+          const drape = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.72, 0.9, 15.2, 10)), velvetMat);
+          drape.position.set(side * (20.8 + f * 0.95), 5.4, -4.2 + f * 0.45);
           group.add(drape);
         }
-        const col = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.62, 0.7, 13.8, 14)), marbleMat);
-        col.position.set(side * 15.8, 4.7, -5.8);
-        const cap = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.65, 0.58, 1.65)), goldMat);
-        cap.position.set(side * 15.8, 11.8, -5.8);
+        const col = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.68, 0.78, 15.6, 14)), marbleMat);
+        col.position.set(side * 22.0, 5.6, -5.6);
+        const cap = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.85, 0.64, 1.85)), goldMat);
+        cap.position.set(side * 22.0, 13.5, -5.6);
         group.add(col, cap);
       });
 
-      [-11.5, 0, 11.5].forEach((chx, idx) => {
+      // Ornate gilded crimson & gold proscenium arch crowning the 15.5m roof truss front span
+      const archCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-16.6, 13.8, 4.9),
+        new THREE.Vector3(-9.5, 15.9, 4.9),
+        new THREE.Vector3(0, 16.8, 4.9),
+        new THREE.Vector3(9.5, 15.9, 4.9),
+        new THREE.Vector3(16.6, 13.8, 4.9),
+      ]);
+      const gildedArch = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(archCurve, 28, 0.34, 8, false)), goldMat);
+      const velvetValance = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(archCurve, 28, 0.24, 8, false)), velvetMat);
+      velvetValance.position.y = -0.42;
+      group.add(gildedArch, velvetValance);
+
+      [-13.5, 0, 13.5].forEach((chx, idx) => {
         const chand = new THREE.Group();
-        chand.position.set(chx, idx === 1 ? 14.8 : 13.4, idx === 1 ? 1.8 : -0.6);
+        chand.position.set(chx, idx === 1 ? 15.8 : 14.4, idx === 1 ? 2.2 : -0.4);
         const chain = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.06, 0.06, 3.8, 6)), goldMat);
         chain.position.y = 1.9;
         const ring1 = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(1.55, 0.1, 8, 22)), goldMat);
@@ -2014,10 +2170,10 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       const palmTrunkMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.88 }));
       const palmLeafMat = trackMat(new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.72, side: THREE.DoubleSide }));
       [
-        { x: -16.2, z: -4.2, h: 12.2, lean: 0.18 },
-        { x: -17.8, z: 2.2, h: 10.6, lean: 0.14 },
-        { x: 16.2, z: -4.2, h: 12.4, lean: -0.18 },
-        { x: 17.8, z: 2.2, h: 10.8, lean: -0.14 },
+        { x: -22.0, z: -4.2, h: 13.4, lean: 0.18 },
+        { x: -23.4, z: 2.6, h: 11.4, lean: 0.14 },
+        { x: 22.0, z: -4.2, h: 13.6, lean: -0.18 },
+        { x: 23.4, z: 2.6, h: 11.6, lean: -0.14 },
       ].forEach((p) => {
         const palm = new THREE.Group();
         const curve = new THREE.CatmullRomCurve3([
@@ -2044,10 +2200,10 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       const flameMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xfb923c }));
       const tikiFlames = [];
       [
-        { x: -15.2, z: 4.5 },
-        { x: -5.4, z: 10.2 },
-        { x: 5.4, z: 10.2 },
-        { x: 15.2, z: 4.5 },
+        { x: -17.6, z: 6.2 },
+        { x: -5.4, z: 12.6 },
+        { x: 5.4, z: 12.6 },
+        { x: 17.6, z: 6.2 },
       ].forEach((ts, idx) => {
         const post = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.09, 0.12, 3.6, 8)), bambooMat);
         post.position.set(ts.x, -0.4, ts.z);
@@ -2096,13 +2252,13 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
 
       const parols = [];
       const parolCoords = [
-        { x: -16.2, y: 8.6, z: -2.2, s: 1.45, mat: parolGold },
-        { x: -15.4, y: 5.2, z: 3.4, s: 1.05, mat: parolMagenta },
-        { x: 16.2, y: 8.6, z: -2.2, s: 1.45, mat: parolGold },
-        { x: 15.4, y: 5.2, z: 3.4, s: 1.05, mat: parolCyan },
-        { x: -9.5, y: 12.9, z: -4.2, s: 0.95, mat: parolCyan },
-        { x: 0.0, y: 13.4, z: -4.4, s: 1.25, mat: parolGold },
-        { x: 9.5, y: 12.9, z: -4.2, s: 0.95, mat: parolMagenta },
+        { x: -21.8, y: 9.2, z: -2.0, s: 1.5, mat: parolGold },
+        { x: -20.6, y: 5.6, z: 3.6, s: 1.1, mat: parolMagenta },
+        { x: 21.8, y: 9.2, z: -2.0, s: 1.5, mat: parolGold },
+        { x: 20.6, y: 5.6, z: 3.6, s: 1.1, mat: parolCyan },
+        { x: -11.5, y: 14.5, z: 4.7, s: 1.0, mat: parolCyan },
+        { x: 0.0, y: 15.0, z: 4.7, s: 1.32, mat: parolGold },
+        { x: 11.5, y: 14.5, z: 4.7, s: 1.0, mat: parolMagenta },
       ];
       parolCoords.forEach((pc, idx) => {
         const starGroup = new THREE.Group();
@@ -2124,7 +2280,7 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
           tassel.position.set(tx, -1.42, 0);
           starGroup.add(tassel);
         });
-        if (Math.abs(pc.x) > 14) {
+        if (Math.abs(pc.x) > 19) {
           const post = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.16, 0.22, pc.y + 2.4, 8)), bambooMat);
           post.position.set(pc.x, (pc.y - 2.2) * 0.5, pc.z);
           group.add(post);
@@ -2134,10 +2290,10 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       });
 
       const bandColors = [0xef4444, 0xfacc15, 0x3b82f6, 0x22c55e, 0xec4899, 0xf97316];
-      const flagGeo = trackGeo(new THREE.ConeGeometry(0.26, 0.54, 3));
+      const flagGeo = trackGeo(new THREE.ConeGeometry(0.28, 0.58, 3));
       const flagMat = trackMat(new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
       const rowCount = 4;
-      const flagsPerRow = 26;
+      const flagsPerRow = 30;
       const totalFlags = rowCount * flagsPerRow;
       const bandMesh = new THREE.InstancedMesh(flagGeo, flagMat, totalFlags);
       bandMesh.frustumCulled = false;
@@ -2146,12 +2302,12 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       const flagMeta = [];
       let fi = 0;
       for (let r = 0; r < rowCount; r += 1) {
-        const z = -2.0 + r * 4.4;
+        const z = -2.2 + r * 4.8;
         for (let k = 0; k < flagsPerRow; k += 1) {
           const u = k / (flagsPerRow - 1);
-          const x = -18 + u * 36;
-          const sag = Math.sin(u * Math.PI) * 1.45;
-          const y = 13.6 - sag;
+          const x = -21.5 + u * 43;
+          const sag = Math.sin(u * Math.PI) * 1.55;
+          const y = 15.1 - sag;
           flagMeta.push({ x, y, z, phase: k * 0.35 + r });
           bDummy.position.set(x, y, z);
           bDummy.rotation.set(Math.PI, 0, 0);
@@ -2203,10 +2359,10 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
       dynamicElements.pulseMaterials.push(magmaMat);
 
       [
-        { x: -16.6, y: 3.4, z: -4.2, sx: 1.8, sy: 10.2, sz: 2.1, rz: 0.16 },
-        { x: -18.2, y: 1.8, z: 1.4, sx: 1.4, sy: 6.4, sz: 1.6, rz: 0.26 },
-        { x: 16.6, y: 3.4, z: -4.2, sx: 1.8, sy: 10.2, sz: 2.1, rz: -0.16 },
-        { x: 18.2, y: 1.8, z: 1.4, sx: 1.4, sy: 6.4, sz: 1.6, rz: -0.26 },
+        { x: -22.2, y: 4.2, z: -4.2, sx: 2.0, sy: 12.4, sz: 2.2, rz: 0.16 },
+        { x: -23.6, y: 2.2, z: 2.2, sx: 1.5, sy: 7.4, sz: 1.7, rz: 0.24 },
+        { x: 22.2, y: 4.2, z: -4.2, sx: 2.0, sy: 12.4, sz: 2.2, rz: -0.16 },
+        { x: 23.6, y: 2.2, z: 2.2, sx: 1.5, sy: 7.4, sz: 1.7, rz: -0.24 },
       ].forEach((sp) => {
         const pillar = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.1, 1.0, 5)), obsidianMat);
         pillar.scale.set(sp.sx, sp.sy, sp.sz);
@@ -2219,14 +2375,28 @@ function attachStageOverlay(group, disposables, overlayId, dynamicElements) {
         group.add(pillar, vein);
       });
 
-      const fissureRing = new THREE.Mesh(trackGeo(new THREE.RingGeometry(15.2, 22.8, 36)), emberRingMat);
+      // Volcanic obsidian spire sleeves gripping the 4 main 15.5m truss pillars
+      [
+        [-16.2, -8.4],
+        [16.2, -8.4],
+        [-16.2, 4.8],
+        [16.2, 4.8],
+      ].forEach(([ox, oz]) => {
+        const sleeve = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(1.05, 5.2, 5)), obsidianMat);
+        sleeve.position.set(ox, 2.5, oz);
+        const magmaCrown = new THREE.Mesh(trackGeo(new THREE.OctahedronGeometry(0.58, 0)), magmaMat);
+        magmaCrown.position.set(ox, 15.8, oz);
+        group.add(sleeve, magmaCrown);
+      });
+
+      const fissureRing = new THREE.Mesh(trackGeo(new THREE.RingGeometry(19.2, 26.8, 36)), emberRingMat);
       fissureRing.rotation.x = -Math.PI * 0.5;
-      fissureRing.position.set(0, -2.14, 4.0);
+      fissureRing.position.set(0, -2.14, 4.5);
       group.add(fissureRing);
       for (let f = 0; f < 10; f += 1) {
         const ang = (f / 10) * Math.PI * 2;
         const crack = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.45, 0.08, 8.5)), magmaMat);
-        crack.position.set(Math.cos(ang) * 19.5, -2.15, 4.0 + Math.sin(ang) * 18.5);
+        crack.position.set(Math.cos(ang) * 23.0, -2.15, 4.5 + Math.sin(ang) * 21.5);
         crack.rotation.y = -ang + Math.PI * 0.5;
         group.add(crack);
       }
@@ -3675,9 +3845,12 @@ export function buildVenueEnvironment(venueId, overlayId = 'STANDARD') {
     dynamicElements.skyMat = group.userData.skyMat;
   }
 
+  const stageTheme = getVenueStageTheme(meta.id, overlayMeta.id);
+
   return {
     meta,
     overlayMeta,
+    stageTheme,
     group,
     dynamicElements,
     dispose() {

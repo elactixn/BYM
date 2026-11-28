@@ -2591,8 +2591,8 @@ export function cloneFreshNotes(notes) {
 }
 
 /**
- * Pure helper evaluating 192-PPQ rhythmic phases (beatPhase, sixteenthPhase, barPhase, phraseProgress)
- * from a song timestamp + dynamic [SyncTrack] tempo curve.
+ * Pure helper evaluating 192-PPQ rhythmic phases (beatPhase, eighthPhase, sixteenthPhase, barPhase,
+ * phraseProgress, isDownbeat, isSnareHit, isPhraseBoundary) from exactAudioTimeSec + dynamic [SyncTrack].
  */
 export function evaluateBeatSyncState(songTimeSec, syncTrack, fallbackBpm = 120, resolution = STANDARD_PPQ) {
   const safeRes = Math.max(48, Number(resolution) || STANDARD_PPQ);
@@ -2627,32 +2627,57 @@ export function evaluateBeatSyncState(songTimeSec, syncTrack, fallbackBpm = 120,
   const beatIndex = Math.floor(beatsFloat);
   const barIndex = Math.floor(beatsFloat / 4);
   const beatPhase = ((beatsFloat % 1) + 1) % 1;
+  const eighthPhase = (((beatsFloat * 2) % 1) + 1) % 1;
   const sixteenthPhase = (((beatsFloat * 4) % 1) + 1) % 1;
   const barPhase = (((beatsFloat / 4) % 1) + 1) % 1;
   const phraseProgress = (((beatsFloat / 32) % 1) + 1) % 1; // 8-bar concert phrase
   const beatInBar = ((beatIndex % 4) + 4) % 4;
-  const beatInPhrase = ((beatIndex % 32) + 32) % 32;
+  const barInPhrase4 = ((barIndex % 4) + 4) % 4;
+  const barInPhrase8 = ((barIndex % 8) + 8) % 8;
   const tickRounded = Math.round(currentTick);
+
+  const isDownbeat = beatInBar === 0 && beatPhase < 0.22;
+  const isSnareHit = (beatInBar === 1 || beatInBar === 3) && beatPhase < 0.24;
+  const isPhraseBoundary = barInPhrase4 === 0 && beatInBar === 0 && beatPhase < 0.25;
+  const isMajorPhraseBoundary = barInPhrase8 === 0 && beatInBar === 0 && beatPhase < 0.25;
 
   return {
     tick: tickRounded,
     currentTick: tickRounded,
     beatIndex,
     barIndex,
+    beatInBar,
     beatPhase,
+    eighthPhase,
     sixteenthPhase,
     barPhase,
     phraseProgress,
-    isDownbeat: beatInBar === 0 && beatPhase < 0.22,
-    isPhraseBoundary: beatInPhrase === 0 && beatPhase < 0.25,
+    isDownbeat,
+    isSnareHit,
+    isPhraseBoundary,
+    isMajorPhraseBoundary,
     currentBpm,
   };
 }
 
+function resolveOverallIntensityLabel(currentSection, overallNorm, playing, encore = false) {
+  if (encore) return 'ENCORE';
+  const secType = currentSection?.type;
+  if (secType === 'GUITAR_SOLO') return 'GUITAR SOLO';
+  if (secType === 'CHORUS') return 'CHORUS';
+  if (secType === 'BREAKDOWN' || secType === 'BRIDGE') return 'BREAKDOWN';
+  if (secType === 'OUTRO') return overallNorm > 0.42 ? 'ENCORE' : 'BREAKDOWN';
+  if (secType === 'INTRO') return 'INTRO';
+  if (secType === 'VERSE' || secType === 'PRE_CHORUS') return 'VERSE';
+  if (!playing || overallNorm < 0.16) return 'INTRO';
+  if (overallNorm > 0.62) return 'CHORUS';
+  return 'VERSE';
+}
+
 /**
- * Zero-Allocation Real-Time Beat-Sync Lock & Dynamic Calibration Clock.
- * Drives the highway pulse, 3D musicians, articulated moving-head lights, subwoofer kick cones,
- * and concert cameras in sample-accurate unison while tracking rolling player timing drift.
+ * Zero-Allocation Real-Time Beat-Sync Lock & Smoothed-Attack / Natural-Decay Per-Stem Telemetry Clock.
+ * Drives the highway pulse, 3D audio-locked musician kinematics, articulated moving-head lights,
+ * camera director downbeat cuts + lens punches, and 4-tier Engrande pyromusical fireworks in lockstep.
  */
 export function createBeatSyncClock() {
   const state = {
@@ -2660,12 +2685,16 @@ export function createBeatSyncClock() {
     currentTick: 0,
     beatIndex: 0,
     barIndex: 0,
+    beatInBar: 0,
     beatPhase: 0,
+    eighthPhase: 0,
     sixteenthPhase: 0,
     barPhase: 0,
     phraseProgress: 0,
     isDownbeat: false,
+    isSnareHit: false,
     isPhraseBoundary: false,
+    isMajorPhraseBoundary: false,
     currentBpm: 120,
     songAmbiance: 'ROCK_ANTHEM',
     currentSection: null,
@@ -2673,6 +2702,15 @@ export function createBeatSyncClock() {
     outputLatencyMs: 0,
     dynamicOffsetMs: 0,
     sampleCount: 0,
+    // Smoothed-attack / natural-decay per-stem real-time audio telemetry (0.0 -> 1.0)
+    kickImpulse: 0,
+    snareImpulse: 0,
+    bassGroove: 0,
+    guitarRiffEnergy: 0,
+    guitarBendPulse: 0,
+    vocalKeysEnergy: 0,
+    overallIntensity: 'INTRO',
+    overallIntensityNorm: 0,
     transientEnergy: {
       drums: 0,
       bass: 0,
@@ -2682,11 +2720,38 @@ export function createBeatSyncClock() {
       snare: 0,
       harmonic: 0,
       combined: 0,
+      // Mirrored per-stem & rhythmic channels for zero-GC downstream consumption
+      kickImpulse: 0,
+      snareImpulse: 0,
+      bassGroove: 0,
+      guitarRiffEnergy: 0,
+      guitarBendPulse: 0,
+      vocalKeysEnergy: 0,
+      eighthPhase: 0,
+      sixteenthPhase: 0,
+      beatInBar: 0,
+      isDownbeat: false,
+      isSnareHit: false,
+      isPhraseBoundary: false,
+      isMajorPhraseBoundary: false,
+      overallIntensity: 'INTRO',
+      overallIntensityNorm: 0,
     },
   };
 
   let emaDeviationMs = 0;
   let lastSongTime = -999;
+  let prevKickRaw = 0;
+  let prevSnareRaw = 0;
+  let prevGuitarRaw = 0;
+  let prevVocalKeysRaw = 0;
+  let guitarSustainAccum = 0;
+
+  const smoothAttackDecay = (current, target, dt, attackSec, decaySec) => {
+    const tau = target > current ? attackSec : decaySec;
+    const alpha = 1 - Math.exp(-dt / Math.max(0.004, tau));
+    return current + (target - current) * alpha;
+  };
 
   return {
     reset() {
@@ -2694,26 +2759,61 @@ export function createBeatSyncClock() {
       state.currentTick = 0;
       state.beatIndex = 0;
       state.barIndex = 0;
+      state.beatInBar = 0;
       state.beatPhase = 0;
+      state.eighthPhase = 0;
       state.sixteenthPhase = 0;
       state.barPhase = 0;
       state.phraseProgress = 0;
       state.isDownbeat = false;
+      state.isSnareHit = false;
       state.isPhraseBoundary = false;
+      state.isMajorPhraseBoundary = false;
       state.currentSection = null;
       state.syncLocked = false;
       state.dynamicOffsetMs = 0;
       state.sampleCount = 0;
-      state.transientEnergy.drums = 0;
-      state.transientEnergy.bass = 0;
-      state.transientEnergy.guitar = 0;
-      state.transientEnergy.piano = 0;
-      state.transientEnergy.kick = 0;
-      state.transientEnergy.snare = 0;
-      state.transientEnergy.harmonic = 0;
-      state.transientEnergy.combined = 0;
+      state.kickImpulse = 0;
+      state.snareImpulse = 0;
+      state.bassGroove = 0;
+      state.guitarRiffEnergy = 0;
+      state.guitarBendPulse = 0;
+      state.vocalKeysEnergy = 0;
+      state.overallIntensity = 'INTRO';
+      state.overallIntensityNorm = 0;
+
+      const te = state.transientEnergy;
+      te.drums = 0;
+      te.bass = 0;
+      te.guitar = 0;
+      te.piano = 0;
+      te.kick = 0;
+      te.snare = 0;
+      te.harmonic = 0;
+      te.combined = 0;
+      te.kickImpulse = 0;
+      te.snareImpulse = 0;
+      te.bassGroove = 0;
+      te.guitarRiffEnergy = 0;
+      te.guitarBendPulse = 0;
+      te.vocalKeysEnergy = 0;
+      te.eighthPhase = 0;
+      te.sixteenthPhase = 0;
+      te.beatInBar = 0;
+      te.isDownbeat = false;
+      te.isSnareHit = false;
+      te.isPhraseBoundary = false;
+      te.isMajorPhraseBoundary = false;
+      te.overallIntensity = 'INTRO';
+      te.overallIntensityNorm = 0;
+
       emaDeviationMs = 0;
       lastSongTime = -999;
+      prevKickRaw = 0;
+      prevSnareRaw = 0;
+      prevGuitarRaw = 0;
+      prevVocalKeysRaw = 0;
+      guitarSustainAccum = 0;
     },
 
     recordHitDeviation(deltaMs) {
@@ -2735,18 +2835,23 @@ export function createBeatSyncClock() {
       telemetry = null,
       sections = null,
       trackMeta = null,
+      isEncore = false,
     }) {
       const evaluated = evaluateBeatSyncState(songTime, syncTrack, fallbackBpm, resolution);
       state.tick = evaluated.tick;
       state.currentTick = evaluated.currentTick;
       state.beatIndex = evaluated.beatIndex;
       state.barIndex = evaluated.barIndex;
+      state.beatInBar = evaluated.beatInBar;
       state.beatPhase = evaluated.beatPhase;
+      state.eighthPhase = evaluated.eighthPhase;
       state.sixteenthPhase = evaluated.sixteenthPhase;
       state.barPhase = evaluated.barPhase;
       state.phraseProgress = evaluated.phraseProgress;
       state.isDownbeat = evaluated.isDownbeat;
+      state.isSnareHit = evaluated.isSnareHit;
       state.isPhraseBoundary = evaluated.isPhraseBoundary;
+      state.isMajorPhraseBoundary = evaluated.isMajorPhraseBoundary;
       state.currentBpm = evaluated.currentBpm;
 
       if (Array.isArray(sections) && sections.length > 0) {
@@ -2759,46 +2864,118 @@ export function createBeatSyncClock() {
       const rawLatency = Number(outputLatencySec);
       state.outputLatencyMs = Number.isFinite(rawLatency) && rawLatency >= 0 ? Math.round(rawLatency * 1000) : 0;
 
+      const rawDt = lastSongTime === -999 ? 0.016 : songTime - lastSongTime;
+      const dt = Math.max(0.004, Math.min(0.06, Number.isFinite(rawDt) && rawDt > 0 ? rawDt : 0.016));
       const monotonic = lastSongTime === -999 || (songTime >= lastSongTime - 0.025 && songTime - lastSongTime < 0.25);
       lastSongTime = songTime;
       state.syncLocked = Boolean(playing && songTime >= -0.05 && monotonic);
 
-      const kick = Math.min(
-        1,
-        Math.max(Number(telemetry?.kickTransient || 0), Number(telemetry?.kickEnergy || telemetry?.bassEnergy || 0) * 0.85)
+      // Extract raw 4-stem energies & transient flux from live WebAudio stem analysers
+      const rawKickE = Math.min(1, Math.max(0, Number(telemetry?.kickEnergy ?? telemetry?.bassEnergy ?? 0)));
+      const rawKickT = Math.min(1, Math.max(0, Number(telemetry?.kickTransient ?? 0)));
+      const rawSnareE = Math.min(1, Math.max(0, Number(telemetry?.snareEnergy ?? telemetry?.drumEnergy ?? 0)));
+      const rawSnareT = Math.min(1, Math.max(0, Number(telemetry?.snareTransient ?? 0)));
+      const rawDrumE = Math.min(1, Math.max(0, Number(telemetry?.drumEnergy ?? 0)));
+      const rawDrumT = Math.min(1, Math.max(0, Number(telemetry?.drumTransient ?? 0)));
+      const rawBassE = Math.min(1, Math.max(0, Number(telemetry?.bassEnergy ?? 0)));
+      const rawBassT = Math.min(1, Math.max(0, Number(telemetry?.bassTransient ?? 0)));
+      const rawGuitarE = Math.min(1, Math.max(0, Number(telemetry?.guitarEnergy ?? 0)));
+      const rawGuitarT = Math.min(1, Math.max(0, Number(telemetry?.guitarTransient ?? 0)));
+      const rawPianoE = Math.min(1, Math.max(0, Number(telemetry?.pianoEnergy ?? 0)));
+      const rawPianoT = Math.min(1, Math.max(0, Number(telemetry?.pianoTransient ?? 0)));
+      const rawVocalE = Math.min(1, Math.max(0, Number(telemetry?.vocalEnergy ?? 0)));
+      const rawOverallE = Math.min(1, Math.max(0, Number(telemetry?.overallEnergy ?? 0)));
+
+      // Half-wave rectified per-stem transient derivatives for sharp audio-locked attacks
+      const kickFlux = Math.max(0, rawKickE - prevKickRaw * 0.88) * 3.2;
+      const snareFlux = Math.max(0, rawSnareE - prevSnareRaw * 0.86) * 3.4;
+      const guitarFlux = Math.max(0, rawGuitarE - prevGuitarRaw * 0.85) * 3.0;
+      const vocalKeysRaw = Math.min(1, Math.max(rawPianoE, rawVocalE * 0.95, rawPianoT * 0.9));
+      const vocalKeysFlux = Math.max(0, vocalKeysRaw - prevVocalKeysRaw * 0.86) * 2.8;
+
+      prevKickRaw = rawKickE;
+      prevSnareRaw = rawSnareE;
+      prevGuitarRaw = rawGuitarE;
+      prevVocalKeysRaw = vocalKeysRaw;
+
+      // Subtle beat-phase lock boost so downbeats & backbeats feel tight even on compressed mixes
+      const downbeatPulse = playing && evaluated.isDownbeat ? (1 - evaluated.beatPhase / 0.22) * 0.28 : 0;
+      const backbeatPulse = playing && evaluated.isSnareHit ? (1 - evaluated.beatPhase / 0.24) * 0.28 : 0;
+
+      const kickTarget = playing
+        ? Math.min(1, Math.max(rawKickT, kickFlux, rawKickE * 0.82 + downbeatPulse * rawDrumE))
+        : 0;
+      const snareTarget = playing
+        ? Math.min(1, Math.max(rawSnareT, snareFlux, rawSnareE * 0.72 + backbeatPulse * Math.max(rawDrumE, 0.35)))
+        : 0;
+      const bassGrooveTarget = playing
+        ? Math.min(1, Math.max(rawBassT * 0.95, rawBassE * 1.15))
+        : 0;
+      const guitarRiffTarget = playing
+        ? Math.min(1, Math.max(rawGuitarT * 1.1, guitarFlux, rawGuitarE * 1.12))
+        : 0;
+
+      // Guitar Bend Pulse tracks sustained high-energy guitar notes / solo vibrato ring-out
+      if (playing && rawGuitarE > 0.26) {
+        guitarSustainAccum = Math.min(1, guitarSustainAccum + dt * (rawGuitarE > 0.45 ? 1.85 : 0.95));
+      } else {
+        guitarSustainAccum = Math.max(0, guitarSustainAccum - dt * 2.4);
+      }
+      const isSoloSection = state.currentSection?.type === 'GUITAR_SOLO';
+      const guitarBendTarget = playing
+        ? Math.min(1, guitarSustainAccum * (isSoloSection ? 1.0 : 0.72) * (0.45 + rawGuitarE * 0.75))
+        : 0;
+      const vocalKeysTarget = playing
+        ? Math.min(1, Math.max(vocalKeysRaw * 1.12, vocalKeysFlux, rawPianoT))
+        : 0;
+
+      // Crisp fast attack (12–28ms), natural musical decay (110–260ms)
+      state.kickImpulse = smoothAttackDecay(state.kickImpulse, kickTarget, dt, 0.012, 0.135);
+      state.snareImpulse = smoothAttackDecay(state.snareImpulse, snareTarget, dt, 0.01, 0.125);
+      state.bassGroove = smoothAttackDecay(state.bassGroove, bassGrooveTarget, dt, 0.022, 0.19);
+      state.guitarRiffEnergy = smoothAttackDecay(state.guitarRiffEnergy, guitarRiffTarget, dt, 0.016, 0.165);
+      state.guitarBendPulse = smoothAttackDecay(state.guitarBendPulse, guitarBendTarget, dt, 0.055, 0.28);
+      state.vocalKeysEnergy = smoothAttackDecay(state.vocalKeysEnergy, vocalKeysTarget, dt, 0.024, 0.21);
+
+      const overallTarget = playing
+        ? Math.min(1, Math.max(rawOverallE, state.kickImpulse * 0.32 + state.snareImpulse * 0.24 + state.guitarRiffEnergy * 0.26 + state.vocalKeysEnergy * 0.18))
+        : 0;
+      state.overallIntensityNorm = smoothAttackDecay(state.overallIntensityNorm, overallTarget, dt, 0.08, 0.42);
+      state.overallIntensity = resolveOverallIntensityLabel(
+        state.currentSection,
+        state.overallIntensityNorm,
+        playing,
+        Boolean(isEncore)
       );
-      const snare = Math.min(
-        1,
-        Math.max(Number(telemetry?.snareTransient || 0), Number(telemetry?.snareEnergy || telemetry?.drumEnergy || 0) * 0.72)
-      );
-      const drums = Math.min(
-        1,
-        Math.max(Number(telemetry?.drumTransient || 0), kick * 0.9, snare * 0.85, Number(telemetry?.drumEnergy || 0) * 0.78)
-      );
-      const bass = Math.min(
-        1,
-        Math.max(Number(telemetry?.bassTransient || 0), Number(telemetry?.bassEnergy || 0))
-      );
-      const guitar = Math.min(
-        1,
-        Math.max(Number(telemetry?.guitarTransient || 0), Number(telemetry?.guitarEnergy || 0))
-      );
-      const piano = Math.min(
-        1,
-        Math.max(Number(telemetry?.pianoTransient || 0), Number(telemetry?.pianoEnergy || 0))
-      );
-      const harmonic = Math.min(
-        1,
-        Number(telemetry?.harmonicEnergy || telemetry?.guitarEnergy || telemetry?.overallEnergy || 0)
-      );
-      state.transientEnergy.drums = drums;
-      state.transientEnergy.bass = bass;
-      state.transientEnergy.guitar = guitar;
-      state.transientEnergy.piano = piano;
-      state.transientEnergy.kick = kick;
-      state.transientEnergy.snare = snare;
-      state.transientEnergy.harmonic = harmonic;
-      state.transientEnergy.combined = Math.min(1, drums * 0.42 + snare * 0.25 + guitar * 0.18 + piano * 0.15);
+
+      const drums = Math.min(1, Math.max(rawDrumT, state.kickImpulse * 0.92, state.snareImpulse * 0.9, rawDrumE * 0.8));
+      const harmonic = Math.min(1, Number(telemetry?.harmonicEnergy ?? Math.max(state.guitarRiffEnergy, state.vocalKeysEnergy)));
+
+      const te = state.transientEnergy;
+      te.drums = drums;
+      te.bass = state.bassGroove;
+      te.guitar = state.guitarRiffEnergy;
+      te.piano = state.vocalKeysEnergy;
+      te.kick = state.kickImpulse;
+      te.snare = state.snareImpulse;
+      te.harmonic = harmonic;
+      te.combined = Math.min(1, drums * 0.42 + state.snareImpulse * 0.25 + state.guitarRiffEnergy * 0.18 + state.vocalKeysEnergy * 0.15);
+
+      te.kickImpulse = state.kickImpulse;
+      te.snareImpulse = state.snareImpulse;
+      te.bassGroove = state.bassGroove;
+      te.guitarRiffEnergy = state.guitarRiffEnergy;
+      te.guitarBendPulse = state.guitarBendPulse;
+      te.vocalKeysEnergy = state.vocalKeysEnergy;
+      te.eighthPhase = state.eighthPhase;
+      te.sixteenthPhase = state.sixteenthPhase;
+      te.beatInBar = state.beatInBar;
+      te.isDownbeat = state.isDownbeat;
+      te.isSnareHit = state.isSnareHit;
+      te.isPhraseBoundary = state.isPhraseBoundary;
+      te.isMajorPhraseBoundary = state.isMajorPhraseBoundary;
+      te.overallIntensity = state.overallIntensity;
+      te.overallIntensityNorm = state.overallIntensityNorm;
 
       return state;
     },
@@ -2808,5 +2985,6 @@ export function createBeatSyncClock() {
     },
   };
 }
+
 
 
